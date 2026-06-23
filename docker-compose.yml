@@ -28,11 +28,19 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "82:8000"
+      - "82:7000"
     environment:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-milal-admin-key}
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://milal_user:milal_password_2026@db:3306/milal_room_reservation?charset=utf8mb4}
+    networks:
+      milal-net:
+        aliases:
+          - milal-room-reservation
     restart: unless-stopped
 
 volumes:
   mysql_data:
+
+networks:
+  milal-net:
+    external: true

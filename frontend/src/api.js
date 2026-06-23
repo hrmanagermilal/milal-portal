@@ -8,7 +8,7 @@ function buildApiBaseCandidates() {
   }
 
   // In WSL/Windows mixed setups, Vite proxy can fail while direct browser access works.
-  const candidates = ["", API_BASE, "http://127.0.0.1:8000", "http://localhost:8000"].filter(Boolean);
+  const candidates = ["", API_BASE, "http://127.0.0.1:7000", "http://localhost:7000"].filter(Boolean);
   return [...new Set(candidates)];
 }
 
@@ -92,7 +92,7 @@ async function request(path, options = {}) {
   throw new Error(
     `${lastError?.message || "Failed to fetch"}. ` +
       `Backend is unreachable. Tried: ${candidates.join(", ")}. ` +
-      "Ensure API server is running at http://127.0.0.1:8000 or set VITE_API_BASE_URL."
+      "Ensure API server is running at http://127.0.0.1:7000 or set VITE_API_BASE_URL."
   );
 }
 

@@ -24,7 +24,7 @@ cd backend
 python -m venv .venv
 . .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 7000
 ```
 
 Admin key is read from `ADMIN_API_KEY` environment variable (default: `milal-admin-key`).
@@ -40,7 +40,7 @@ npm run dev
 Set API endpoint in `frontend/.env`:
 
 ```bash
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=http://localhost:7000
 ```
 
 ## Main API Endpoints
@@ -61,13 +61,13 @@ docker build -t milal-room-reservation .
 Run container:
 
 ```bash
-docker run --name milal-room-reservation -p 8000:8000 -e ADMIN_API_KEY=your-admin-key milal-room-reservation
+docker run --name milal-room-reservation -p 7000:7000 -e ADMIN_API_KEY=your-admin-key milal-room-reservation
 ```
 
 Then open:
 
-- `http://localhost:8000` for frontend
-- `http://localhost:8000/docs` for API docs
+- `http://localhost:7000` for frontend
+- `http://localhost:7000/docs` for API docs
 
 ## Docker Compose (Recommended: App + MySQL)
 
@@ -85,8 +85,8 @@ docker compose up --build -d
 
 3. Open:
 
-- `http://localhost:8000` for frontend
-- `http://localhost:8000/docs` for API docs
+- `http://localhost:7000` for frontend
+- `http://localhost:7000/docs` for API docs
 
 4. Stop services:
 
