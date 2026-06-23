@@ -1,5 +1,5 @@
 -- ============================================================
--- Milal Room Reservation - Database Schema (MySQL)
+-- Milal Portal - Database Schema (MySQL)
 -- ============================================================
 
 -- Drop existing tables (order matters due to foreign key)

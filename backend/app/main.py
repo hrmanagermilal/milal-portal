@@ -20,7 +20,7 @@ from .schemas import (
     RoomUpdate,
 )
 
-app = FastAPI(title="Milal Room Reservation API", version="1.0.0")
+app = FastAPI(title="Milal Portal API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,

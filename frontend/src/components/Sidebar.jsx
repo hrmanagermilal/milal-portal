@@ -139,7 +139,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
 
       {/* Navigation Tree */}
       <Stack sx={{ p: 1.5, pb: 2 }}>
-        {/* Root: Room Reservation */}
+        {/* Root: Milal Portal */}
         <Button
           onClick={() => setMenuOpen((prev) => !prev)}
           startIcon={CalendarIcon}
