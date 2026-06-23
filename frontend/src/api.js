@@ -3,13 +3,7 @@ import axios from "axios";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 function buildApiBaseCandidates() {
-  if (!import.meta.env.DEV) {
-    return [API_BASE || ""];
-  }
-
-  // In WSL/Windows mixed setups, Vite proxy can fail while direct browser access works.
-  const candidates = ["", API_BASE, "http://127.0.0.1:7000", "http://localhost:7000"].filter(Boolean);
-  return [...new Set(candidates)];
+  return [API_BASE || ""];
 }
 
 function normalizeErrorDetail(detail) {
@@ -141,4 +135,20 @@ export const api = {
       },
       body: payload,
     }),
+
+  // ── Auth / Member account ──────────────────────────────────────────────
+  findMember: (payload) =>
+    request("/api/auth/find-member", { method: "POST", body: payload }),
+
+  sendOtp: (payload) =>
+    request("/api/auth/send-otp", { method: "POST", body: payload }),
+
+  verifyOtp: (payload) =>
+    request("/api/auth/verify-otp", { method: "POST", body: payload }),
+
+  createAccount: (payload) =>
+    request("/api/auth/create-account", { method: "POST", body: payload }),
+
+  loginWithPassword: (payload) =>
+    request("/api/auth/login", { method: "POST", body: payload }),
 };

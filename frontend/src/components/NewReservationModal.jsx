@@ -5,12 +5,12 @@ import DialogActions from "@mui/material/DialogActions";
 import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
-import Grid from "@mui/material/Grid";
 import ListSubheader from "@mui/material/ListSubheader";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { useLanguage } from "../i18n/LanguageContext";
 
 // Default end = start + 1 hour, clamped to 23:30 of same day
 function computeEndTime(startValue) {
@@ -40,6 +40,8 @@ export default function NewReservationModal({
   selectedRoom,
   selectedDateTime,
 }) {
+  const { t } = useLanguage();
+
   function field(key) {
     return {
       value: form[key],
@@ -84,153 +86,94 @@ export default function NewReservationModal({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>New Reservation Request</DialogTitle>
-      <DialogContent sx={{ pt: 2 }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="sm"
+      PaperProps={{
+        sx: {
+          width: "100%",
+          maxWidth: { xs: "100%", sm: "540px" },
+          m: { xs: 0, sm: "16px auto" },
+          maxHeight: { xs: "100dvh", sm: "calc(100dvh - 32px)" },
+          borderRadius: { xs: 0, sm: "12px" },
+        },
+      }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>{t("newReservationTitle")}</DialogTitle>
+      <DialogContent sx={{ pt: "12px !important", pb: 1 }}>
         <Box component="form" onSubmit={handleSubmit}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <TextField 
-                select 
-                label="Room" 
-                fullWidth 
-                required 
-                {...field("room_id")}
-              >
-                {[1, 2].map((floor) => {
-                  const floorRooms = rooms.filter((r) => (r.floor ?? 1) === floor);
-                  if (floorRooms.length === 0) return null;
-                  return [
-                    <ListSubheader key={`floor-${floor}`} sx={{ fontWeight: 700, color: "#1976d2", fontSize: "12px", lineHeight: "32px" }}>
-                      {floor}층 (Floor {floor})
-                    </ListSubheader>,
-                    ...floorRooms.map((room) => (
-                      <MenuItem key={room.id} value={String(room.id)}>
-                        {room.name} (capacity {room.capacity})
-                      </MenuItem>
-                    )),
-                  ];
-                })}
-              </TextField>
-            </Grid>
+          <Stack spacing={2}>
+            <TextField select label={t("fieldRoom")} fullWidth required {...field("room_id")}>
+              {[1, 2].map((floor) => {
+                const floorRooms = rooms.filter((r) => (r.floor ?? 1) === floor);
+                if (floorRooms.length === 0) return null;
+                return [
+                  <ListSubheader key={`floor-${floor}`} sx={{ fontWeight: 700, color: "#1976d2", fontSize: "12px", lineHeight: "32px" }}>
+                    {floor === 1 ? t("floor1Label") : t("floor2Label")}
+                  </ListSubheader>,
+                  ...floorRooms.map((room) => (
+                    <MenuItem key={room.id} value={String(room.id)}>
+                      {room.name} ({t("capacity")} {room.capacity})
+                    </MenuItem>
+                  )),
+                ];
+              })}
+            </TextField>
 
-            <Grid item xs={12} sm={6}>
-              <TextField 
-                label="Name" 
-                fullWidth 
-                required 
-                {...field("requester_name")} 
-              />
-            </Grid>
+            <TextField label={t("name")} fullWidth required {...field("requester_name")} />
 
-            <Grid item xs={12} sm={6}>
-              <TextField 
-                label="Phone" 
-                fullWidth 
-                required 
-                placeholder="###-####-####" 
-                {...field("phone")} 
-              />
-            </Grid>
+            <TextField label={t("phone")} fullWidth required placeholder="###-####-####" {...field("phone")} />
 
-            <Grid item xs={12} sm={6}>
-              <TextField 
-                label="Email" 
-                type="email" 
-                fullWidth 
-                required 
-                {...field("email")} 
-              />
-            </Grid>
+            <TextField label={t("email")} type="email" fullWidth required {...field("email")} />
 
-            <Grid item xs={12} sm={6}>
+            <TextField
+              label={t("fieldStartTime")} type="datetime-local" fullWidth required
+              InputLabelProps={{ shrink: true }}
+              value={form.start_time}
+              onChange={handleStartTimeChange}
+            />
+
+            <Box>
+              <Typography variant="caption" sx={{ color: "#5d7186", display: "block", mb: 0.75, fontSize: "12px", fontWeight: 500 }}>
+                {t("fieldEndTime")} *
+                {startDate && (
+                  <Chip label={startDate} size="small" sx={{ ml: 1, height: 18, fontSize: "11px", bgcolor: "rgba(25,118,210,0.1)", color: "#1976d2", fontWeight: 600 }} />
+                )}
+              </Typography>
               <TextField
-                label="Start Time"
-                type="datetime-local"
-                fullWidth
-                required
-                InputLabelProps={{ shrink: true }}
-                value={form.start_time}
-                onChange={handleStartTimeChange}
+                type="time" size="small" fullWidth required
+                value={endTimeOnly}
+                disabled={!form.start_time}
+                inputProps={{ min: minEndTime(form.start_time), max: "23:59" }}
+                helperText={!form.start_time ? t("endTimeSelectStart") : t("endTimeMinHint").replace("%s", minEndTime(form.start_time))}
+                onChange={(e) => {
+                  if (!startDate) return;
+                  const selected = e.target.value;
+                  const min = minEndTime(form.start_time);
+                  const enforced = selected < min ? min : selected;
+                  setForm((prev) => ({ ...prev, end_time: `${startDate}T${enforced}` }));
+                }}
               />
-            </Grid>
+            </Box>
 
-            <Grid item xs={12} sm={6}>
-              <Box>
-                <Typography variant="caption" sx={{ color: "#5d7186", display: "block", mb: 0.75, fontSize: "12px", fontWeight: 500 }}>
-                  End Time *
-                  {startDate && (
-                    <Chip label={startDate} size="small" sx={{ ml: 1, height: 18, fontSize: "11px", bgcolor: "rgba(25,118,210,0.1)", color: "#1976d2", fontWeight: 600 }} />
-                  )}
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <TextField
-                    type="time"
-                    size="small"
-                    fullWidth
-                    required
-                    value={endTimeOnly}
-                    disabled={!form.start_time}
-                    inputProps={{ min: minEndTime(form.start_time), max: "23:59" }}
-                    helperText={!form.start_time ? "시작 시간을 먼저 선택하세요" : `최소 ${minEndTime(form.start_time)} 이후`}
-                    onChange={(e) => {
-                      if (!startDate) return;
-                      const selected = e.target.value;
-                      const min = minEndTime(form.start_time);
-                      // If selected time is before minimum, snap to minimum
-                      const enforced = selected < min ? min : selected;
-                      setForm((prev) => ({ ...prev, end_time: `${startDate}T${enforced}` }));
-                    }}
-                  />
-                </Stack>
-              </Box>
-            </Grid>
+            <TextField label={t("purpose")} fullWidth required multiline rows={2} {...field("purpose")} />
 
-            <Grid item xs={12}>
-              <TextField
-                label="Purpose"
-                fullWidth
-                required
-                multiline
-                rows={2}
-                {...field("purpose")}
-              />
-            </Grid>
+            <TextField label={t("attendees")} type="number" fullWidth required inputProps={{ min: 1 }} {...field("attendees")} />
 
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Attendees"
-                type="number"
-                fullWidth
-                required
-                inputProps={{ min: 1 }}
-                {...field("attendees")}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Notes"
-                fullWidth
-                multiline
-                rows={2}
-                {...field("notes")}
-              />
-            </Grid>
-          </Grid>
+            <TextField label={t("notes")} fullWidth multiline rows={2} {...field("notes")} />
+          </Stack>
         </Box>
       </DialogContent>
-      <DialogActions sx={{ p: 2 }}>
+      <DialogActions sx={{ px: 2, py: 1.5 }}>
         <Button onClick={onClose} variant="outlined" sx={{ bgcolor: "#fdfdfd", color: "#5554547b" }}>
-          Cancel
+          {t("cancel")}
         </Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          disabled={!isValid}
+        <Button onClick={handleSubmit} variant="contained" disabled={!isValid}
           sx={{ bgcolor: "#2f68f9", "&:disabled": { bgcolor: "#d8dfe7", color: "#a0aab4" } }}
         >
-          Submit Request
+          {t("submitRequest")}
         </Button>
       </DialogActions>
     </Dialog>

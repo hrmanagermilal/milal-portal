@@ -4,10 +4,20 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
+import Drawer from "@mui/material/Drawer";
+import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import Badge from "@mui/material/Badge";
 import Tooltip from "@mui/material/Tooltip";
+import { useLanguage } from "../i18n/LanguageContext";
+
+const CloseIcon = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
 
 // Icons - you can enhance this with real icons from @mui/icons-material
 const MenuIcon = (
@@ -67,25 +77,39 @@ const navItems = [
   { key: "space-settings", label: "Room Settings", icon: SettingsIcon, badge: null },
 ];
 
-export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCount = 0 }) {
+const SIDEBAR_W = 250;
+
+export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCount = 0, mobileOpen = false, onClose }) {
+  const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(true);
 
-  return (
+  const navItems = [
+    { key: "timeline", label: t("navTimeline"), icon: MenuIcon, badge: null },
+    { key: "request", label: t("navRequest"), icon: PlusIcon, badge: null },
+    { key: "admin", label: t("navAdmin"), icon: CheckIcon, badge: null },
+    { key: "space-settings", label: t("navSettings"), icon: SettingsIcon, badge: null },
+  ];
+
+  const sidebarContent = (
     <Box
-      component="nav"
       sx={{
-        width: 250,
-        flexShrink: 0,
-        bgcolor: "#eef2f7",  // Light Grey (Velok light background)
+        width: SIDEBAR_W,
+        height: "100%",
+        bgcolor: "#eef2f7",
         display: "flex",
         flexDirection: "column",
-        position: "relative",
         overflow: "hidden",
-        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.08)",
       }}
     >
+      {/* Mobile close button */}
+      <Box sx={{ display: { xs: "flex", md: "none" }, justifyContent: "flex-end", px: 1.5, pt: 1 }}>
+        <IconButton size="small" onClick={onClose} sx={{ color: "#5d7186" }}>
+          {CloseIcon}
+        </IconButton>
+      </Box>
+
       {/* Sidebar Header - Velok Branding */}
-      <Box sx={{ p: 3, pb: 2 }}>
+      <Box sx={{ p: 3, pb: 2, pt: { xs: 1, md: 3 } }}>
         <Stack spacing={1.5}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {/* Velok Logo */}
@@ -128,7 +152,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                   marginTop: "2px",
                 }}
               >
-                Rooms
+                {t("sidebarRooms")}
               </Typography>
             </Box>
           </Box>
@@ -156,7 +180,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
             "&:hover": { bgcolor: "#e8ecf2" },
           }}
         >
-          <Box sx={{ flexGrow: 1, textAlign: "left" }}>Room Reservation</Box>
+          <Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navRoomReservation")}</Box>
           <Box sx={{
             transform: menuOpen ? "rotate(0deg)" : "rotate(-90deg)",
             transition: "transform 0.2s ease",
@@ -242,10 +266,43 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
             "&:hover": { borderColor: "#1976d2", bgcolor: "rgba(25,118,210,0.06)", color: "#1976d2" },
           }}
         >
-          Refresh
+          {t("navRefresh")}
         </Button>
       </Box>
     </Box>
+  );
+
+  return (
+    <>
+      {/* Desktop: permanent sidebar */}
+      <Box
+        component="nav"
+        sx={{
+          width: SIDEBAR_W,
+          flexShrink: 0,
+          display: { xs: "none", md: "flex" },
+          flexDirection: "column",
+          position: "relative",
+          overflow: "hidden",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+        }}
+      >
+        {sidebarContent}
+      </Box>
+
+      {/* Mobile: temporary drawer */}
+      <Drawer
+        open={mobileOpen}
+        onClose={onClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: "block", md: "none" },
+          "& .MuiDrawer-paper": { width: SIDEBAR_W, boxSizing: "border-box", bgcolor: "#eef2f7" },
+        }}
+      >
+        {sidebarContent}
+      </Drawer>
+    </>
   );
 }
 
@@ -254,4 +311,6 @@ Sidebar.propTypes = {
   onTabChange: PropTypes.func.isRequired,
   onRefresh: PropTypes.func.isRequired,
   pendingCount: PropTypes.number,
+  mobileOpen: PropTypes.bool,
+  onClose: PropTypes.func,
 };

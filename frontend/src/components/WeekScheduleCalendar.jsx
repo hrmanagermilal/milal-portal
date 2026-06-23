@@ -14,11 +14,11 @@ import Typography from "@mui/material/Typography";
 import { statusLabel } from "../constants";
 import { addDays, formatDateTime, startOfWeek, toDateInputValue } from "../utils/datetime";
 import NewReservationModal from "./NewReservationModal";
-
+import FloorPlanTooltip from "./FloorPlanTooltip";import { useLanguage } from "../i18n/LanguageContext";
 const HOUR_START = 7;
 const HOUR_END = 19; // 7AM – 7PM = 12 slots
 const TOTAL_HOURS = HOUR_END - HOUR_START;
-const ROOM_COL_W = 150;
+const ROOM_COL_W = 110;
 const ROW_H = 56;
 
 const STATUS_COLORS = {
@@ -61,6 +61,7 @@ function getEventsForRoomDay(reservations, roomId, day) {
 }
 
 export default function WeekScheduleCalendar({ date, rooms, reservations, onNavigate, onSubmitReservation }) {
+  const { t } = useLanguage();
   const weekStart = startOfWeek(date);
   const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const today     = new Date();
@@ -93,48 +94,51 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
   return (
     <Box>
       {/* Navigation bar */}
-      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
-        <ButtonGroup size="small" variant="outlined">
-          {[["Prev", -1], ["Today", 0], ["Next", 1]].map(([label, dir]) => (
-            <Button
-              key={label}
-              onClick={() => onNavigate(dir)}
-              sx={{
-                color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px",
-                transition: "all 0.2s ease",
-                "&:hover": { bgcolor: "rgba(25,118,210,0.08)", borderColor: "#1976d2" },
-              }}
-            >
-              {label}
-            </Button>
-          ))}
-        </ButtonGroup>
-
-        <TextField
-          type="date"
-          size="small"
-          value={toDateInputValue(date)}
-          onChange={(e) => onNavigate(new Date(`${e.target.value}T00:00:00`))}
-          InputLabelProps={{ shrink: true }}
-          sx={{ width: 160 }}
-        />
-
-        <Typography variant="subtitle1" fontWeight={700} sx={{ flexGrow: 1, textAlign: "center" }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1, mb: 2.5 }}>
+        {/* Left: date range label */}
+        <Typography variant="subtitle1" fontWeight={700} sx={{ fontSize: { xs: "13px", md: "15px" }, color: "#313b5e", order: { xs: 2, md: 1 }, width: { xs: "100%", md: "auto" }, textAlign: { xs: "center", md: "left" } }}>
           {weekDays[0].toLocaleDateString([], { month: "short", day: "numeric" })}
           {" – "}
           {weekDays[6].toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
         </Typography>
-      </Stack>
+
+        {/* Right: Prev/Today/Next + date picker */}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ order: { xs: 1, md: 2 }, ml: { xs: 0, md: "auto" } }}>
+          <ButtonGroup size="small" variant="outlined">
+            {[[t("prev"), -1], [t("today"), 0], [t("next"), 1]].map(([label, dir]) => (
+              <Button
+                key={label}
+                onClick={() => onNavigate(dir)}
+                sx={{
+                  color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px",
+                  transition: "all 0.2s ease",
+                  "&:hover": { bgcolor: "rgba(25,118,210,0.08)", borderColor: "#1976d2" },
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </ButtonGroup>
+          <TextField
+            type="date"
+            size="small"
+            value={toDateInputValue(date)}
+            onChange={(e) => onNavigate(new Date(`${e.target.value}T00:00:00`))}
+            InputLabelProps={{ shrink: true }}
+            sx={{ width: 145 }}
+          />
+        </Stack>
+      </Box>
 
       {/* Schedule grid */}
-      <Box sx={{ overflowX: "auto", border: "1px solid #d8dfe7", borderRadius: "10px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+      <Box sx={{ overflowX: "auto", WebkitOverflowScrolling: "touch", border: "1px solid #d8dfe7", borderRadius: "10px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
 
         {/* Header: Room label + Day columns */}
-        <Box sx={{ display: "flex", borderBottom: "2px solid #d8dfe7", bgcolor: "#eef2f7", position: "sticky", top: 0, zIndex: 3 }}>
+        <Box sx={{ display: "flex", minWidth: "max-content", borderBottom: "2px solid #d8dfe7", bgcolor: "#eef2f7", position: "sticky", top: 0, zIndex: 3 }}>
           {/* Top-left corner */}
-          <Box sx={{ width: ROOM_COL_W, minWidth: ROOM_COL_W, flexShrink: 0, borderRight: "2px solid #d8dfe7", px: 1.5, py: 1.5, display: "flex", alignItems: "flex-end" }}>
+          <Box sx={{ width: ROOM_COL_W, minWidth: ROOM_COL_W, flexShrink: 0, borderRight: "2px solid #d8dfe7", px: 1.5, py: 1.5, display: "flex", alignItems: "flex-end", position: "sticky", left: 0, zIndex: 4, bgcolor: "#eef2f7" }}>
             <Typography variant="caption" sx={{ fontWeight: 700, color: "#5d7186", textTransform: "uppercase", letterSpacing: "0.5px", fontSize: "11px" }}>
-              Room
+              {t("room")}
             </Typography>
           </Box>
 
@@ -175,7 +179,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
         {rooms.map((room) => (
           <Box
             key={room.id}
-            sx={{ display: "flex", borderBottom: "1px solid #eef2f7", "&:last-child": { borderBottom: "none" } }}
+            sx={{ display: "flex", minWidth: "max-content", borderBottom: "1px solid #eef2f7", "&:last-child": { borderBottom: "none" } }}
           >
             {/* Room name cell */}
             <Box
@@ -183,11 +187,14 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
                 width: ROOM_COL_W, minWidth: ROOM_COL_W, flexShrink: 0,
                 height: ROW_H, px: 1.5, display: "flex", alignItems: "center",
                 borderRight: "2px solid #d8dfe7", bgcolor: "#fafbfc",
+                position: "sticky", left: 0, zIndex: 2,
               }}
             >
-              <Typography variant="body2" sx={{ fontWeight: 600, color: "#1976d2", lineHeight: 1.3, fontSize: "13px" }}>
-                {room.name}
-              </Typography>
+              <FloorPlanTooltip roomName={room.name}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: "#1976d2", lineHeight: 1.3, fontSize: "13px" }}>
+                  {room.name}
+                </Typography>
+              </FloorPlanTooltip>
             </Box>
 
             {/* Day cells */}

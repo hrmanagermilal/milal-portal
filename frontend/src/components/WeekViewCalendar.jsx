@@ -12,6 +12,7 @@ import {
   toDateInputValue,
 } from "../utils/datetime";
 import NewReservationModal from "./NewReservationModal";
+import FloorPlanTooltip from "./FloorPlanTooltip";
 
 const HOUR_START = 6;
 const HOUR_END = 22;
@@ -269,7 +270,9 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
                 className="calendar-grid-cell room-col room-name"
                 style={{ color: isAvailable ? "#1976d2" : "inherit" }}
               >
-                {room.name}
+                <FloorPlanTooltip roomName={room.name}>
+                  <span>{room.name}</span>
+                </FloorPlanTooltip>
               </div>
               {weekDays.map((day) => {
                 const { start: dayStart, end: dayEnd } = buildWindowForDay(day);

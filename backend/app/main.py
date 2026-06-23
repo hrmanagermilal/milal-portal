@@ -10,7 +10,7 @@ from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session, joinedload
 
 from .database import Base, engine, get_db
-from .models import Reservation, ReservationStatus, Room
+from .models import Member, OtpCode, Reservation, ReservationStatus, Room, User
 from .schemas import (
     AdminUpdateReservation,
     ReservationCreate,
@@ -19,6 +19,7 @@ from .schemas import (
     RoomOut,
     RoomUpdate,
 )
+from .auth_routes import router as auth_router
 
 app = FastAPI(title="Milal Portal API", version="1.0.0")
 
@@ -29,6 +30,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
 
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "milal-admin-key")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

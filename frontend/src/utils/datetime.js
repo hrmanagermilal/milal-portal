@@ -31,9 +31,8 @@ export function endOfDay(date) {
 
 export function startOfWeek(date) {
   const d = startOfDay(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  return addDays(d, diff);
+  const day = d.getDay(); // 0 = Sunday
+  return addDays(d, -day); // Sunday as first day
 }
 
 export function endOfWeek(date) {

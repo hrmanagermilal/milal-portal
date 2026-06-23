@@ -53,6 +53,7 @@ function overlapsPeriod(item, periodStart, periodEnd) {
 }
 
 export default function DayViewCalendar({ date, rooms, reservations, onNavigate, onSubmitReservation }) {
+  const { t } = useLanguage();
   const { start: dayStart, end: dayEnd } = buildWindowForDay(date);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
@@ -111,89 +112,51 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
   return (
     <Box>
       {/* Navigation */}
-      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
-        <ButtonGroup size="small" variant="outlined">
-          <Button 
-            onClick={() => onNavigate(-1)}
-            sx={{
-              color: "#1976d2",
-              borderColor: "#d8dfe7",
-              fontWeight: 600,
-              fontSize: "13px",
-              transition: "all 0.2s ease",
-              "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
-              },
-            }}
-          >
-            Prev
-          </Button>
-          <Button 
-            onClick={() => onNavigate(0)}
-            sx={{
-              color: "#1976d2",
-              borderColor: "#d8dfe7",
-              fontWeight: 600,
-              fontSize: "13px",
-              transition: "all 0.2s ease",
-              "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
-              },
-            }}
-          >
-            Today
-          </Button>
-          <Button 
-            onClick={() => onNavigate(1)}
-            sx={{
-              color: "#1976d2",
-              borderColor: "#d8dfe7",
-              fontWeight: 600,
-              fontSize: "13px",
-              transition: "all 0.2s ease",
-              "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
-              },
-            }}
-          >
-            Next
-          </Button>
-        </ButtonGroup>
-
-        <TextField
-          type="date"
-          size="small"
-          value={toDateInputValue(date)}
-          onChange={(e) => {
-            const newDate = new Date(`${e.target.value}T00:00:00`);
-            onNavigate(newDate);
-          }}
-          InputLabelProps={{ shrink: true }}
-          sx={{ width: 160 }}
-        />
-
-        <Typography variant="subtitle1" fontWeight={700} sx={{ flexGrow: 1, textAlign: "center" }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1, mb: 2.5 }}>
+        {/* Left: date label */}
+        <Typography variant="subtitle1" fontWeight={700} sx={{ fontSize: { xs: "13px", md: "15px" }, color: "#313b5e", order: { xs: 2, md: 1 }, width: { xs: "100%", md: "auto" }, textAlign: { xs: "center", md: "left" } }}>
           {date.toLocaleDateString([], { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
         </Typography>
-      </Stack>
 
-      {/* Day Grid */}
+        {/* Right: Prev/Today/Next + date picker */}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ order: { xs: 1, md: 2 }, ml: { xs: 0, md: "auto" } }}>
+          <ButtonGroup size="small" variant="outlined">
+            <Button onClick={() => onNavigate(-1)}
+              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+            >{t("prev")}</Button>
+            <Button onClick={() => onNavigate(0)}
+              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+            >{t("today")}</Button>
+            <Button onClick={() => onNavigate(1)}
+              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+            >{t("next")}</Button>
+          </ButtonGroup>
+          <TextField
+            type="date"
+            size="small"
+            value={toDateInputValue(date)}
+            onChange={(e) => { onNavigate(new Date(`${e.target.value}T00:00:00`)); }}
+            InputLabelProps={{ shrink: true }}
+            sx={{ width: 145 }}
+          />
+        </Stack>
+      </Box>
+
+      {/* Day Grid – wrapped for horizontal scroll with sticky room column */}
+      <Box sx={{ overflowX: "auto", WebkitOverflowScrolling: "touch", mb: 2, border: "2px solid #dde2ee", borderRadius: "4px" }}>
       <Box
         className="calendar-day-grid"
         sx={{
           display: 'grid',
           gridTemplateColumns: '140px repeat(16, 1fr)',
           gap: 0,
-          mb: 2,
+          minWidth: "max-content",
           bgcolor: 'white',
-          border: '2px solid #dde2ee',
+          overflow: 'visible',
         }}
       >
         {/* Hour Headers */}
-        <div className="calendar-day-head">Room</div>
+        <div className="calendar-day-head calendar-day-head--sticky">Room</div>
         {Array.from({ length: HOUR_END - HOUR_START }, (_, idx) => HOUR_START + idx).map((hour) => (
           <div key={`header-${hour}`} className="calendar-day-head">
             {String(hour).padStart(2, "0")}
@@ -250,6 +213,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
             </Fragment>
           );
         })}
+      </Box>
       </Box>
 
       {/* New Reservation Modal */}

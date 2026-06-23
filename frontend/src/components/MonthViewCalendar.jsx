@@ -22,6 +22,7 @@ import {
   toDateInputValue,
 } from "../utils/datetime";
 import NewReservationModal from "./NewReservationModal";
+import { useLanguage } from "../i18n/LanguageContext";
 
 function sortByStartTime(items) {
   return items.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
@@ -44,6 +45,7 @@ function statusClass(status) {
 }
 
 export default function MonthViewCalendar({ date, rooms, reservations, onNavigate, onSubmitReservation }) {
+  const { t } = useLanguage();
   const monthStart = startOfMonth(date);
   const monthEnd = endOfMonth(date);
   const gridStart = startOfWeek(monthStart);
@@ -109,78 +111,40 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
   return (
     <Box>
       {/* Navigation */}
-      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
-        <ButtonGroup size="small" variant="outlined">
-          <Button 
-            onClick={() => onNavigate(-1)}
-            sx={{
-              color: "#1976d2",
-              borderColor: "#d8dfe7",
-              fontWeight: 600,
-              fontSize: "13px",
-              transition: "all 0.2s ease",
-              "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
-              },
-            }}
-          >
-            Prev
-          </Button>
-          <Button 
-            onClick={() => onNavigate(0)}
-            sx={{
-              color: "#1976d2",
-              borderColor: "#d8dfe7",
-              fontWeight: 600,
-              fontSize: "13px",
-              transition: "all 0.2s ease",
-              "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
-              },
-            }}
-          >
-            Today
-          </Button>
-          <Button 
-            onClick={() => onNavigate(1)}
-            sx={{
-              color: "#1976d2",
-              borderColor: "#d8dfe7",
-              fontWeight: 600,
-              fontSize: "13px",
-              transition: "all 0.2s ease",
-              "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
-              },
-            }}
-          >
-            Next
-          </Button>
-        </ButtonGroup>
-
-        <TextField
-          type="date"
-          size="small"
-          value={toDateInputValue(date)}
-          onChange={(e) => {
-            const newDate = new Date(`${e.target.value}T00:00:00`);
-            onNavigate(newDate);
-          }}
-          InputLabelProps={{ shrink: true }}
-          sx={{ width: 160 }}
-        />
-
-        <Typography variant="subtitle1" fontWeight={700} sx={{ flexGrow: 1, textAlign: "center" }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1, mb: 2.5 }}>
+        {/* Left: month/year label */}
+        <Typography variant="subtitle1" fontWeight={700} sx={{ fontSize: { xs: "14px", md: "16px" }, color: "#313b5e", order: { xs: 2, md: 1 }, width: { xs: "100%", md: "auto" }, textAlign: { xs: "center", md: "left" } }}>
           {date.toLocaleDateString([], { year: "numeric", month: "long" })}
         </Typography>
-      </Stack>
 
-      {/* Month Grid */}
-      <div className="calendar-month-grid">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+        {/* Right: Prev/Today/Next + date picker */}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ order: { xs: 1, md: 2 }, ml: { xs: 0, md: "auto" } }}>
+          <ButtonGroup size="small" variant="outlined">
+            <Button onClick={() => onNavigate(-1)}
+              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+            >{t("prev")}</Button>
+            <Button onClick={() => onNavigate(0)}
+              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+            >{t("today")}</Button>
+            <Button onClick={() => onNavigate(1)}
+              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+            >{t("next")}</Button>
+          </ButtonGroup>
+          <TextField
+            type="date"
+            size="small"
+            value={toDateInputValue(date)}
+            onChange={(e) => { onNavigate(new Date(`${e.target.value}T00:00:00`)); }}
+            InputLabelProps={{ shrink: true }}
+            sx={{ width: 145 }}
+          />
+        </Stack>
+      </Box>
+
+      {/* Month Grid – wrapped for horizontal scroll on mobile */}
+      <div className="calendar-month-scroll">
+        <div className="calendar-month-grid">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <div key={d} className="month-head">
             {d}
           </div>
@@ -222,6 +186,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
             </div>
           );
         })}
+        </div>
       </div>
       {/* New Reservation Modal */}
       <NewReservationModal
