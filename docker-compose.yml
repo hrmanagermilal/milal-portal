@@ -1,0 +1,38 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: milal-room-reservation-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-milal_root_2026}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-milal_room_reservation}
+      MYSQL_USER: ${MYSQL_USER:-milal_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-milal_password_2026}
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: milal-room-reservation
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-milal-admin-key}
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://milal_user:milal_password_2026@db:3306/milal_room_reservation?charset=utf8mb4}
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
