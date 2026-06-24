@@ -18,7 +18,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { api } from "../api";
+import { api } from "../../api";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 function buildEditMap(rooms) {
   const map = {};
@@ -34,7 +35,9 @@ function buildEditMap(rooms) {
   return map;
 }
 
-export default function RoomSettingsPanel({ adminKey, setAdminKey, onRoomsChanged }) {
+export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
+  const { t } = useLanguage();
+  const displayGuideText = guideText || t("settingsGuideText");
   const [rooms, setRooms] = useState([]);
   const [editMap, setEditMap] = useState({});
   const [originalMap, setOriginalMap] = useState({});
@@ -54,10 +57,8 @@ export default function RoomSettingsPanel({ adminKey, setAdminKey, onRoomsChange
     setLoading(true);
     setError("");
     try {
-      // Use public API to always show room list; admin API used only for mutations
-      const data = adminKey
-        ? await api.adminGetRooms(adminKey)
-        : await api.getRooms();
+      // Use admin API with JWT token
+      const data = await api.adminGetRooms();
       setRooms(data);
       setEditMap(buildEditMap(data));
       setOriginalMap(buildEditMap(data));
@@ -70,7 +71,7 @@ export default function RoomSettingsPanel({ adminKey, setAdminKey, onRoomsChange
 
   useEffect(() => {
     loadRooms();
-  }, [adminKey]);
+  }, []);
 
   const activeCount = useMemo(
     () => rooms.filter((room) => room.is_active).length,
@@ -81,16 +82,13 @@ export default function RoomSettingsPanel({ adminKey, setAdminKey, onRoomsChange
     setError("");
     setSuccess("");
     try {
-      await api.adminCreateRoom(
-        {
-          name: newRoom.name,
-          capacity: Number(newRoom.capacity),
-          description: newRoom.description,
-          floor: Number(newRoom.floor),
-          is_active: newRoom.is_active,
-        },
-        adminKey
-      );
+      await api.adminCreateRoom({
+        name: newRoom.name,
+        capacity: Number(newRoom.capacity),
+        description: newRoom.description,
+        floor: Number(newRoom.floor),
+        is_active: newRoom.is_active,
+      });
       setSuccess("Room created successfully");
       setNewRoom({ name: "", capacity: 1, description: "", floor: 1, is_active: true });
       await loadRooms();
@@ -103,23 +101,15 @@ export default function RoomSettingsPanel({ adminKey, setAdminKey, onRoomsChange
   async function handleUpdateRoom(roomId) {
     setError("");
     setSuccess("");
-    if (!adminKey) {
-      setError("Admin API Key is required to save changes.");
-      return;
-    }
     try {
       const payload = editMap[roomId];
-      await api.adminUpdateRoom(
-        roomId,
-        {
-          name: payload.name,
-          capacity: Number(payload.capacity),
-          description: payload.description,
-          floor: Number(payload.floor),
-          is_active: payload.is_active,
-        },
-        adminKey
-      );
+      await api.adminUpdateRoom(roomId, {
+        name: payload.name,
+        capacity: Number(payload.capacity),
+        description: payload.description,
+        floor: Number(payload.floor),
+        is_active: payload.is_active,
+      });
       setSuccess(`Room #${roomId} updated`);
       await loadRooms();
       await onRoomsChanged();
@@ -132,7 +122,7 @@ export default function RoomSettingsPanel({ adminKey, setAdminKey, onRoomsChange
     setError("");
     setSuccess("");
     try {
-      await api.adminDeleteRoom(roomId, adminKey);
+      await api.adminDeleteRoom(roomId);
       setSuccess(`Room #${roomId} deactivated`);
       await loadRooms();
       await onRoomsChanged();
@@ -147,23 +137,15 @@ export default function RoomSettingsPanel({ adminKey, setAdminKey, onRoomsChange
         {/* Header */}
         <Stack direction="row" spacing={2} sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}>
           <Box>
-            <Typography variant="h6">Room Settings</Typography>
-            <Typography variant="body2" color="text.secondary">장소 정보를 자유롭게 수정하세요.</Typography>
+            <Typography variant="body2" sx={{ color: "#5d7186" }}>
+              {displayGuideText}
+            </Typography>
           </Box>
           <Chip label={`총 ${activeCount} 개`} color="primary" />
         </Stack>
 
-        {/* Admin Key + New Room */}
+        {/* New Room Form */}
         <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="flex-end" sx={{ mb: 3 }}>
-          <TextField
-            label="Admin API Key"
-            type="password"
-            size="small"
-            value={adminKey}
-            onChange={(e) => setAdminKey(e.target.value)}
-            placeholder="Enter backend ADMIN_API_KEY"
-            sx={{ width: 280 }}
-          />
           <TextField
             label="장소명"
             size="small"

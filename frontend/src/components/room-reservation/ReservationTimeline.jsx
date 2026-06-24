@@ -24,8 +24,8 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
-import { calendarModes } from "../constants";
-import { useLanguage } from "../i18n/LanguageContext";
+import { calendarModes } from "../../constants";
+import { useLanguage } from "../../i18n/LanguageContext";
 import {
   addDays,
   formatDateTime,
@@ -38,10 +38,11 @@ import {
   startOfMonth,
   startOfWeek,
   toDateInputValue,
-} from "../utils/datetime";
+} from "../../utils/datetime";
 import DayViewCalendar from "./DayViewCalendar";
 import WeekScheduleCalendar from "./WeekScheduleCalendar";
 import MonthViewCalendar from "./MonthViewCalendar";
+import FloorPlanTooltip from "./FloorPlanTooltip";
 
 const STATUS_COLOR = {
   pending: "warning",
@@ -58,10 +59,11 @@ function buildWindowForDay(date) {
   return { start, end };
 }
 
-export default function ReservationTimeline({ rooms, reservations, onCreateReservation }) {
+export default function ReservationTimeline({ rooms, reservations, onCreateReservation, guideText }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { t } = useLanguage();
+  const displayGuideText = guideText || t("timelineGuideText");
 
   const statusLabel = {
     pending: t("statusPending"),
@@ -108,7 +110,10 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   }, [mode, anchorDate]);
 
   const visibleList = useMemo(
-    () => sortByStartTime(filteredReservations.filter((item) => overlapsPeriod(item, visibleRange.start, visibleRange.end))),
+    () => {
+      const list = sortByStartTime(filteredReservations.filter((item) => overlapsPeriod(item, visibleRange.start, visibleRange.end)));
+      return list;
+    },
     [filteredReservations, visibleRange]
   );
 
@@ -136,10 +141,50 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   return (
     <Card>
       <CardContent sx={{ p: { xs: 1.5, md: 2 } }}>
+        <Typography variant="body2" sx={{ color: "#5d7186", mb: 2 }}>
+          {displayGuideText}
+        </Typography>
         {/* View Mode Selector + Filters */}
         <Stack spacing={2.5} sx={{ mb: 2.5 }}>
-          {/* Row 1: DAY / WEEK / MONTH toggle – right aligned */}
-          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+          {/* Row 1: Filters (left) + DAY / WEEK / MONTH toggle (right) */}
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
+            {/* Filter Group – left aligned */}
+            <Stack
+              direction="row"
+              spacing={1}
+              flexWrap="wrap"
+              useFlexGap
+              sx={{ flex: 1, "& .MuiTextField-root": { flex: { xs: "1 1 calc(50% - 8px)", md: "0 0 auto" } } }}
+            >
+              <TextField select size="small" label={t("filterFloor")} value={selectedFloor}
+                onChange={(e) => { setSelectedFloor(e.target.value); setSelectedRoom("all"); }}
+                sx={{ minWidth: { xs: 0, md: 120 } }}
+              >
+                <MenuItem value="all">{t("filterAllFloors")}</MenuItem>
+                <MenuItem value="1">{t("filterFloor1")}</MenuItem>
+                <MenuItem value="2">{t("filterFloor2")}</MenuItem>
+              </TextField>
+              <TextField select size="small" label={t("filterRoom")} value={selectedRoom}
+                onChange={(e) => setSelectedRoom(e.target.value)}
+                sx={{ minWidth: { xs: 0, md: 140 } }}
+              >
+                <MenuItem value="all">{t("filterAllRooms")}</MenuItem>
+                {floorFilteredRooms.map((room) => (
+                  <MenuItem key={room.id} value={String(room.id)}>{room.name}</MenuItem>
+                ))}
+              </TextField>
+              <TextField select size="small" label={t("filterStatus")} value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                sx={{ minWidth: { xs: 0, md: 130 } }}
+              >
+                <MenuItem value="all">{t("filterAllStatus")}</MenuItem>
+                {Object.keys(statusLabel).map((s) => (
+                  <MenuItem key={s} value={s}>{statusLabel[s]}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+
+            {/* View Mode Toggle – right aligned */}
             <ButtonGroup size="small" variant="outlined">
               {calendarModes.map((m) => (
                 <Button
@@ -166,43 +211,6 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
               ))}
             </ButtonGroup>
           </Box>
-
-          {/* Row 2: Filters – right aligned, wrap on mobile */}
-          <Stack
-            direction="row"
-            spacing={1}
-            flexWrap="wrap"
-            useFlexGap
-            justifyContent="flex-end"
-            sx={{ "& .MuiTextField-root": { flex: { xs: "1 1 calc(50% - 8px)", md: "0 0 auto" } } }}
-          >
-            <TextField select size="small" label={t("filterFloor")} value={selectedFloor}
-              onChange={(e) => { setSelectedFloor(e.target.value); setSelectedRoom("all"); }}
-              sx={{ minWidth: { xs: 0, md: 120 } }}
-            >
-              <MenuItem value="all">{t("filterAllFloors")}</MenuItem>
-              <MenuItem value="1">{t("filterFloor1")}</MenuItem>
-              <MenuItem value="2">{t("filterFloor2")}</MenuItem>
-            </TextField>
-            <TextField select size="small" label={t("filterRoom")} value={selectedRoom}
-              onChange={(e) => setSelectedRoom(e.target.value)}
-              sx={{ minWidth: { xs: 0, md: 140 } }}
-            >
-              <MenuItem value="all">{t("filterAllRooms")}</MenuItem>
-              {floorFilteredRooms.map((room) => (
-                <MenuItem key={room.id} value={String(room.id)}>{room.name}</MenuItem>
-              ))}
-            </TextField>
-            <TextField select size="small" label={t("filterStatus")} value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              sx={{ minWidth: { xs: 0, md: 130 } }}
-            >
-              <MenuItem value="all">{t("filterAllStatus")}</MenuItem>
-              {Object.keys(statusLabel).map((s) => (
-                <MenuItem key={s} value={s}>{statusLabel[s]}</MenuItem>
-              ))}
-            </TextField>
-          </Stack>
         </Stack>
 
         {/* Calendar Views */}
@@ -285,7 +293,9 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
               <Stack spacing={0} sx={{ border: "1px solid #e0e0e0", borderRadius: "8px", overflow: "hidden" }}>
                 {visibleList.length === 0 ? (
                   <Typography sx={{ p: 2, color: "#8486a7", fontSize: "13px", textAlign: "center" }}>{t("noReservationsVisible")}</Typography>
-                ) : visibleList.map((item, idx) => (
+                ) : visibleList.map((item, idx) => {
+                  if (idx === 0) console.log("[ReservationTimeline] First item in list:", item);
+                  return (
                   <Box
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
@@ -299,9 +309,11 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                     }}
                   >
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography sx={{ fontWeight: 600, fontSize: "13px", color: "#1976d2", lineHeight: 1.3 }}>
-                        {item.room_name}
-                      </Typography>
+                      <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
+                        <Typography sx={{ fontWeight: 600, fontSize: "13px", color: "#1976d2", lineHeight: 1.3 }}>
+                          {item.room_name}
+                        </Typography>
+                      </FloorPlanTooltip>
                       <Typography sx={{ fontSize: "11px", color: "#5d7186", mt: 0.3 }}>
                         {new Date(item.start_time).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                         {" – "}
@@ -315,7 +327,8 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                       sx={{ ml: 1, flexShrink: 0, fontSize: "10px", height: 20 }}
                     />
                   </Box>
-                ))}
+                );
+                })}
               </Stack>
             ) : (
               /* ── Desktop: full table ── */
@@ -332,7 +345,11 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                     {visibleList.map((item) => (
                       <TableRow key={item.id} hover sx={{ cursor: "pointer" }} onClick={() => setSelectedItem(item)}>
                         <TableCell>{item.id}</TableCell>
-                        <TableCell>{item.room_name}</TableCell>
+                        <TableCell>
+                          <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
+                            <span>{item.room_name}</span>
+                          </FloorPlanTooltip>
+                        </TableCell>
                         <TableCell sx={{ whiteSpace: "nowrap" }}>
                           {formatDateTime(item.start_time)}<br />{formatDateTime(item.end_time)}
                         </TableCell>
@@ -380,7 +397,9 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                 <Box sx={{ bgcolor: "#f8f9fa", px: 2.5, py: 1.5, borderBottom: "1px solid #eef2f7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <Box>
                     <Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", fontSize: "10px" }}>Room</Typography>
-                    <Typography fontWeight={700} sx={{ color: "#1976d2", fontSize: "15px" }}>{selectedItem.room_name}</Typography>
+                    <FloorPlanTooltip roomId={selectedItem.room_id} roomName={selectedItem.room_name}>
+                      <Typography fontWeight={700} sx={{ color: "#1976d2", fontSize: "15px" }}>{selectedItem.room_name}</Typography>
+                    </FloorPlanTooltip>
                   </Box>
                   <Chip
                     label={statusLabel[selectedItem.status] || selectedItem.status}

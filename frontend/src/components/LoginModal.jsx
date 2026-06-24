@@ -9,6 +9,9 @@ import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import RadioGroup from "@mui/material/RadioGroup";
+import Radio from "@mui/material/Radio";
 import { useLanguage } from "../i18n/LanguageContext";
 import { api } from "../api";
 
@@ -33,9 +36,9 @@ export default function LoginModal({ open, onLogin }) {
   const [findName, setFindName]       = useState("");
   const [findPhone, setFindPhone]     = useState("");
   const [findEmail, setFindEmail]     = useState("");
-  const [contactMode, setContactMode] = useState("phone");
+  const [contactMode, setContactMode] = useState("email");
   const [foundMember, setFoundMember] = useState(null);
-  const [contactType, setContactType] = useState("phone");
+  const [contactType, setContactType] = useState("email");
   const [otpCode, setOtpCode]         = useState("");
   const [password, setPassword]       = useState("");
   const [confirm, setConfirm]         = useState("");
@@ -49,12 +52,6 @@ export default function LoginModal({ open, onLogin }) {
     setLoginName(""); setLoginPw("");
   }
 
-  function handleQuickLogin(e) {
-    e.preventDefault();
-    if (!quickName.trim()) { setError(t("loginError")); return; }
-    onLogin(quickName.trim());
-  }
-
   async function handleFindMember(e) {
     e.preventDefault();
     setError(""); setFoundMember(null);
@@ -63,8 +60,12 @@ export default function LoginModal({ open, onLogin }) {
     setLoading(true);
     try {
       const payload = { name: findName.trim() };
-      if (contactMode === "phone") payload.phone = findPhone.trim();
-      else payload.email = findEmail.trim();
+      if (contactMode === "phone") {
+        payload.phone = findPhone.trim().replace(/[^0-9]/g, "");        
+      }
+      else {
+        payload.email = findEmail.trim();
+      }
       const member = await api.findMember(payload);
       setFoundMember(member);
       setContactType(contactMode);
@@ -104,6 +105,7 @@ export default function LoginModal({ open, onLogin }) {
     if (password !== confirm) { setError(t("authPwMismatch")); return; }
     setLoading(true);
     try {
+      
       await api.createAccount({ member_id: foundMember.member_id, code: otpCode, password });
       setStep(STEPS.SUCCESS);
     } catch (err) {
@@ -118,7 +120,12 @@ export default function LoginModal({ open, onLogin }) {
     setLoading(true);
     try {
       const res = await api.loginWithPassword({ name: loginName.trim(), password: loginPw });
-      onLogin(res.name);
+      console.log('login check:', res);
+      // Store the access token in localStorage
+      if (res.access_token) {
+        localStorage.setItem("milal_token", res.access_token);
+      }
+      onLogin(res.name, res.permission, res.title, res.cell_group);
     } catch (err) {
       setError(err.message || t("authLoginFailed"));
     } finally { setLoading(false); }
@@ -149,42 +156,33 @@ export default function LoginModal({ open, onLogin }) {
     <Dialog open={open} maxWidth="xs" fullWidth disableEscapeKeyDown>
       <DialogContent sx={{ p: 0 }}>
 
-        {step === STEPS.ENTRY && (
+        {(step === STEPS.LOGIN_PW || step === STEPS.ENTRY) && (
           <>
-            <Header />
+            <Header subtitle={t("authLoginWithPwSubtitle")} />
             <Box sx={{ px: 3, py: 3 }}>
-              <Box component="form" onSubmit={handleQuickLogin}>
+              <Box component="form" onSubmit={handleLoginWithPw}>
                 <Stack spacing={2}>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: "#313b5e" }}>
-                    {t("loginNameLabel")}
-                  </Typography>
-                  <TextField fullWidth size="small" placeholder={t("loginNamePlaceholder")}
-                    value={quickName} onChange={(e) => { setQuickName(e.target.value); setError(""); }}
-                    error={!!error && step === STEPS.ENTRY} helperText={step === STEPS.ENTRY ? error : ""} autoFocus />
-                  <Button type="submit" variant="contained" fullWidth
-                    sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, "&:hover": { bgcolor: "#1565c0" } }}>
-                    {t("loginButton")}
-                  </Button>
-                </Stack>
-              </Box>
-              <Divider sx={{ my: 2.5 }}>
-                <Typography variant="caption" sx={{ color: "#8486a7" }}>{t("authOr")}</Typography>
-              </Divider>
-              <Stack spacing={1.5}>
-                <Button variant="outlined" fullWidth onClick={() => { setError(""); setStep(STEPS.FIND_MEMBER); }}
-                  sx={{ textTransform: "none", fontWeight: 600, borderColor: "#d8dfe7", color: "#313b5e",
+                  <TextField label={t("authYourName")} fullWidth size="small" required
+                    value={loginName} onChange={(e) => setLoginName(e.target.value)} autoFocus />
+                  <TextField label={t("authPassword")} type="password" fullWidth size="small" required
+                    value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
+                  {error && <Alert severity="error" sx={{ py: 0.5 }}>{error}</Alert>}
+
+              <Button variant="outlined" fullWidth onClick={() => { setError(""); setStep(STEPS.FIND_MEMBER); }}
+                  sx={{ textTransform: "none", fontWeight: 400, borderColor: "#d8dfe7", color: "#999999",
                     "&:hover": { borderColor: "#1976d2", color: "#1976d2", bgcolor: "rgba(25,118,210,0.04)" } }}>
                   {t("authCreateAccount")}
                 </Button>
-                <Button variant="text" fullWidth onClick={() => { setError(""); setStep(STEPS.LOGIN_PW); }}
-                  sx={{ textTransform: "none", color: "#5d7186", fontSize: "13px" }}>
-                  {t("authLoginWithPw")}
-                </Button>
-              </Stack>
+                  <Button type="submit" variant="contained" fullWidth disabled={loading}
+                    sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
+                      "&:hover": { bgcolor: "#1565c0" } }}>
+                    {loading ? <CircularProgress size={18} color="inherit" /> : t("authLogin")}
+                  </Button>
+                </Stack>
+              </Box>
             </Box>
           </>
         )}
-
         {step === STEPS.FIND_MEMBER && (
           <>
             <Header subtitle={t("authFindMemberSubtitle")} />
@@ -194,17 +192,30 @@ export default function LoginModal({ open, onLogin }) {
                 <Stack spacing={2}>
                   <TextField label={t("authYourName")} fullWidth size="small" required
                     value={findName} onChange={(e) => { setFindName(e.target.value); setFoundMember(null); }} />
-                  <Stack direction="row" spacing={1}>
-                    {["phone", "email"].map((m) => (
-                      <Button key={m} size="small"
-                        variant={contactMode === m ? "contained" : "outlined"}
-                        onClick={() => { setContactMode(m); setFoundMember(null); setError(""); }}
-                        sx={{ flex: 1, textTransform: "none", fontWeight: 600, fontSize: "12px",
-                          bgcolor: contactMode === m ? "#1976d2" : "transparent", borderColor: "#d8dfe7" }}>
-                        {m === "phone" ? t("authPhone") : t("authEmail")}
-                      </Button>
-                    ))}
-                  </Stack>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontSize: "12px", color: "#666", mb: 0.8 }}>
+                      {t("authSendOtpTo")}
+                    </Typography>
+                    <RadioGroup
+                      row
+                      value={contactMode}
+                      onChange={(e) => { setContactMode(e.target.value); setFoundMember(null); setError(""); }}
+                      sx={{ gap: 2 }}
+                    >
+                      <FormControlLabel
+                        value="phone"
+                        control={<Radio size="small" />}
+                        label={t("authPhone")}
+                        sx={{ m: 0 }}
+                      />
+                      <FormControlLabel
+                        value="email"
+                        control={<Radio size="small" />}
+                        label={t("authEmail")}
+                        sx={{ m: 0 }}
+                      />
+                    </RadioGroup>
+                  </Box>
                   {contactMode === "phone"
                     ? <TextField label={t("authPhone")} fullWidth size="small" placeholder="010-0000-0000"
                         value={findPhone} onChange={(e) => { setFindPhone(e.target.value); setFoundMember(null); }} />
@@ -212,7 +223,26 @@ export default function LoginModal({ open, onLogin }) {
                         value={findEmail} onChange={(e) => { setFindEmail(e.target.value); setFoundMember(null); }} />
                   }
                   {error && <Alert severity="error" sx={{ py: 0.5 }}>{error}</Alert>}
-                  {foundMember && !error && (
+                  {foundMember && !error && foundMember.has_account && (
+                    <Box sx={{ bgcolor: "#fff3e0", border: "1px solid #ffe0b2", borderRadius: "8px", p: 1.5 }}>
+                      <Typography variant="body2" fontWeight={700} sx={{ color: "#e65100" }}>
+                        ✓ {foundMember.name}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "#e65100", mt: 1, fontWeight: 600 }}>
+                        {t("authAccountExists")}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: "#bf360c", display: "block", mt: 0.5 }}>
+                        {t("authAccountExistsDesc")}
+                      </Typography>
+                      <Button variant="outlined" fullWidth size="small" 
+                        onClick={() => { setError(""); setStep(STEPS.ENTRY); setFoundMember(null); }}
+                        sx={{ mt: 1.5, color: "#e65100", borderColor: "#e65100", fontWeight: 600, textTransform: "none",
+                          "&:hover": { bgcolor: "rgba(230, 81, 0, 0.04)", borderColor: "#e65100" } }}>
+                        {t("authBack")}
+                      </Button>
+                    </Box>
+                  )}
+                  {foundMember && !error && !foundMember.has_account && (
                     <Box sx={{ bgcolor: "#f0f7ff", border: "1px solid #bbdefb", borderRadius: "8px", p: 1.5 }}>
                       <Typography variant="body2" fontWeight={700} sx={{ color: "#1976d2" }}>
                         ✓ {foundMember.name}
@@ -252,11 +282,6 @@ export default function LoginModal({ open, onLogin }) {
                       {contactType === "phone" ? foundMember?.phone_masked : foundMember?.email_masked}
                     </strong>
                   </Typography>
-                  {devCode && (
-                    <Alert severity="info" sx={{ py: 0.5, fontSize: "12px" }}>
-                      {t("authDevCode")}: <strong>{devCode}</strong>
-                    </Alert>
-                  )}
                   <TextField label={t("authCode")} fullWidth size="small" required
                     inputProps={{ maxLength: 4, style: { letterSpacing: "0.5em", fontSize: "22px", textAlign: "center" } }}
                     value={otpCode}
@@ -313,29 +338,6 @@ export default function LoginModal({ open, onLogin }) {
                   "&:hover": { bgcolor: "#1565c0" } }}>
                 {t("authGoToLogin")}
               </Button>
-            </Box>
-          </>
-        )}
-
-        {step === STEPS.LOGIN_PW && (
-          <>
-            <Header subtitle={t("authLoginWithPwSubtitle")} />
-            <Box sx={{ px: 3, py: 3 }}>
-              <BackBtn to={STEPS.ENTRY} />
-              <Box component="form" onSubmit={handleLoginWithPw}>
-                <Stack spacing={2}>
-                  <TextField label={t("authYourName")} fullWidth size="small" required
-                    value={loginName} onChange={(e) => setLoginName(e.target.value)} autoFocus />
-                  <TextField label={t("authPassword")} type="password" fullWidth size="small" required
-                    value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
-                  {error && <Alert severity="error" sx={{ py: 0.5 }}>{error}</Alert>}
-                  <Button type="submit" variant="contained" fullWidth disabled={loading}
-                    sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
-                      "&:hover": { bgcolor: "#1565c0" } }}>
-                    {loading ? <CircularProgress size={18} color="inherit" /> : t("authLogin")}
-                  </Button>
-                </Stack>
-              </Box>
             </Box>
           </>
         )}

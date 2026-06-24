@@ -1,16 +1,17 @@
 export const translations = {
   en: {
     // App-level
-    appSubtitle: "Users do not need account login. Phone and email are required for every request.",
+    appSubtitle: "Reserve rooms within Milal Church.",
 
     // Sidebar / navigation
     navRoomReservation: "Room Reservation",
-    sidebarRooms: "Portal",
+    sidebarRooms: "Community",
     navTimeline: "Reservation Status",
     navRequest: "New Request",
     navAdmin: "Admin Review",
     navSettings: "Room Settings",
     navRefresh: "Refresh",
+    navCellGroupInfo: "Cell Group Info",
 
     // TopBar
     myAccount: "My Account",
@@ -18,8 +19,8 @@ export const translations = {
     guest: "Guest",
 
     // Login modal
-    loginTitle: "Milal Rooms",
-    loginSubtitle: "Welcome to the room reservation system",
+    loginTitle: "Milal Community",
+    loginSubtitle: "Welcome to Milal Community",
     loginNameLabel: "Name *",
     loginNamePlaceholder: "Enter your name",
     loginButton: "Quick Start",
@@ -63,6 +64,8 @@ export const translations = {
     authLogin: "Login",
     authLoginFailed: "Invalid name or password.",
     authBack: "Back",
+    authAccountExists: "Account already exists",
+    authAccountExistsDesc: "An account already exists for this member. Please log in with your password.",
 
     // Calendar modes
     day: "DAY",
@@ -128,13 +131,33 @@ export const translations = {
     endTimeDateLabel: "selected date",
     endTimeMinHint: "Min %s or later",
     endTimeSelectStart: "Please select start time first",
+    selectFloor: "Select floor",
+    selectRoom: "Select room",
     cancel: "Cancel",
     submitRequest: "Submit Request",
     capacity: "capacity",
     floor1Label: "1F (Floor 1)",
     floor2Label: "2F (Floor 2)",
 
+    // AdminReservationEditModal
+    adminEditTitle: "Edit Reservation",
+    requesterInfo: "Requester Information",
+    reservationInfo: "Reservation Information",
+    adminHandling: "Admin Processing",
+    approvalStatus: "Approval Status",
+    adminNoteLabel: "Admin Note",
+    adminNotePlaceholder: "Enter processing details",
+    saveBtnLabel: "Save",
+    statusWaiting: "Waiting",
+    statusApproved: "Approved",
+    statusModified: "Modified",
+    statusDeclined: "Declined",
+
     // AdminReservationPanel
+    adminGuideText: "Manage reservation request list.",
+    timelineGuideText: "View all reservations by date and room.",
+    requestGuideText: "Submit a new reservation request.",
+    settingsGuideText: "Manage room information and settings.",
     adminReview: "Admin Review",
     adminApiKey: "Admin API Key",
     adminApiKeyPlaceholder: "Enter backend ADMIN_API_KEY",
@@ -170,17 +193,38 @@ export const translations = {
     // General
     room: "Room",
     name: "Name",
+    title: "Title",
+    cellGroup: "Cell Group",
+    permission: "Permission",
     phone: "Phone",
     email: "Email",
+    address: "Address",
     purpose: "Purpose",
     attendees: "Attendees",
     notes: "Notes",
     noReservationsVisible: "No reservations",
+
+    // MyAccountModal
+    memberInfo: "Member Information",
+    editableInfo: "Edit Information",
+    save: "Save",
+
+    // CellGroupInfoModal
+    cellGroupTitle: "Cell Group Members",
+    cellGroupDesc: "Members in your cell group",
+    colMemberName: "Name",
+    colTitle: "Title",
+    colPhone: "Phone",
+    colEmail: "Email",
+    colAddress: "Address",
+    colCarPlate: "Car Plate",
+    editMember: "Edit",
+    close: "Close",
   },
 
   ko: {
     // App-level
-    appSubtitle: "로그인 없이 사용 가능합니다. 예약 신청 시 전화번호와 이메일이 필요합니다.",
+    appSubtitle: "밀알교회내 장소 사용을 위한 예약을 신청할 수 있습니다.",
 
     // Sidebar / navigation
     navRoomReservation: "장소 예약",
@@ -190,6 +234,8 @@ export const translations = {
     navAdmin: "관리자 검토",
     navSettings: "장소 설정",
     navRefresh: "새로고침",
+    navCellGroupInfo: "셀 그룹 정보",
+    cellGroupGuideText: "셀그룹원의 정보를 확인 및 수정할 수 있습니다.",
 
     // TopBar
     myAccount: "내 계정",
@@ -197,8 +243,8 @@ export const translations = {
     guest: "게스트",
 
     // Login modal
-    loginTitle: "밀알 룸즈",
-    loginSubtitle: "장소 예약 시스템에 오신 것을 환영합니다",
+    loginTitle: "밀알 포털",
+    loginSubtitle: "밀알 포털에 오신 것을 환영합니다",
     loginNameLabel: "이름 *",
     loginNamePlaceholder: "이름을 입력하세요",
     loginButton: "빠른 시작",
@@ -242,6 +288,8 @@ export const translations = {
     authLogin: "로그인",
     authLoginFailed: "이름 또는 비밀번호가 잘못되었습니다.",
     authBack: "뒤로",
+    authAccountExists: "계정이 이미 있습니다",
+    authAccountExistsDesc: "이미 계정이 있습니다. 비밀번호로 로그인해주세요.",
 
     // Calendar modes
     day: "일",
@@ -307,13 +355,33 @@ export const translations = {
     endTimeDateLabel: "선택한 날짜",
     endTimeMinHint: "최소 %s 이후",
     endTimeSelectStart: "시작 시간을 먼저 선택하세요",
+    selectFloor: "층을 선택해주세요",
+    selectRoom: "장소를 선택해주세요",
     cancel: "취소",
     submitRequest: "신청하기",
-    capacity: "수용",
+    capacity: "최대",
     floor1Label: "1층",
     floor2Label: "2층",
 
+    // AdminReservationEditModal
+    adminEditTitle: "예약 수정",
+    requesterInfo: "신청자 정보",
+    reservationInfo: "예약 정보",
+    adminHandling: "관리자 처리",
+    approvalStatus: "승락 여부",
+    adminNoteLabel: "관리자 메모",
+    adminNotePlaceholder: "처리 내용을 입력하세요",
+    saveBtnLabel: "저장하기",
+    statusWaiting: "대기중",
+    statusApproved: "승인",
+    statusModified: "변경",
+    statusDeclined: "거절",
+
     // AdminReservationPanel
+    adminGuideText: "예약 요청 리스트를 관리합니다.",
+    timelineGuideText: "날짜와 장소별 전체 예약 현황을 확인합니다.",
+    requestGuideText: "새로운 예약 신청을 합니다.",
+    settingsGuideText: "장소 정보와 설정을 관리합니다.",
     adminReview: "관리자 검토",
     adminApiKey: "관리자 API 키",
     adminApiKeyPlaceholder: "ADMIN_API_KEY 입력",
@@ -349,11 +417,32 @@ export const translations = {
     // General
     room: "장소",
     name: "이름",
+    title: "직책",
+    cellGroup: "셀 그룹",
+    permission: "권한",
     phone: "전화번호",
     email: "이메일",
+    address: "주소",
     purpose: "목적",
     attendees: "참석자 수",
     notes: "메모",
     noReservationsVisible: "예약 없음",
+
+    // MyAccountModal
+    memberInfo: "멤버 정보",
+    editableInfo: "정보 수정",
+    save: "저장",
+
+    // CellGroupInfoModal
+    cellGroupTitle: "셀 그룹 멤버",
+    cellGroupDesc: "당신의 셀 그룹 멤버",
+    colMemberName: "이름",
+    colTitle: "직책",
+    colPhone: "전화번호",
+    colEmail: "이메일",
+    colAddress: "주소",
+    colCarPlate: "차량 번호판",
+    editMember: "수정",
+    close: "닫기",
   },
 };

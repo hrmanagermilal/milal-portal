@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Box from "@mui/material/Box";
+import FloorPlanTooltip from "./FloorPlanTooltip";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
 import Chip from "@mui/material/Chip";
@@ -10,7 +11,7 @@ import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { statusLabel } from "../constants";
+import { statusLabel } from "../../constants";
 import {
   addDays,
   endOfDay,
@@ -20,9 +21,9 @@ import {
   startOfMonth,
   startOfWeek,
   toDateInputValue,
-} from "../utils/datetime";
+} from "../../utils/datetime";
 import NewReservationModal from "./NewReservationModal";
-import { useLanguage } from "../i18n/LanguageContext";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 function sortByStartTime(items) {
   return items.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
@@ -53,6 +54,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
   const [form, setForm] = useState({
     room_id: "",
@@ -70,14 +72,16 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
     setSelectedDate(clickedDate);
     
     // Set default room (first room if available)
-    const defaultRoomId = rooms.length > 0 ? String(rooms[0].id) : "";
+    const defaultRoomId = rooms.length > 0 ? rooms[0].id : null;
+    setSelectedRoomId(defaultRoomId);
+    
     const startDateTime = new Date(clickedDate);
     startDateTime.setHours(9, 0, 0, 0); // Default to 9 AM
     const endDateTime = new Date(startDateTime.getTime() + 3600000); // 1 hour duration
     
     setForm((prev) => ({
       ...prev,
-      room_id: defaultRoomId,
+      room_id: defaultRoomId ? String(defaultRoomId) : "",
       start_time: startDateTime.toISOString().slice(0, 16),
       end_time: endDateTime.toISOString().slice(0, 16),
     }));
@@ -87,6 +91,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
 
   const handleModalClose = () => {
     setModalOpen(false);
+    setSelectedRoomId(null);
     setForm({
       room_id: "",
       requester_name: "",
@@ -196,7 +201,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
         form={form}
         setForm={setForm}
         onSubmit={handleFormSubmit}
-        selectedDate={selectedDate}
+        selectedRoom={selectedRoomId}
       />
 
       {/* Reservation Detail Popup */}
@@ -215,7 +220,9 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
               <Box sx={{ bgcolor: "#f8f9fa", px: 3, py: 2, borderBottom: "1px solid #eef2f7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Box>
                   <Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", letterSpacing: "0.5px", fontSize: "11px" }}>Room</Typography>
-                  <Typography fontWeight={700} sx={{ color: "#1976d2", fontSize: "16px" }}>{detailItem.room_name}</Typography>
+                  <FloorPlanTooltip roomId={detailItem.room_id} roomName={detailItem.room_name}>
+                    <Typography fontWeight={700} sx={{ color: "#1976d2", fontSize: "16px" }}>{detailItem.room_name}</Typography>
+                  </FloorPlanTooltip>
                 </Box>
                 <Chip
                   label={statusLabel[detailItem.status] || detailItem.status}

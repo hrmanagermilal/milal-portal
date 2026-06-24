@@ -2,31 +2,20 @@ import { useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
-import Chip from "@mui/material/Chip";
-import Dialog from "@mui/material/Dialog";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
-import IconButton from "@mui/material/IconButton";
-import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { statusLabel } from "../constants";
-import { addDays, formatDateTime, startOfWeek, toDateInputValue } from "../utils/datetime";
+import Stack from "@mui/material/Stack";
+import { statusLabel } from "../../constants";
+import { addDays, formatDateTime, startOfWeek, toDateInputValue } from "../../utils/datetime";
 import NewReservationModal from "./NewReservationModal";
-import FloorPlanTooltip from "./FloorPlanTooltip";import { useLanguage } from "../i18n/LanguageContext";
+import FloorPlanTooltip from "./FloorPlanTooltip";
+import { useLanguage } from "../../i18n/LanguageContext";
+import ReservedItem from "./ReservedItem";
 const HOUR_START = 7;
 const HOUR_END = 19; // 7AM – 7PM = 12 slots
 const TOTAL_HOURS = HOUR_END - HOUR_START;
 const ROOM_COL_W = 110;
 const ROW_H = 56;
-
-const STATUS_COLORS = {
-  pending:  { bg: "rgba(246,197,77,0.28)",  border: "#f6c54d", text: "#7a5800" },
-  approved: { bg: "rgba(34,185,86,0.20)",   border: "#22b956", text: "#155e2a" },
-  changed:  { bg: "rgba(25,118,210,0.20)",  border: "#1976d2", text: "#0d47a1" },
-  rejected: { bg: "rgba(249,92,92,0.20)",   border: "#f95c5c", text: "#b71c1c" },
-};
 
 function isSameDay(a, b) {
   return (
@@ -67,7 +56,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
   const today     = new Date();
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [detailItem, setDetailItem] = useState(null);
+  const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [form, setForm] = useState({
     room_id: "", requester_name: "", phone: "", email: "",
     start_time: "", end_time: "", purpose: "", attendees: "1", notes: "",
@@ -77,6 +66,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
     const start = new Date(day);
     start.setHours(slotHour, 0, 0, 0);
     const end = new Date(start.getTime() + 3600000);
+    setSelectedRoomId(roomId);
     setForm((prev) => ({
       ...prev,
       room_id: String(roomId),
@@ -88,6 +78,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
 
   function closeModal() {
     setModalOpen(false);
+    setSelectedRoomId(null);
     setForm({ room_id: "", requester_name: "", phone: "", email: "", start_time: "", end_time: "", purpose: "", attendees: "1", notes: "" });
   }
 
@@ -190,7 +181,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
                 position: "sticky", left: 0, zIndex: 2,
               }}
             >
-              <FloorPlanTooltip roomName={room.name}>
+              <FloorPlanTooltip roomId={room.id} roomName={room.name}>
                 <Typography variant="body2" sx={{ fontWeight: 600, color: "#1976d2", lineHeight: 1.3, fontSize: "13px" }}>
                   {room.name}
                 </Typography>
@@ -232,43 +223,24 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
 
                   {/* Events */}
                   {events.map((item) => {
-                    const { left, width } = getEventPosition(item);
-                    const colors = STATUS_COLORS[item.status] || STATUS_COLORS.pending;
+                    const placement = getEventPosition(item);
                     return (
-                      <Tooltip
+                      <div
                         key={item.id}
-                        arrow
-                        title={
-                          <Box>
-                            <Typography sx={{ fontSize: "12px", fontWeight: 700 }}>{item.room_name}</Typography>
-                            <Typography sx={{ fontSize: "11px" }}>{item.requester_name}</Typography>
-                            <Typography sx={{ fontSize: "11px" }}>{statusLabel[item.status]}</Typography>
-                          </Box>
-                        }
+                        style={{
+                          position: "absolute",
+                          left: placement.left,
+                          width: placement.width,
+                          height: "100%",
+                          zIndex: 1,
+                        }}
                       >
-                        <Box
-                          onClick={(e) => { e.stopPropagation(); setDetailItem(item); }}
-                          sx={{
-                            position: "absolute",
-                            top: "5px", bottom: "5px",
-                            left, width,
-                            bgcolor: colors.bg,
-                            border: `1.5px solid ${colors.border}`,
-                            borderRadius: "4px",
-                            zIndex: 1,
-                            px: "4px",
-                            display: "flex",
-                            alignItems: "center",
-                            overflow: "hidden",
-                            cursor: "default",
-                            minWidth: "4px",
-                          }}
-                        >
-                          <Typography sx={{ fontSize: "10px", fontWeight: 700, color: colors.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
-                            {item.requester_name}
-                          </Typography>
-                        </Box>
-                      </Tooltip>
+                        <ReservedItem
+                          item={item}
+                          placement={placement}
+                          compact={true}
+                        />
+                      </div>
                     );
                   })}
                 </Box>
@@ -285,66 +257,8 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
         form={form}
         setForm={setForm}
         onSubmit={(e) => { e.preventDefault(); if (onSubmitReservation) onSubmitReservation(form); closeModal(); }}
+        selectedRoom={selectedRoomId}
       />
-
-      {/* Reservation Detail Popup */}
-      <Dialog open={!!detailItem} onClose={() => setDetailItem(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ pb: 1, pr: 1, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #eef2f7" }}>
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <Box sx={{ width: 4, height: 24, bgcolor: "#1976d2", borderRadius: "2px" }} />
-            <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e" }}>Reservation Detail</Typography>
-          </Stack>
-          <IconButton size="small" onClick={() => setDetailItem(null)} sx={{ color: "#5d7186", "&:hover": { bgcolor: "#eef2f7" } }}>✕</IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ p: 0 }}>
-          {detailItem && (
-            <Box>
-              <Box sx={{ bgcolor: "#f8f9fa", px: 3, py: 2, borderBottom: "1px solid #eef2f7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Box>
-                  <Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", letterSpacing: "0.5px", fontSize: "11px" }}>Room</Typography>
-                  <Typography fontWeight={700} sx={{ color: "#1976d2", fontSize: "16px" }}>{detailItem.room_name}</Typography>
-                </Box>
-                <Chip label={statusLabel[detailItem.status] || detailItem.status} size="small"
-                  sx={{ fontWeight: 700, fontSize: "12px", px: 0.5,
-                    bgcolor: STATUS_COLORS[detailItem.status]?.bg || "#eee",
-                    color: STATUS_COLORS[detailItem.status]?.text || "#333",
-                  }}
-                />
-              </Box>
-              <Stack sx={{ px: 3, py: 2 }} spacing={2}>
-                <Box sx={{ bgcolor: "#f0f4ff", borderRadius: "8px", p: 1.5 }}>
-                  <Stack direction="row" spacing={3}>
-                    <Box>
-                      <Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", fontSize: "10px" }}>Start</Typography>
-                      <Typography variant="body2" fontWeight={600} sx={{ color: "#313b5e" }}>{formatDateTime(detailItem.start_time)}</Typography>
-                    </Box>
-                    <Box sx={{ display: "flex", alignItems: "center", color: "#5d7186" }}>→</Box>
-                    <Box>
-                      <Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", fontSize: "10px" }}>End</Typography>
-                      <Typography variant="body2" fontWeight={600} sx={{ color: "#313b5e" }}>{formatDateTime(detailItem.end_time)}</Typography>
-                    </Box>
-                  </Stack>
-                </Box>
-                <Box>
-                  <Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", fontSize: "10px", mb: 0.5, display: "block" }}>Requester</Typography>
-                  <Box sx={{ border: "1px solid #eef2f7", borderRadius: "8px", overflow: "hidden" }}>
-                    {[{ label: "Name", value: detailItem.requester_name }, { label: "Phone", value: detailItem.phone }, { label: "Email", value: detailItem.email }, { label: "Attendees", value: detailItem.attendees }]
-                      .map(({ label, value }, i) => (
-                        <Stack key={label} direction="row" sx={{ px: 1.5, py: 0.75, bgcolor: i % 2 === 0 ? "white" : "#fafbfc", borderBottom: i < 3 ? "1px solid #eef2f7" : "none" }}>
-                          <Typography variant="body2" sx={{ color: "#5d7186", width: 80, flexShrink: 0 }}>{label}</Typography>
-                          <Typography variant="body2" fontWeight={500} sx={{ color: "#313b5e" }}>{value}</Typography>
-                        </Stack>
-                    ))}
-                  </Box>
-                </Box>
-                {detailItem.purpose && (<Box><Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", fontSize: "10px", mb: 0.5, display: "block" }}>Purpose</Typography><Typography variant="body2" sx={{ bgcolor: "#f8f9fa", border: "1px solid #eef2f7", p: 1.5, borderRadius: "8px", color: "#313b5e" }}>{detailItem.purpose}</Typography></Box>)}
-                {detailItem.notes && (<Box><Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", fontSize: "10px", mb: 0.5, display: "block" }}>Notes</Typography><Typography variant="body2" sx={{ bgcolor: "#f8f9fa", border: "1px solid #eef2f7", p: 1.5, borderRadius: "8px", color: "#313b5e" }}>{detailItem.notes}</Typography></Box>)}
-                {detailItem.admin_comment && (<Box><Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", fontSize: "10px", mb: 0.5, display: "block" }}>Admin Comment</Typography><Typography variant="body2" sx={{ bgcolor: "#fff8e1", border: "1px solid #ffe082", p: 1.5, borderRadius: "8px", color: "#7a5800" }}>{detailItem.admin_comment}</Typography></Box>)}
-              </Stack>
-            </Box>
-          )}
-        </DialogContent>
-      </Dialog>
     </Box>
   );
 }

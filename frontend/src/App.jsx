@@ -10,14 +10,17 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { api } from "./api";
-import AdminReservationPanel from "./components/AdminReservationPanel";
+import AdminReservationPanel from "./components/room-reservation/AdminReservationPanel";
 import LoginModal from "./components/LoginModal";
-import ReservationRequestForm from "./components/ReservationRequestForm";
-import ReservationTimeline from "./components/ReservationTimeline";
-import RoomSettingsPanel from "./components/RoomSettingsPanel";
+import ReservationRequestForm from "./components/room-reservation/ReservationRequestForm";
+import ReservationTimeline from "./components/room-reservation/ReservationTimeline";
+import RoomSettingsPanel from "./components/room-reservation/RoomSettingsPanel";
+import CellGroupInfoModal from "./components/cell_group/CellGroupInfoModal";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import { useLanguage } from "./i18n/LanguageContext";
+import EventPublisher from "./event/EventPublisher";
+import {EventDef} from "./event/EventDef";
 
 // Bottom nav SVG icons
 const NavIconTimeline = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
@@ -40,11 +43,21 @@ export default function App() {
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { t } = useLanguage();
 
+  const getPageSubtitle = () => {
+    switch (tab) {
+      case "cell-group":
+        return t("cellGroupGuideText");
+      default:
+        return t("appSubtitle");
+    }
+  };
+
   const TABS = [
     { key: "timeline", label: t("navTimeline") },
     { key: "request",  label: t("navRequest") },
     { key: "admin",    label: t("navAdmin") },
     { key: "space-settings", label: t("navSettings") },
+    { key: "cell-group", label: t("navCellGroupInfo") },
   ];
 
   const [tab, setTab] = useState("timeline");
@@ -56,15 +69,29 @@ export default function App() {
   const [success, setSuccess] = useState("");
 
   const [userName, setUserName] = useState(() => localStorage.getItem("milal_user") || "");
+  const [userPermission, setUserPermission] = useState(() => localStorage.getItem("milal_permission") || "member");
+  const [userTitle, setUserTitle] = useState(() => localStorage.getItem("milal_title") || "");
+  const [userCellGroup, setUserCellGroup] = useState(() => localStorage.getItem("milal_cell_group") || "");
 
-  function handleLogin(name) {
+  function handleLogin(name, permission, title, cellGroup) {
     localStorage.setItem("milal_user", name);
+    localStorage.setItem("milal_permission", permission);
+    localStorage.setItem("milal_title", title || "");
+    localStorage.setItem("milal_cell_group", cellGroup || "");
     setUserName(name);
+    setUserPermission(permission);
+    setUserTitle(title || "");
+    setUserCellGroup(cellGroup || "");
+    EventPublisher.publish(EventDef.onLoginSuccess, { name, permission, title, cellGroup });
   }
 
   function handleLogout() {
     localStorage.removeItem("milal_user");
+    localStorage.removeItem("milal_title");
+    localStorage.removeItem("milal_cell_group");
     setUserName("");
+    setUserTitle("");
+    setUserCellGroup("");
   }
 
   const [form, setForm] = useState({
@@ -77,12 +104,6 @@ export default function App() {
     notes: "",
     ...defaultTimes(),
   });
-
-  const [adminKey, setAdminKey] = useState("");
-  const [adminComment, setAdminComment] = useState({});
-  const [adminRoomId, setAdminRoomId] = useState({});
-  const [adminStartTime, setAdminStartTime] = useState({});
-  const [adminEndTime, setAdminEndTime] = useState({});
 
   async function loadData() {
     setLoading(true);
@@ -140,40 +161,46 @@ export default function App() {
     }
   }
 
-  async function handleAdminAction(id, action) {
+  async function handleAdminAction(id, action, updatedData = {}) {
     setError("");
     setSuccess("");
 
     try {
       const payload = {
         action,
-        admin_comment: adminComment[id] || "",
+        admin_comment: updatedData.admin_comment || "",
       };
 
       if (action === "change") {
-        if (adminRoomId[id]) {
-          payload.room_id = Number(adminRoomId[id]);
+        if (updatedData.room_id) {
+          payload.room_id = Number(updatedData.room_id);
         }
-        if (adminStartTime[id]) {
-          payload.start_time = new Date(adminStartTime[id]).toISOString();
+        if (updatedData.start_time) {
+          payload.start_time = new Date(updatedData.start_time).toISOString();
         }
-        if (adminEndTime[id]) {
-          payload.end_time = new Date(adminEndTime[id]).toISOString();
+        if (updatedData.end_time) {
+          payload.end_time = new Date(updatedData.end_time).toISOString();
         }
       }
 
-      console.log("Admin action payload:", payload, id, adminKey);
+      console.log("Admin action payload:", payload, id);
       await api.adminUpdateReservation(
         id,
-        payload,
-        adminKey
+        payload
       );
 
-      setSuccess(`Reservation #${id} updated: ${action}`);
+      // Display success message with action description
+      const actionLabels = {
+        approve: "승인",
+        reject: "거절",
+        change: "변경"
+      };
+      const actionLabel = actionLabels[action] || action;
+      setSuccess(`예약 #${id} ${actionLabel}됨 - 이메일 발송됨`);
       await loadData();
     } catch (err) {
       console.error("Admin action error:", err);
-      setError(err.message || "Admin action failed");
+      setError(err.message || "처리 실패");
     }
   }
 
@@ -184,7 +211,10 @@ export default function App() {
       <LoginModal open={!userName} onLogin={handleLogin} />
       <Sidebar
         activeTab={tab}
-        onTabChange={(t) => { setTab(t); setMobileDrawerOpen(false); }}
+        onTabChange={(t) => {
+          setTab(t);
+          setMobileDrawerOpen(false);
+        }}
         onRefresh={loadData}
         pendingCount={pendingCount}
         mobileOpen={mobileDrawerOpen}
@@ -193,6 +223,7 @@ export default function App() {
       <TopBar
         userName={userName}
         pageTitle={TABS.find((t) => t.key === tab)?.label || ""}
+        subtitle={getPageSubtitle()}
         onLogout={handleLogout}
         onMenuClick={() => setMobileDrawerOpen(true)}
         isMobile={isMobile}
@@ -212,9 +243,6 @@ export default function App() {
         }}
       >
         <Box sx={{ maxWidth: "1400px", mx: "auto" }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: { xs: 2, md: 3 }, fontSize: { xs: "12px", md: "14px" } }}>
-            {t("appSubtitle")}
-          </Typography>
 
           {loading && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
@@ -226,7 +254,7 @@ export default function App() {
           {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess("")}>{success}</Alert>}
 
           {!loading && tab === "timeline" && (
-            <ReservationTimeline rooms={rooms} reservations={reservations} onCreateReservation={handleCreateReservation} />
+            <ReservationTimeline rooms={rooms} reservations={reservations} onCreateReservation={handleCreateReservation} guideText={t("timelineGuideText")} />
           )}
           {!loading && tab === "request" && (
             <ReservationRequestForm
@@ -234,31 +262,25 @@ export default function App() {
               form={form}
               setForm={setForm}
               onSubmit={handleCreateReservation}
+              guideText={t("requestGuideText")}
             />
           )}
           {!loading && tab === "admin" && (
             <AdminReservationPanel
               rooms={rooms}
               reservations={reservations}
-              adminKey={adminKey}
-              setAdminKey={setAdminKey}
-              adminComment={adminComment}
-              setAdminComment={setAdminComment}
-              adminRoomId={adminRoomId}
-              setAdminRoomId={setAdminRoomId}
-              adminStartTime={adminStartTime}
-              setAdminStartTime={setAdminStartTime}
-              adminEndTime={adminEndTime}
-              setAdminEndTime={setAdminEndTime}
               onAdminAction={handleAdminAction}
+              guideText={t("adminGuideText")}
             />
           )}
           {!loading && tab === "space-settings" && (
             <RoomSettingsPanel
-              adminKey={adminKey}
-              setAdminKey={setAdminKey}
               onRoomsChanged={loadData}
+              guideText={t("settingsGuideText")}
             />
+          )}
+          {tab === "cell-group" && (
+            <CellGroupInfoModal />
           )}
         </Box>
       </Box>

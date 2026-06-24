@@ -1,6 +1,6 @@
 # milal-room-reservation
 
-Milal Portal web application with React frontend and FastAPI backend.
+Milal Community web application with React frontend and FastAPI backend.
 
 This project can run as a single Docker container where FastAPI serves both API and built React static files.
 For production-like local run, use Docker Compose with MySQL.

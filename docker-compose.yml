@@ -2,6 +2,8 @@ services:
   db:
     image: mysql:8.0
     container_name: milal-room-reservation-db
+    networks:
+      - milal-network
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-milal_root_2026}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-milal_room_reservation}
@@ -29,10 +31,24 @@ services:
         condition: service_healthy
     ports:
       - "82:7000"
+    networks:
+      - milal-network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-milal-admin-key}
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://milal_user:milal_password_2026@db:3306/milal_room_reservation?charset=utf8mb4}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-it-team@milalchurch.com}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-kwpy oubh zafz cjke}
+      SMTP_FROM: ${SMTP_FROM:-it-team@milalchurch.com}
     restart: unless-stopped
 
 volumes:
   mysql_data:
+
+networks:
+  milal-network:
+    driver: bridge

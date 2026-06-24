@@ -9,6 +9,7 @@ import Stack from "@mui/material/Stack";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import { useLanguage } from "../i18n/LanguageContext";
+import MyAccountModal from "./MyAccountModal";
 
 const HamburgerIcon = (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -30,10 +31,11 @@ const GlobeIcon = (
 
 const SIDEBAR_W = 250;
 
-export default function TopBar({ userName = "", pageTitle = "", onLogout, onMenuClick, isMobile = false }) {
+export default function TopBar({ userName = "", pageTitle = "", subtitle = "", onLogout, onMenuClick, isMobile = false }) {
   const { lang, setLanguage, t } = useLanguage();
   const [anchorEl, setAnchorEl] = useState(null);
   const [langAnchor, setLangAnchor] = useState(null);
+  const [myAccountOpen, setMyAccountOpen] = useState(false);
 
   const initials = userName
     ? userName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
@@ -63,13 +65,23 @@ export default function TopBar({ userName = "", pageTitle = "", onLogout, onMenu
           </IconButton>
         )}
 
-        {/* Page Title */}
-        <Typography
-          variant="subtitle1"
-          sx={{ fontWeight: 700, color: "#313b5e", flexGrow: 1, fontSize: { xs: "14px", md: "15px" }, noWrap: true }}
-        >
-          {pageTitle}
-        </Typography>
+        {/* Page Title and Subtitle */}
+        <Stack spacing={0.3} sx={{ flexGrow: 1 }}>
+          <Typography
+            variant="subtitle1"
+            sx={{ fontWeight: 700, color: "#313b5e", fontSize: { xs: "14px", md: "15px" }, noWrap: true }}
+          >
+            {pageTitle}
+          </Typography>
+          {subtitle && (
+            <Typography
+              variant="caption"
+              sx={{ color: "#8486a7", fontSize: { xs: "11px", md: "12px" }, noWrap: true }}
+            >
+              {subtitle}
+            </Typography>
+          )}
+        </Stack>
 
         {/* Language switcher */}
         <IconButton
@@ -162,7 +174,7 @@ export default function TopBar({ userName = "", pageTitle = "", onLogout, onMenu
           }}
         >
           <MenuItem
-            onClick={() => setAnchorEl(null)}
+            onClick={() => { setAnchorEl(null); setMyAccountOpen(true); }}
             sx={{ fontSize: "14px", color: "#313b5e", py: 1, gap: 1.5, "&:hover": { bgcolor: "rgba(25,118,210,0.06)", color: "#1976d2" } }}
           >
             <Box sx={{ fontSize: "16px" }}>👤</Box> {t("myAccount")}
@@ -178,6 +190,7 @@ export default function TopBar({ userName = "", pageTitle = "", onLogout, onMenu
           </MenuItem>
         </Menu>
       </Toolbar>
+      <MyAccountModal open={myAccountOpen} onClose={() => setMyAccountOpen(false)} />
     </AppBar>
   );
 }

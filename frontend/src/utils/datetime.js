@@ -7,6 +7,11 @@ export function formatDateTime(value) {
   return new Date(value).toLocaleString();
 }
 
+export function toHourText(value) {
+  const date = new Date(value);
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export function toDateInputValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }

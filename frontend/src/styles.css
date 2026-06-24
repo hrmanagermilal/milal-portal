@@ -101,8 +101,8 @@ body {
 
 /* ---- shared time-block colours ---- */
 .time-block {
-  position: absolute;
-  border-radius: var(--radius-md);
+  position: static;
+  border-radius: 0;
   color: var(--primary);
   border: 1px solid transparent;
   padding: 4px 6px;
@@ -110,6 +110,7 @@ body {
   white-space: nowrap;
   text-overflow: ellipsis;
   min-height: 18px;
+  display: inline-block;
 }
 
 .time-block strong {
@@ -651,18 +652,15 @@ button.primary {
   border-bottom: 1px solid #dde2ee;
   border-right: 1px solid #dde2ee;
   padding: 6px 8px;
-  background-image: repeating-linear-gradient(
-    to right,
-    transparent,
-    transparent calc(16.55% - 1px),
-    #edf2fb calc(16.55% - 1px),
-    #edf2fb 16.55%
-  );
+  min-height: 50px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
 }
 
 .time-block {
-  position: absolute;
-  border-radius: 8px;
+  position: static;
+  border-radius: 0;
   color: #0f214e;
   border: 1px solid transparent;
   padding: 4px 6px;
@@ -670,6 +668,7 @@ button.primary {
   white-space: nowrap;
   text-overflow: ellipsis;
   min-height: 18px;
+  display: inline-block;
 }
 
 .time-block strong {

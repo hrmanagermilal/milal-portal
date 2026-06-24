@@ -2,12 +2,16 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session, joinedload
+
+# Load environment variables from .env file
+load_dotenv()
 
 from .database import Base, engine, get_db
 from .models import Member, OtpCode, Reservation, ReservationStatus, Room, User
@@ -19,9 +23,9 @@ from .schemas import (
     RoomOut,
     RoomUpdate,
 )
-from .auth_routes import router as auth_router
+from .auth_routes import router as auth_router, _send_email, get_current_user, oauth2_scheme
 
-app = FastAPI(title="Milal Portal API", version="1.0.0")
+app = FastAPI(title="Milal Community API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,7 +37,6 @@ app.add_middleware(
 
 app.include_router(auth_router)
 
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "milal-admin-key")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST_DIR = Path(os.getenv("FRONTEND_DIST_DIR", PROJECT_ROOT / "frontend" / "dist"))
 
@@ -61,11 +64,6 @@ def seed_rooms(db: Session) -> None:
 def validate_reservation_times(start_time: datetime, end_time: datetime) -> None:
     if end_time <= start_time:
         raise HTTPException(status_code=400, detail="end_time must be after start_time")
-
-
-def require_admin_key(x_admin_key: str | None) -> None:
-    if x_admin_key != ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="invalid admin key")
 
 
 @app.on_event("startup")
@@ -98,10 +96,10 @@ def get_rooms(db: Session = Depends(get_db)) -> list[Room]:
 
 @app.get("/api/admin/rooms", response_model=list[RoomOut])
 def get_rooms_admin(
-    x_admin_key: str | None = Header(default=None),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> list[Room]:
-    require_admin_key(x_admin_key)
+    get_current_user(token, db)  # Verify JWT token
     rooms = db.scalars(select(Room).order_by(Room.id)).all()
     return list(rooms)
 
@@ -109,10 +107,10 @@ def get_rooms_admin(
 @app.post("/api/admin/rooms", response_model=RoomOut)
 def create_room_admin(
     payload: RoomCreate,
-    x_admin_key: str | None = Header(default=None),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> Room:
-    require_admin_key(x_admin_key)
+    get_current_user(token, db)  # Verify JWT token
 
     exists = db.scalar(select(Room).where(Room.name == payload.name).limit(1))
     if exists:
@@ -134,10 +132,10 @@ def create_room_admin(
 def update_room_admin(
     room_id: int,
     payload: RoomUpdate,
-    x_admin_key: str | None = Header(default=None),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> Room:
-    require_admin_key(x_admin_key)
+    get_current_user(token, db)  # Verify JWT token
 
     room = db.get(Room, room_id)
     if not room:
@@ -164,10 +162,10 @@ def update_room_admin(
 @app.delete("/api/admin/rooms/{room_id}")
 def deactivate_room_admin(
     room_id: int,
-    x_admin_key: str | None = Header(default=None),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    require_admin_key(x_admin_key)
+    get_current_user(token, db)  # Verify JWT token
 
     room = db.get(Room, room_id)
     if not room:
@@ -281,10 +279,10 @@ def list_reservations(
 def update_reservation_by_admin(
     reservation_id: int,
     payload: AdminUpdateReservation,
-    x_admin_key: str | None = Header(default=None),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> ReservationOut:
-    require_admin_key(x_admin_key)
+    get_current_user(token, db)  # Verify JWT token
 
     item = db.scalar(
         select(Reservation)
@@ -317,6 +315,48 @@ def update_reservation_by_admin(
     db.commit()
     db.refresh(item)
 
+    # ── Send email notification ──────────────────────────────────────────────
+    status_text = {
+        "approve": "승인되었습니다",
+        "reject": "거절되었습니다",
+        "change": "변경되었습니다",
+    }
+    status_text_en = {
+        "approve": "Approved",
+        "reject": "Rejected",
+        "change": "Modified",
+    }
+    
+    action = payload.action or "pending"
+    status_ko = status_text.get(action, "처리되었습니다")
+    status_en = status_text_en.get(action, "Processed")
+    
+    if item.email:
+        # Korean email
+        subject_ko = f"[밀알교회] 예약 {status_ko} - {item.room.name if item.room else 'N/A'}"
+        body_ko = f"""안녕하세요,
+
+귀하의 장소 예약 신청이 {status_ko}.
+
+【 예약 정보 】
+- 예약 ID: #{item.id}
+- 장소: {item.room.name if item.room else 'N/A'}
+- 신청자: {item.requester_name}
+- 시작 시간: {item.start_time.strftime('%Y-%m-%d %H:%M') if item.start_time else 'N/A'}
+- 종료 시간: {item.end_time.strftime('%Y-%m-%d %H:%M') if item.end_time else 'N/A'}
+- 목적: {item.purpose or 'N/A'}
+- 참석자 수: {item.attendees}
+
+【 처리 결과 】
+- 상태: {status_ko}
+- 관리자 메모: {item.admin_comment or '없음'}
+
+자세한 내용은 포털에서 확인하실 수 있습니다.
+
+밀알교회 포털팀"""
+
+        _send_email(item.email, subject_ko, body_ko)
+    
     room_name = item.room.name if item.room else (db.get(Room, item.room_id).name)
     return ReservationOut(
         id=item.id,

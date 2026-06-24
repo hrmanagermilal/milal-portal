@@ -2,7 +2,7 @@
 
 ## 📋 Overview
 
-This frontend has been updated with a modern design system extracted from the professional SSM (씀) Milal Portal system at https://www.ourssm.com/rooms.
+This frontend has been updated with a modern design system extracted from the professional SSM (씀) Milal Community system at https://www.ourssm.com/rooms.
 
 **Key Design Elements:**
 - Primary Blue: `#1b59f8` (Modern, professional)

@@ -93,33 +93,33 @@ async function request(path, options = {}) {
 export const api = {
   getRooms: () => request("/api/rooms"),
   getReservations: () => request("/api/reservations"),
-  adminGetRooms: (adminKey) =>
+  adminGetRooms: () =>
     request("/api/admin/rooms", {
       headers: {
-        "X-Admin-Key": adminKey,
+        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
       },
     }),
-  adminCreateRoom: (payload, adminKey) =>
+  adminCreateRoom: (payload) =>
     request("/api/admin/rooms", {
       method: "POST",
       headers: {
-        "X-Admin-Key": adminKey,
+        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
       },
       body: payload,
     }),
-  adminUpdateRoom: (id, payload, adminKey) =>
+  adminUpdateRoom: (id, payload) =>
     request(`/api/admin/rooms/${id}`, {
       method: "PATCH",
       headers: {
-        "X-Admin-Key": adminKey,
+        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
       },
       body: payload,
     }),
-  adminDeleteRoom: (id, adminKey) =>
+  adminDeleteRoom: (id) =>
     request(`/api/admin/rooms/${id}`, {
       method: "DELETE",
       headers: {
-        "X-Admin-Key": adminKey,
+        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
       },
     }),
   createReservation: (payload) =>
@@ -127,11 +127,11 @@ export const api = {
       method: "POST",
       body: payload,
     }),
-  adminUpdateReservation: (id, payload, adminKey) =>
+  adminUpdateReservation: (id, payload) =>
     request(`/api/admin/reservations/${id}`, {
       method: "PATCH",
       headers: {
-        "X-Admin-Key": adminKey,
+        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
       },
       body: payload,
     }),
@@ -151,4 +151,33 @@ export const api = {
 
   loginWithPassword: (payload) =>
     request("/api/auth/login", { method: "POST", body: payload }),
+
+  getMyAccountInfo: () =>
+    request("/api/auth/me", {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  updateMyAccountInfo: (payload) =>
+    request("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
+  getCellGroupMembers: () =>
+    request("/api/auth/cell-group-members", {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  getMember: (memberId) =>
+    request(`/api/auth/member/${memberId}`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  updateMember: (memberId, payload) =>
+    request(`/api/auth/member/${memberId}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
 };
