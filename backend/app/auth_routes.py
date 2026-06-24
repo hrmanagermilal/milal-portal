@@ -13,7 +13,6 @@ from email.mime.text import MIMEText
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
@@ -30,8 +29,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ── Pydantic schemas ────────────────────────────────────────────────────────
 
@@ -125,19 +122,6 @@ def _send_sms(phone: str, message: str) -> bool:
     """
     logger.warning("[OTP SMS – not configured] To: %s | %s", phone, message)
     return False  # signals dev mode; caller will return OTP in response
-
-
-def _hash_password(password: str) -> str:
-    """Hash password, ensuring it's within bcrypt's 72-byte limit."""
-    # Ensure password is max 72 bytes when encoded as UTF-8
-    password_bytes = password.encode('utf-8')
-    if len(password_bytes) > 72:
-        # Truncate string until it's <= 72 bytes
-        truncated = password
-        while len(truncated.encode('utf-8')) > 72:
-            truncated = truncated[:-1]
-        password = truncated
-    return pwd_ctx.hash(password)
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
@@ -300,9 +284,9 @@ def create_account(body: CreateAccountRequest, db: Session = Depends(get_db)):
     ).scalar_one_or_none()
 
     if existing:
-        existing.password_hash = _hash_password(body.password)
+        existing.password_hash = body.password
     else:
-        db.add(User(member_id=body.member_id, password_hash=_hash_password(body.password)))
+        db.add(User(member_id=body.member_id, password_hash=body.password))
 
     db.commit()
     db.refresh(member)
@@ -347,19 +331,34 @@ def check_userid(body: CheckUserIdRequest, db: Session = Depends(get_db)):
 @router.post("/login")
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     """Login with user_id + password."""
+    logger.info(f"Login attempt: user_id={body.user_id}")
+    
     member = db.execute(
         select(Member).where(Member.user_id == body.user_id.strip())
     ).scalar_one_or_none()
 
     if not member:
+        logger.warning(f"❌ Member not found: user_id={body.user_id}")
         raise HTTPException(401, "Invalid user ID or password")
+    
+    logger.info(f"✓ Member found: id={member.id}, name={member.name}")
 
     user = db.execute(
         select(User).where(User.member_id == member.id)
     ).scalar_one_or_none()
 
-    if not user or not pwd_ctx.verify(body.password, user.password_hash):
+    if not user:
+        logger.warning(f"❌ User not found for member_id={member.id}")
         raise HTTPException(401, "Invalid user ID or password")
+    
+    logger.info(f"✓ User found: id={user.id}, password_hash={user.password_hash[:20]}...")
+    
+    # Compare plaintext password
+    if body.password != user.password_hash:
+        logger.warning(f"❌ Password mismatch - provided={body.password}, stored={user.password_hash}")
+        raise HTTPException(401, "Invalid user ID or password")
+    
+    logger.info(f"✓ Password matched for user_id={body.user_id}")
 
     # Sync admin status from member.permission to user.is_admin
     if member.permission == "admin":
@@ -371,6 +370,8 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(
         data={"sub": member.user_id}, expires_delta=access_token_expires
     )
+
+    logger.info(f"✓ Login successful: user_id={member.user_id}, token generated")
 
     return {
         "access_token": access_token,
@@ -686,11 +687,11 @@ async def change_password(
         raise HTTPException(404, "User not found")
     
     # Verify current password
-    if not pwd_ctx.verify(body.current_password, user.password_hash):
+    if body.current_password != user.password_hash:
         raise HTTPException(401, "Current password is incorrect")
     
     # Hash and update new password
-    user.password_hash = _hash_password(body.new_password)
+    user.password_hash = body.new_password
     db.commit()
     
     return {"message": "Password changed successfully"}
