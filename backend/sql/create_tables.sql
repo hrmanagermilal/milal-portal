@@ -4,6 +4,7 @@
 
 -- Drop existing tables (order matters due to foreign key)
 DROP TABLE IF EXISTS reservations;
+DROP TABLE IF EXISTS room_locations;
 DROP TABLE IF EXISTS otp_codes;
 DROP TABLE IF EXISTS member_change_logs;
 DROP TABLE IF EXISTS users;
@@ -75,6 +76,21 @@ CREATE TABLE rooms (
     description VARCHAR(255) NOT NULL DEFAULT '',
     floor       INT          NOT NULL DEFAULT 1,
     is_active   TINYINT(1)   NOT NULL DEFAULT 1
+);
+
+-- ============================================================
+-- Table: room_locations (floor plan coordinates)
+-- ============================================================
+CREATE TABLE room_locations (
+    id          INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    room_id     INT          NOT NULL UNIQUE,
+    x1          FLOAT        NOT NULL,
+    y1          FLOAT        NOT NULL,
+    x2          FLOAT        NOT NULL,
+    y2          FLOAT        NOT NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_location_room FOREIGN KEY (room_id) REFERENCES rooms(id)
 );
 
 -- ============================================================

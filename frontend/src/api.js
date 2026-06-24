@@ -231,4 +231,28 @@ export const api = {
       headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
       body: { current_password: currentPassword, new_password: newPassword },
     }),
+
+  // ── Room Location ──────────────────────────────────────────────────────
+  adminSaveRoomLocation: (roomId, coordinates) =>
+    request(`/api/admin/rooms/${roomId}/location`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      body: coordinates,
+    }),
+
+  adminGetRoomLocation: (roomId) =>
+    request(`/api/admin/rooms/${roomId}/location`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  adminGetAllRoomLocations: () =>
+    request("/api/admin/rooms/locations/all", {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  adminDeleteRoomLocation: (roomId) =>
+    request(`/api/admin/rooms/${roomId}/location`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
 };

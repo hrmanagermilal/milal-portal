@@ -89,6 +89,25 @@ class Room(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
 
     reservations: Mapped[list["Reservation"]] = relationship(back_populates="room")
+    location: Mapped[Optional["RoomLocation"]] = relationship(back_populates="room", uselist=False)
+
+
+class RoomLocation(Base):
+    __tablename__ = "room_locations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), unique=True, nullable=False)
+    
+    # Coordinates in SVG viewBox (0-320 for x, 0-210 for y)
+    x1: Mapped[float] = mapped_column(nullable=False)
+    y1: Mapped[float] = mapped_column(nullable=False)
+    x2: Mapped[float] = mapped_column(nullable=False)
+    y2: Mapped[float] = mapped_column(nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    room: Mapped["Room"] = relationship(back_populates="location")
 
 
 class Reservation(Base):

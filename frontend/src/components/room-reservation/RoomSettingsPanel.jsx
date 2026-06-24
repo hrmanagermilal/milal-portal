@@ -18,8 +18,10 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import MapIcon from "@mui/icons-material/Map";
 import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
+import RoomMapEditor from "./RoomMapEditor";
 
 function buildEditMap(rooms) {
   const map = {};
@@ -44,6 +46,8 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [mapEditorOpen, setMapEditorOpen] = useState(false);
+  const [selectedRoomForMap, setSelectedRoomForMap] = useState(null);
 
   const [newRoom, setNewRoom] = useState({
     name: "",
@@ -198,7 +202,7 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
           <Table size="small">
             <TableHead sx={{ bgcolor: "#eef2f7" }}>
               <TableRow>
-                {["No", "장소명", "층", "정원", "장소 정보", "상태", "동작"].map((h) => (
+                {["No", "장소명", "층", "정원", "장소 정보", "지도", "상태", "동작"].map((h) => (
                   <TableCell key={h} sx={{ color: "#313b5e", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</TableCell>
                 ))}
               </TableRow>
@@ -272,6 +276,20 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
                       />
                     </TableCell>
                     <TableCell>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<MapIcon />}
+                        onClick={() => {
+                          setSelectedRoomForMap(room);
+                          setMapEditorOpen(true);
+                        }}
+                        sx={{ whiteSpace: "nowrap" }}
+                      >
+                        {t("map") || "Map"}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
                       <Stack direction="row" alignItems="center" spacing={0.5}>
                         <Switch
                           checked={Boolean(edit.is_active)}
@@ -318,6 +336,18 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
             </TableBody>
           </Table>
         </TableContainer>
+
+        {/* Room Map Editor Modal */}
+        <RoomMapEditor
+          open={mapEditorOpen}
+          room={selectedRoomForMap}
+          onClose={() => setMapEditorOpen(false)}
+          onSave={() => {
+            setMapEditorOpen(false);
+            setSuccess("Room location saved successfully");
+            loadRooms();
+          }}
+        />
       </CardContent>
     </Card>
   );

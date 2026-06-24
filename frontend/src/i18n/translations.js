@@ -235,6 +235,15 @@ export const translations = {
     currentPassword: "Current Password",
     newPassword: "New Password",
     confirmPassword: "Confirm Password",
+    
+    // Room Map Editor
+    map: "Map",
+    mapEditorTitle: "Edit Room Location",
+    mapEditorInstructions: "Click and drag on the floor plan to mark the room's location",
+    mapEditorMinSizeError: "Rectangle must be at least 10x10 units",
+    mapEditorHasLocation: "Room already has location data",
+    saving: "Saving...",
+    clear: "Clear",
   },
 
   ko: {
@@ -474,5 +483,14 @@ export const translations = {
     currentPassword: "현재 비밀번호",
     newPassword: "새 비밀번호",
     confirmPassword: "비밀번호 확인",
+    
+    // Room Map Editor
+    map: "지도",
+    mapEditorTitle: "장소 위치 편집",
+    mapEditorInstructions: "약도 위에서 클릭하고 드래그하여 장소의 위치를 표시하세요",
+    mapEditorMinSizeError: "사각형은 최소 10x10 단위 이상이어야 합니다",
+    mapEditorHasLocation: "이 장소는 이미 위치 데이터가 있습니다",
+    saving: "저장 중...",
+    clear: "초기화",
   },
 };

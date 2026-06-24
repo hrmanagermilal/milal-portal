@@ -3,80 +3,53 @@ import ReactDOM from "react-dom";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
+import { api } from "../../api";
 
 /**
- * Floor plan layout by room ID
- * Maps room ID → floor number, and displays floor layout
+ * Default floor plan layout structure
+ * Room data is loaded dynamically from the database
  */
-const FLOOR_PLANS = {
+const DEFAULT_FLOOR_PLANS = {
   1: {
-    viewBox: "0 0 320 210",
-    building: { x: 8, y: 8, width: 304, height: 194 },
-    rooms: [
-      {
-        id: 2,
-        label: "Small\nMeeting-1",
-        x: 18, y: 20, width: 82, height: 72,
-      },
-      {
-        id: 3,
-        label: "Small\nMeeting-2",
-        x: 114, y: 20, width: 82, height: 72,
-      },
-      {
-        id: 4,
-        label: "Practice\nRoom",
-        x: 210, y: 20, width: 92, height: 72,
-      },
-      {
-        id: 5,
-        label: "Lounge",
-        x: 18, y: 110, width: 284, height: 76,
-      },
-    ],
+    viewBox: "0 0 640 420",
+    building: { x: 16, y: 16, width: 608, height: 388 },
+    rooms: [],
     corridors: [
-      { x: 18, y: 100, width: 284, height: 6 },
+      { x: 36, y: 200, width: 568, height: 12 },
     ],
   },
   2: {
-    viewBox: "0 0 320 210",
-    building: { x: 8, y: 8, width: 304, height: 194 },
-    rooms: [
-      {
-        id: 1,
-        label: "Main\nConf. Room",
-        x: 18, y: 20, width: 176, height: 90,
-      },
-      {
-        id: 6,
-        label: "Studio",
-        x: 208, y: 20, width: 94, height: 90,
-      },
-      {
-        id: 7,
-        label: "Medium\nConf. Room",
-        x: 18, y: 124, width: 176, height: 72,
-      },
-    ],
+    viewBox: "0 0 640 420",
+    building: { x: 16, y: 16, width: 608, height: 388 },
+    rooms: [],
     corridors: [
-      { x: 18, y: 114, width: 284, height: 6 },
+      { x: 36, y: 228, width: 568, height: 12 },
     ],
   },
 };
 
-/** Map room ID → floor number */
-const ROOM_FLOOR = {
-  1: 2,  // Main Conference Room
-  2: 1,  // Small Meeting Room-1
-  3: 1,  // Small Meeting Room-2
-  4: 1,  // Practice Room
-  5: 1,  // Lounge
-  6: 2,  // Studio
-  7: 2,  // Medium Conference Room
-};
+const FLOOR_PLANS = DEFAULT_FLOOR_PLANS;
 
-function FloorPlanSVG({ floorData, activeRoomId, onSelectRoom, isSelectable }) {
-  const { viewBox, building, rooms, corridors } = floorData;
+/** Map room ID → floor number (built from database) */
+const ROOM_FLOOR = {};
+
+function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelectable, roomLocations = {}, rooms = [] }) {
+  const { viewBox, building, rooms: defaultRooms, corridors } = floorData;
+  
+  // Merge custom room locations with default rooms
+  const displayRooms = defaultRooms.map(room => {
+    const customLocation = roomLocations[room.id];
+    if (customLocation) {
+      return {
+        ...room,
+        x: customLocation.x1,
+        y: customLocation.y1,
+        width: customLocation.x2 - customLocation.x1,
+        height: customLocation.y2 - customLocation.y1,
+      };
+    }
+    return room;
+  });
 
   return (
     <svg
@@ -84,12 +57,22 @@ function FloorPlanSVG({ floorData, activeRoomId, onSelectRoom, isSelectable }) {
       xmlns="http://www.w3.org/2000/svg"
       style={{ width: "100%", height: "auto", display: "block" }}
     >
+      {/* Floor plan background image */}
+      <image
+        x={building.x}
+        y={building.y}
+        width={building.width}
+        height={building.height}
+        href={`/image/floor${floorNum || 1}.png`}
+        preserveAspectRatio="xMidYMid slice"
+      />
+
       {/* Building outline */}
       <rect
         x={building.x} y={building.y}
         width={building.width} height={building.height}
         rx={4} ry={4}
-        fill="#f0f4fa"
+        fill="none"
         stroke="#90a4c0"
         strokeWidth={1.5}
       />
@@ -105,8 +88,9 @@ function FloorPlanSVG({ floorData, activeRoomId, onSelectRoom, isSelectable }) {
       ))}
 
       {/* Rooms */}
-      {rooms.map((room) => {
+      {displayRooms.map((room) => {
         const isActive = room.id === activeRoomId;
+        const isCustomLocation = roomLocations[room.id];
         return (
           <g 
             key={room.id}
@@ -118,8 +102,9 @@ function FloorPlanSVG({ floorData, activeRoomId, onSelectRoom, isSelectable }) {
               width={room.width} height={room.height}
               rx={3} ry={3}
               fill={isActive ? "rgba(25,118,210,0.22)" : "#e8edf5"}
-              stroke={isActive ? "#1976d2" : "#a8b8cc"}
-              strokeWidth={isActive ? 2 : 1}
+              stroke={isActive ? "#1976d2" : isCustomLocation ? "#ff9800" : "#a8b8cc"}
+              strokeWidth={isActive ? 2 : isCustomLocation ? 2 : 1}
+              strokeDasharray={isCustomLocation ? "4,2" : "none"}
               style={{ transition: "all 0.2s", pointerEvents: "auto" }}
               onMouseEnter={(e) => {
                 if (isSelectable) {
@@ -130,8 +115,8 @@ function FloorPlanSVG({ floorData, activeRoomId, onSelectRoom, isSelectable }) {
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.fill = isActive ? "rgba(25,118,210,0.22)" : "#e8edf5";
-                e.currentTarget.style.stroke = isActive ? "#1976d2" : "#a8b8cc";
-                e.currentTarget.style.strokeWidth = isActive ? "2" : "1";
+                e.currentTarget.style.stroke = isActive ? "#1976d2" : isCustomLocation ? "#ff9800" : "#a8b8cc";
+                e.currentTarget.style.strokeWidth = isActive ? "2" : isCustomLocation ? "2" : "1";
               }}
             />
             {/* Room label – split on \n */}
@@ -160,6 +145,17 @@ function FloorPlanSVG({ floorData, activeRoomId, onSelectRoom, isSelectable }) {
                 fill="#1976d2"
               />
             )}
+            {/* Custom location indicator */}
+            {isCustomLocation && !isActive && (
+              <circle
+                cx={room.x + room.width - 8}
+                cy={room.y + 8}
+                r={3.5}
+                fill="none"
+                stroke="#ff9800"
+                strokeWidth={1.5}
+              />
+            )}
           </g>
         );
       })}
@@ -183,35 +179,112 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
   const boxRef = useRef(null);
   const [show, setShow] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [roomLocations, setRoomLocations] = useState({});
+  const [dynamicRoomFloor, setDynamicRoomFloor] = useState(ROOM_FLOOR);
+  const [dynamicFloorPlans, setDynamicFloorPlans] = useState(FLOOR_PLANS);
+
+  // Load rooms from database and build dynamic mappings
+  useEffect(() => {
+    async function loadRoomsData() {
+      try {
+        const rooms = await api.getRooms();
+        
+        // Build ROOM_FLOOR mapping from database
+        const roomFloorMap = {};
+        rooms.forEach(room => {
+          roomFloorMap[room.id] = room.floor;
+        });
+        setDynamicRoomFloor(roomFloorMap);
+
+        // Build FLOOR_PLANS from database - group rooms by floor
+        const updatedFloorPlans = {};
+        [1, 2].forEach(floorNum => {
+          updatedFloorPlans[floorNum] = {
+            viewBox: "0 0 640 420",
+            building: { x: 16, y: 16, width: 608, height: 388 },
+            rooms: [],
+            corridors: DEFAULT_FLOOR_PLANS[floorNum]?.corridors || [],
+          };
+        });
+
+        // Add rooms from database to their respective floors
+        rooms.forEach(room => {
+          const floorNum = room.floor || 1;
+          if (!updatedFloorPlans[floorNum]) {
+            updatedFloorPlans[floorNum] = {
+              viewBox: "0 0 640 420",
+              building: { x: 16, y: 16, width: 608, height: 388 },
+              rooms: [],
+              corridors: [],
+            };
+          }
+
+          // Generate auto-positioned layout for all rooms from database
+          const roomIndex = updatedFloorPlans[floorNum].rooms.length;
+          const roomObj = {
+            id: room.id,
+            label: room.name,
+            x: 36 + ((roomIndex % 3) * 200),
+            y: 40 + ((Math.floor(roomIndex / 3)) * 180),
+            width: 180,
+            height: 160,
+          };
+
+          updatedFloorPlans[floorNum].rooms.push(roomObj);
+        });
+
+        setDynamicFloorPlans(updatedFloorPlans);
+      } catch (err) {
+        console.error("Failed to load rooms from database:", err);
+        // If API fails, keep using initial empty state - no hardcoded fallback
+      }
+    }
+    loadRoomsData();
+  }, []);
 
   // Convert roomId to number if string
   const id = typeof roomId === 'string' ? parseInt(roomId, 10) : roomId;
   
-  // In select mode, use provided floor prop; in hover mode, look up from ROOM_FLOOR
-  const floorNum = mode === "select" ? floor : ROOM_FLOOR[id];
-  const floorData = floorNum ? FLOOR_PLANS[floorNum] : null;
+  // In select mode, use provided floor prop; in hover mode, look up from dynamic ROOM_FLOOR
+  const floorNum = mode === "select" ? floor : dynamicRoomFloor[id];
+  const floorData = floorNum ? dynamicFloorPlans[floorNum] : null;
 
   const isSelectMode = mode === "select";
 
+  // Load room locations from API
   useEffect(() => {
-    if (!show || !boxRef.current) {
+    async function loadLocations() {
+      try {
+        const locations = await api.adminGetAllRoomLocations();
+        if (locations && Array.isArray(locations)) {
+          const locationMap = {};
+          locations.forEach(loc => {
+            locationMap[loc.room_id] = loc;
+          });
+          setRoomLocations(locationMap);
+        }
+      } catch (err) {
+        // Silently fail - will show default room layout
+        console.error("Failed to load room locations:", err);
+      }
+    }
+    loadLocations();
+  }, []);
+
+  useEffect(() => {
+    if (!show) {
       return;
     }
 
-    const rect = boxRef.current.getBoundingClientRect();
-
+    // Center tooltip on screen
+    const tooltipWidth = 480;
+    const tooltipHeight = 300; // Approximate height
+    
     const newPosition = {
-      top: rect.top + window.scrollY,
-      left: rect.right + window.scrollX + 10
+      top: Math.max(20, (window.innerHeight - tooltipHeight) / 2 + window.scrollY),
+      left: Math.max(20, (window.innerWidth - tooltipWidth) / 2 + window.scrollX)
     };
 
-    // Adjust if goes off screen
-    if (newPosition.left + 240 > window.innerWidth) {
-      newPosition.left = rect.left + window.scrollX - 250;
-    }
-    if (newPosition.top + 300 > window.innerHeight) {
-      newPosition.top = rect.top + window.scrollY - 200;
-    }
     setPosition(newPosition);
   }, [show]);
 
@@ -221,7 +294,6 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
 
   const handleMouseEnter = (e) => {
     if (isSelectMode) return; // Don't auto-show in select mode
-    setPosition({ top: e.currentTarget.getBoundingClientRect().y + 5, left: e.currentTarget.getBoundingClientRect().x + 15 });
     setShow(true);
   };
 
@@ -264,10 +336,12 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
             Floor {floorNum} · Select Room
           </Typography>
           <FloorPlanSVG 
-            floorData={floorData} 
+            floorData={floorData}
+            floorNum={floorNum}
             activeRoomId={id} 
             onSelectRoom={handleSelectRoom}
             isSelectable={true}
+            roomLocations={roomLocations}
           />
         </div>
       ) : (
@@ -297,8 +371,8 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
             position: "fixed",
             top: `${position.top}px`,
             left: `${position.left}px`,
-            width: 240,
-            p: 1.5,
+            width: 480,
+            p: 3,
             borderRadius: "10px",
             border: "1px solid #d8dfe7",
             backgroundColor: "#ffffff",
@@ -315,25 +389,27 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
               color: "#5d7186",
               textTransform: "uppercase",
               letterSpacing: "0.5px",
-              fontSize: "10px",
-              mb: 0.5,
+              fontSize: "14px",
+              mb: 1,
             }}
           >
             Floor {floorNum} · Location
           </Typography>
           <FloorPlanSVG 
-            floorData={floorData} 
+            floorData={floorData}
+            floorNum={floorNum}
             activeRoomId={id}
             isSelectable={false}
+            roomLocations={roomLocations}
           />
           <Typography
             variant="caption"
             sx={{
               display: "block",
-              mt: 0.5,
+              mt: 1,
               color: "#1976d2",
               fontWeight: 600,
-              fontSize: "11px",
+              fontSize: "13px",
               textAlign: "center",
             }}
           >

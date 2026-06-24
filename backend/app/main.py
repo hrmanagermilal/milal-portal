@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 load_dotenv()
 
 from .database import Base, engine, get_db
-from .models import Member, OtpCode, Reservation, ReservationStatus, Room, User
+from .models import Member, OtpCode, Reservation, ReservationStatus, Room, RoomLocation, User
 from .schemas import (
     AdminUpdateReservation,
     ReservationCreate,
@@ -22,6 +22,9 @@ from .schemas import (
     RoomCreate,
     RoomOut,
     RoomUpdate,
+    RoomLocationOut,
+    RoomLocationCreate,
+    RoomLocationUpdate,
 )
 from .auth_routes import router as auth_router, _send_email, get_current_user, oauth2_scheme
 
@@ -183,6 +186,103 @@ def deactivate_room_admin(
     room.is_active = False
     db.commit()
     return {"message": "room deactivated"}
+
+
+# ── Room Location Endpoints ────────────────────────────────────────────────
+
+@app.post("/api/admin/rooms/{room_id}/location", response_model=RoomLocationOut)
+def save_room_location(
+    room_id: int,
+    payload: RoomLocationUpdate,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> RoomLocation:
+    """Save or update room location coordinates"""
+    get_current_user(token, db)  # Verify JWT token
+
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="room not found")
+
+    location = db.scalar(select(RoomLocation).where(RoomLocation.room_id == room_id))
+    
+    if location:
+        location.x1 = payload.x1
+        location.y1 = payload.y1
+        location.x2 = payload.x2
+        location.y2 = payload.y2
+    else:
+        location = RoomLocation(
+            room_id=room_id,
+            x1=payload.x1,
+            y1=payload.y1,
+            x2=payload.x2,
+            y2=payload.y2,
+        )
+        db.add(location)
+
+    db.commit()
+    db.refresh(location)
+    return location
+
+
+@app.get("/api/admin/rooms/{room_id}/location", response_model=RoomLocationOut | None)
+def get_room_location(
+    room_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> RoomLocation | None:
+    """Get room location coordinates"""
+    get_current_user(token, db)  # Verify JWT token
+
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="room not found")
+
+    location = db.scalar(select(RoomLocation).where(RoomLocation.room_id == room_id))
+    return location
+
+
+@app.get("/api/admin/rooms/locations/all")
+def get_all_room_locations(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Get all room locations"""
+    get_current_user(token, db)  # Verify JWT token
+
+    locations = db.scalars(select(RoomLocation)).all()
+    return [
+        {
+            "room_id": loc.room_id,
+            "x1": loc.x1,
+            "y1": loc.y1,
+            "x2": loc.x2,
+            "y2": loc.y2,
+        }
+        for loc in locations
+    ]
+
+
+@app.delete("/api/admin/rooms/{room_id}/location")
+def delete_room_location(
+    room_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Delete room location"""
+    get_current_user(token, db)  # Verify JWT token
+
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="room not found")
+
+    location = db.scalar(select(RoomLocation).where(RoomLocation.room_id == room_id))
+    if location:
+        db.delete(location)
+        db.commit()
+
+    return {"message": "room location deleted"}
 
 
 @app.post("/api/reservations", response_model=ReservationOut)

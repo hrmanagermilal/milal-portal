@@ -102,3 +102,29 @@ class AdminUpdateUserRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     pass  # No body needed, just triggers password reset
+
+
+class RoomLocationOut(BaseModel):
+    id: int
+    room_id: int
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    
+    model_config = {"from_attributes": True}
+
+
+class RoomLocationCreate(BaseModel):
+    room_id: int
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+
+class RoomLocationUpdate(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
