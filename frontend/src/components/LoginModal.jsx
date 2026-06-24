@@ -19,6 +19,7 @@ const STEPS = {
   ENTRY:        "entry",
   FIND_MEMBER:  "find_member",
   OTP_SENT:     "otp_sent",
+  SET_USERID:   "set_userid",
   SET_PASSWORD: "set_password",
   SUCCESS:      "success",
   LOGIN_PW:     "login_pw",
@@ -40,16 +41,18 @@ export default function LoginModal({ open, onLogin }) {
   const [foundMember, setFoundMember] = useState(null);
   const [contactType, setContactType] = useState("email");
   const [otpCode, setOtpCode]         = useState("");
+  const [userId, setUserId]           = useState("");
+  const [userIdError, setUserIdError] = useState("");
   const [password, setPassword]       = useState("");
   const [confirm, setConfirm]         = useState("");
-  const [loginName, setLoginName]     = useState("");
+  const [loginUserId, setLoginUserId] = useState("");
   const [loginPw, setLoginPw]         = useState("");
 
   function reset() {
     setStep(STEPS.ENTRY); setError(""); setDevCode("");
     setQuickName(""); setFindName(""); setFindPhone(""); setFindEmail("");
-    setFoundMember(null); setOtpCode(""); setPassword(""); setConfirm("");
-    setLoginName(""); setLoginPw("");
+    setFoundMember(null); setOtpCode(""); setUserId(""); setUserIdError("");
+    setPassword(""); setConfirm(""); setLoginUserId(""); setLoginPw("");
   }
 
   async function handleFindMember(e) {
@@ -92,9 +95,21 @@ export default function LoginModal({ open, onLogin }) {
     setLoading(true);
     try {
       await api.verifyOtp({ member_id: foundMember.member_id, code: otpCode });
-      setStep(STEPS.SET_PASSWORD);
+      setStep(STEPS.SET_USERID);
     } catch (err) {
       setError(err.message || t("authOtpInvalid"));
+    } finally { setLoading(false); }
+  }
+
+  async function handleCheckUserId() {
+    setUserIdError("");
+    if (userId.length < 3) { setUserIdError("User ID must be at least 3 characters"); return; }
+    setLoading(true);
+    try {
+      await api.checkUserId({ user_id: userId.trim() });
+      setStep(STEPS.SET_PASSWORD);
+    } catch (err) {
+      setUserIdError(err.message || "User ID already taken");
     } finally { setLoading(false); }
   }
 
@@ -105,8 +120,7 @@ export default function LoginModal({ open, onLogin }) {
     if (password !== confirm) { setError(t("authPwMismatch")); return; }
     setLoading(true);
     try {
-      
-      await api.createAccount({ member_id: foundMember.member_id, code: otpCode, password });
+      await api.createAccount({ member_id: foundMember.member_id, code: otpCode, user_id: userId.trim(), password });
       setStep(STEPS.SUCCESS);
     } catch (err) {
       setError(err.message || t("authCreateFailed"));
@@ -116,10 +130,10 @@ export default function LoginModal({ open, onLogin }) {
   async function handleLoginWithPw(e) {
     e.preventDefault();
     setError("");
-    if (!loginName.trim() || !loginPw) { setError(t("loginError")); return; }
+    if (!loginUserId.trim() || !loginPw) { setError(t("loginError")); return; }
     setLoading(true);
     try {
-      const res = await api.loginWithPassword({ name: loginName.trim(), password: loginPw });
+      const res = await api.loginWithPassword({ user_id: loginUserId.trim(), password: loginPw });
       console.log('login check:', res);
       // Store the access token in localStorage
       if (res.access_token) {
@@ -162,8 +176,8 @@ export default function LoginModal({ open, onLogin }) {
             <Box sx={{ px: 3, py: 3 }}>
               <Box component="form" onSubmit={handleLoginWithPw}>
                 <Stack spacing={2}>
-                  <TextField label={t("authYourName")} fullWidth size="small" required
-                    value={loginName} onChange={(e) => setLoginName(e.target.value)} autoFocus />
+                  <TextField label="User ID" fullWidth size="small" required
+                    value={loginUserId} onChange={(e) => setLoginUserId(e.target.value)} autoFocus />
                   <TextField label={t("authPassword")} type="password" fullWidth size="small" required
                     value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
                   {error && <Alert severity="error" sx={{ py: 0.5 }}>{error}</Alert>}
@@ -296,6 +310,32 @@ export default function LoginModal({ open, onLogin }) {
                   <Button size="small" onClick={handleSendOtp} disabled={loading}
                     sx={{ textTransform: "none", color: "#5d7186", fontSize: "12px" }}>
                     {t("authResend")}
+                  </Button>
+                </Stack>
+              </Box>
+            </Box>
+          </>
+        )}
+
+        {step === STEPS.SET_USERID && (
+          <>
+            <Header subtitle="Create Your User ID" />
+            <Box sx={{ px: 3, py: 3 }}>
+              <BackBtn to={STEPS.OTP_SENT} />
+              <Box component="form" onSubmit={(e) => { e.preventDefault(); handleCheckUserId(); }}>
+                <Stack spacing={2}>
+                  <Typography variant="body2" sx={{ color: "#5d7186", fontSize: "13px" }}>
+                    Choose a unique User ID for your account. You'll use this to log in.
+                  </Typography>
+                  <TextField label="User ID" fullWidth size="small" required
+                    value={userId} onChange={(e) => { setUserId(e.target.value); setUserIdError(""); }} autoFocus
+                    placeholder="e.g., john.doe"
+                    helperText="Minimum 3 characters, letters and dots allowed" />
+                  {userIdError && <Alert severity="error" sx={{ py: 0.5 }}>{userIdError}</Alert>}
+                  <Button type="submit" variant="contained" fullWidth disabled={loading || userId.length < 3}
+                    sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
+                      "&:hover": { bgcolor: "#1565c0" } }}>
+                    {loading ? <CircularProgress size={18} color="inherit" /> : "Next"}
                   </Button>
                 </Stack>
               </Box>

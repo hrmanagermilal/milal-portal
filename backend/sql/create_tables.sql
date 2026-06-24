@@ -5,10 +5,10 @@
 -- Drop existing tables (order matters due to foreign key)
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS otp_codes;
+DROP TABLE IF EXISTS member_change_logs;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS rooms;
 DROP TABLE IF EXISTS members;
-DROP TABLE IF EXISTS member_change_logs;
 
 -- ============================================================
 -- Table: members  (church directory)
@@ -22,6 +22,7 @@ CREATE TABLE members (
     email        VARCHAR(255) NOT NULL DEFAULT '',
     title        VARCHAR(12) NOT NULL DEFAULT '',
     cell_group   VARCHAR(20) NOT NULL DEFAULT '',
+    user_id      VARCHAR(30)  NOT NULL DEFAULT '',
     permission   ENUM('member','admin') NOT NULL DEFAULT 'member'
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -101,11 +102,11 @@ CREATE TABLE reservations (
 -- Seed Data: Rooms
 -- ============================================================
 INSERT INTO rooms (name, capacity, description, floor, is_active) VALUES
-    ('Main Conference Room',   24, 'Projector, WIFI, Mic/Speaker',      2, 1),
-    ('Small Meeting Room-1',    8, 'Whiteboard, WIFI',                  1, 1),
-    ('Small Meeting Room-2',    6, '60-inch TV, WIFI',                  1, 1),
-    ('Studio',                 10, 'Video recording and profile shoot',  2, 1),
-    ('Practice Room',          12, 'Max 2 hours reservation',           1, 1),
-    ('Medium Conference Room', 12, '80-inch TV, WIFI',                  2, 1),
-    ('Lounge',                 16, 'Meal and rest area',                1, 1);
+    ('Room 2-1',   24, 'Projector, WIFI, Mic/Speaker',      2, 1),
+    ('Room 1-1',    8, 'Whiteboard, WIFI',                  1, 1),
+    ('Room 1-2',    6, '60-inch TV, WIFI',                  1, 1),
+    ('Room 2-2',                 10, 'Video recording and profile shoot',  2, 1),
+    ('Room 1-3',          12, 'Max 2 hours reservation',           1, 1),
+    ('Room 2-3', 12, '80-inch TV, WIFI',                  2, 1),
+    ('Room 1-4',                 16, 'Meal and rest area',                1, 1);
 

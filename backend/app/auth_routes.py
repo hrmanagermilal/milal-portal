@@ -47,13 +47,17 @@ class VerifyOtpRequest(BaseModel):
     member_id: int
     code: str
 
+class CheckUserIdRequest(BaseModel):
+    user_id: str
+
 class CreateAccountRequest(BaseModel):
     member_id: int
     code: str
+    user_id: str
     password: str
 
 class LoginRequest(BaseModel):
-    name: str
+    user_id: str
     password: str
 
 class MyAccountUpdateRequest(BaseModel):
@@ -141,13 +145,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        user_id: str = payload.get("sub")
+        if user_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
     
-    member = db.execute(select(Member).where(Member.name == username)).scalar_one_or_none()
+    member = db.execute(select(Member).where(Member.user_id == user_id)).scalar_one_or_none()
     if member is None:
         raise credentials_exception
     return member
@@ -252,17 +256,31 @@ def verify_otp(body: VerifyOtpRequest, db: Session = Depends(get_db)):
 
 @router.post("/create-account")
 def create_account(body: CreateAccountRequest, db: Session = Depends(get_db)):
-    """Verify OTP then create (or reset) the user account with hashed password."""
+    """Verify OTP, set user_id, create account, and send email."""
+    if len(body.user_id) < 3:
+        raise HTTPException(400, "User ID must be at least 3 characters")
+    
     if len(body.password) < 6:
         raise HTTPException(400, "Password must be at least 6 characters")
 
     otp = _get_valid_otp(body.member_id, body.code, db)
+    member = db.get(Member, body.member_id)
 
+    # Check user_id not taken
+    existing_user_id = db.execute(
+        select(Member).where(Member.user_id == body.user_id.strip())
+    ).scalar_one_or_none()
+    if existing_user_id and existing_user_id.id != member.id:
+        raise HTTPException(409, "User ID already taken")
+    
     # Mark OTP used
     otp.used = True
     db.flush()
 
-    # Check existing account
+    # Set user_id on member
+    member.user_id = body.user_id.strip()
+    
+    # Create or update User account
     existing = db.execute(
         select(User).where(User.member_id == body.member_id)
     ).scalar_one_or_none()
@@ -273,35 +291,71 @@ def create_account(body: CreateAccountRequest, db: Session = Depends(get_db)):
         db.add(User(member_id=body.member_id, password_hash=body.password))
 
     db.commit()
-    member = db.get(Member, body.member_id)
-    return {"success": True, "name": member.name}
+    db.refresh(member)
+    
+    # Send welcome email
+    email_subject = "[Milal Community] Account Created"
+    email_body = f"""Hi {member.name},
+
+Your account has been successfully created!
+
+User ID: {member.user_id}
+Name: {member.name}
+Email: {member.email}
+
+You can now log in with your User ID and password.
+
+Best regards,
+Milal Community Team
+"""
+    
+    _send_email(member.email, email_subject, email_body)
+    
+    return {"success": True, "user_id": member.user_id, "name": member.name}
+
+
+@router.post("/check-userid")
+def check_userid(body: CheckUserIdRequest, db: Session = Depends(get_db)):
+    """Check if user_id is available."""
+    if len(body.user_id) < 3:
+        raise HTTPException(400, "User ID must be at least 3 characters")
+    
+    existing = db.execute(
+        select(Member).where(Member.user_id == body.user_id.strip())
+    ).scalar_one_or_none()
+    
+    if existing:
+        raise HTTPException(409, "User ID already taken")
+    
+    return {"available": True}
 
 
 @router.post("/login")
 def login(body: LoginRequest, db: Session = Depends(get_db)):
-    """Login with name + password."""
+    """Login with user_id + password."""
     member = db.execute(
-        select(Member).where(Member.name == body.name.strip())
+        select(Member).where(Member.user_id == body.user_id.strip())
     ).scalar_one_or_none()
 
     if not member:
-        raise HTTPException(401, "Invalid name or password")
+        raise HTTPException(401, "Invalid user ID or password")
 
     user = db.execute(
         select(User).where(User.member_id == member.id)
     ).scalar_one_or_none()
 
     if not user or not body.password == user.password_hash:
-        raise HTTPException(401, "Invalid name or password")
+        raise HTTPException(401, "Invalid user ID or password")
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": member.name}, expires_delta=access_token_expires
+        data={"sub": member.user_id}, expires_delta=access_token_expires
     )
 
     return {
         "access_token": access_token,
         "token_type": "bearer",
+        "user_id": member.user_id,
         "name": member.name,
         "member_id": member.id,
         "permission": member.permission,

@@ -20,6 +20,7 @@ class Member(Base):
     email:        Mapped[str] = mapped_column(String(255), default="")
     title:        Mapped[str] = mapped_column(String(12), default="")
     cell_group:   Mapped[str] = mapped_column(String(20), default="")
+    user_id:      Mapped[str] = mapped_column(String(30), default="")
     permission:   Mapped[str] = mapped_column(String(20), default="")
     user:      Mapped[Optional["User"]]      = relationship(back_populates="member", uselist=False)
     otp_codes: Mapped[list["OtpCode"]]       = relationship(back_populates="member")

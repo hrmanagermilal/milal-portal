@@ -146,6 +146,9 @@ export const api = {
   verifyOtp: (payload) =>
     request("/api/auth/verify-otp", { method: "POST", body: payload }),
 
+  checkUserId: (payload) =>
+    request("/api/auth/check-userid", { method: "POST", body: payload }),
+
   createAccount: (payload) =>
     request("/api/auth/create-account", { method: "POST", body: payload }),
 
