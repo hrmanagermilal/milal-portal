@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
@@ -7,6 +7,10 @@ import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import { statusLabel } from "../../constants";
 import { addDays, formatDateTime, startOfWeek, toDateInputValue } from "../../utils/datetime";
+import DataMart from "../../common/DataMart";
+import { api } from "../../api";
+import EventPublisher from "../../event/EventPublisher";
+import { EventDef } from "../../event/EventDef";
 import NewReservationModal from "./NewReservationModal";
 import FloorPlanTooltip from "./FloorPlanTooltip";
 import { useLanguage } from "../../i18n/LanguageContext";
@@ -55,12 +59,46 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
   const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const today     = new Date();
 
+  const [localReservations, setLocalReservations] = useState(reservations || []);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [form, setForm] = useState({
     room_id: "", requester_name: "", phone: "", email: "",
     start_time: "", end_time: "", purpose: "", attendees: "1", notes: "",
   });
+
+  // Auto-refresh reservations every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+      } catch (err) {
+        console.error("[WeekScheduleCalendar] Failed to refresh reservations:", err);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Subscribe to reservation creation events for immediate refresh
+  useEffect(() => {
+    const handleReservationCreated = async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+      } catch (err) {
+        console.error("[WeekScheduleCalendar] Failed to refresh after reservation created:", err);
+      }
+    };
+
+    EventPublisher.addEventListener(EventDef.onReservationCreated, "WEEKVIEW", handleReservationCreated);
+
+    return () => {
+      EventPublisher.removeEventListener(EventDef.onReservationCreated, "WEEKVIEW", handleReservationCreated);
+    };
+  }, []);
 
   function openModal(roomId, day, slotHour) {
     const start = new Date(day);
@@ -191,7 +229,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
             {/* Day cells */}
             {weekDays.map((day) => {
               const isToday = isSameDay(day, today);
-              const events  = getEventsForRoomDay(reservations, room.id, day);
+              const events  = getEventsForRoomDay(localReservations, room.id, day);
 
               return (
                 <Box
@@ -227,6 +265,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
                     return (
                       <div
                         key={item.id}
+                        onClick={(e) => e.stopPropagation()}
                         style={{
                           position: "absolute",
                           left: placement.left,
@@ -256,8 +295,9 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
         rooms={rooms}
         form={form}
         setForm={setForm}
-        onSubmit={(e) => { e.preventDefault(); if (onSubmitReservation) onSubmitReservation(form); closeModal(); }}
+        onSubmit={(formData) => { if (onSubmitReservation) onSubmitReservation(formData); closeModal(); }}
         selectedRoom={selectedRoomId}
+        currentUser={DataMart.getCurrentUser()}
       />
     </Box>
   );

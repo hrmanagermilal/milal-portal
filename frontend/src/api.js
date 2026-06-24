@@ -92,7 +92,17 @@ async function request(path, options = {}) {
 
 export const api = {
   getRooms: () => request("/api/rooms"),
-  getReservations: () => request("/api/reservations"),
+  getReservations: async () => {
+    const data = await request("/api/reservations");
+    // Backend returns DATETIME without timezone, so we add 'Z' to mark as UTC
+    return data.map(item => ({
+      ...item,
+      start_time: item.start_time ? `${item.start_time}Z`.replace('ZZ', 'Z') : item.start_time,
+      end_time: item.end_time ? `${item.end_time}Z`.replace('ZZ', 'Z') : item.end_time,
+      created_at: item.created_at ? `${item.created_at}Z`.replace('ZZ', 'Z') : item.created_at,
+      updated_at: item.updated_at ? `${item.updated_at}Z`.replace('ZZ', 'Z') : item.updated_at,
+    }));
+  },
   adminGetRooms: () =>
     request("/api/admin/rooms", {
       headers: {

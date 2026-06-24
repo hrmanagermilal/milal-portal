@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
@@ -10,8 +10,13 @@ import {
   addDays,
   toDateInputValue,
   toHourText,
+  dateToLocalISOString,
 } from "../../utils/datetime";
 import { useLanguage } from "../../i18n/LanguageContext";
+import DataMart from "../../common/DataMart";
+import { api } from "../../api";
+import EventPublisher from "../../event/EventPublisher";
+import { EventDef } from "../../event/EventDef";
 import NewReservationModal from "./NewReservationModal";
 import ReservedItem from "./ReservedItem";
 
@@ -51,6 +56,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
   const { t } = useLanguage();
   const { start: dayStart, end: dayEnd } = buildWindowForDay(date);
   
+  const [localReservations, setLocalReservations] = useState(reservations || []);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
@@ -67,17 +73,53 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
     notes: "",
   });
 
+  // Auto-refresh reservations every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+      } catch (err) {
+        console.error("[DayViewCalendar] Failed to refresh reservations:", err);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Subscribe to reservation creation events for immediate refresh
+  useEffect(() => {
+    const handleReservationCreated = async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+      } catch (err) {
+        console.error("[DayViewCalendar] Failed to refresh after reservation created:", err);
+      }
+    };
+
+    EventPublisher.addEventListener(EventDef.onReservationCreated, "DAYVIEW", handleReservationCreated);
+
+    return () => {
+      EventPublisher.removeEventListener(EventDef.onReservationCreated, "DAYVIEW", handleReservationCreated);
+    };
+  }, []);
+
   const handleCellClick = (roomId, cellDateTimeStart, cellDateTimeEnd) => {
     setSelectedRoomId(roomId);
     setSelectedDateTime(cellDateTimeStart);
     
-    console.log(`[DayViewCalendar] handleCellClick: roomId=${roomId}, cellDateTimeStart=${cellDateTimeStart.toString()}, cellDateTimeEnd=${cellDateTimeEnd.toString()}`);
-    // Set the room_id in form
+    // Convert local Date objects to ISO strings preserving local time (EDT, not UTC)
+    const startTimeStr = dateToLocalISOString(cellDateTimeStart);
+    const endTimeStr = dateToLocalISOString(cellDateTimeEnd);
+    
+    console.log(`[DayViewCalendar] handleCellClick: roomId=${roomId}, start=${startTimeStr}, end=${endTimeStr}`);
+    
     setForm((prev) => ({
       ...prev,
       room_id: String(roomId),
-      start_time: cellDateTimeStart,
-      end_time: cellDateTimeEnd
+      start_time: startTimeStr,
+      end_time: endTimeStr
     }));
     
     setModalOpen(true);
@@ -98,10 +140,9 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
     });
   };
 
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
+  const handleFormSubmit = (formData) => {
     if (onSubmitReservation) {
-      onSubmitReservation(form);
+      onSubmitReservation(formData);
     }
     handleModalClose();
   };
@@ -162,7 +203,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
 
         {/* Room Rows */}
         {rooms.map((room) => {
-          const roomDayItems = getEventsForRoomDay(reservations, room.id, date);
+          const roomDayItems = getEventsForRoomDay(localReservations, room.id, date);
           const isAvailable = roomDayItems.length === 0;
 
           return (
@@ -251,6 +292,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
         onSubmit={handleFormSubmit}
         selectedRoom={selectedRoomId}
         selectedDateTime={selectedDateTime}
+        currentUser={DataMart.getCurrentUser()}
       />
     </Box>
   );

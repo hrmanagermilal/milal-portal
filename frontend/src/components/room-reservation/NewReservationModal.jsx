@@ -12,37 +12,55 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { dateToLocalISOString } from "../../utils/datetime";
 import FloorPlanTooltip from "./FloorPlanTooltip";
 
 // Default end = start + 1 hour, clamped to 23:30 of same day
 function computeEndTime(startValue) {
   if (!startValue) return "";
-  const startDate = startValue.slice(0, 10);
-  const startDt = new Date(startValue);
-  const endDt = new Date(startDt.getTime() + 3600000); // Add 1 hour (3600000ms)
-  const maxEnd = new Date(`${startDate}T23:30`);
-  return (endDt > maxEnd ? maxEnd : endDt).toISOString().slice(0, 16);
+  
+  // Parse local time string "2026-06-15T03:00"
+  const [datePart, timePart] = startValue.split('T');
+  const [year, month, day] = datePart.split('-');
+  const [hours, minutes] = timePart.split(':');
+  
+  // Create Date object from local time components
+  const startDt = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+  
+  // Add 1 hour
+  const endDt = new Date(startDt.getTime() + 3600000);
+  
+  // Clamp to 23:30 of same day
+  const maxEnd = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 23, 30);
+  const finalEnd = endDt > maxEnd ? maxEnd : endDt;
+  
+  // Convert back to local ISO string format
+  return dateToLocalISOString(finalEnd);
 }
 
 // Minimum end time = start time + 30 min
 function minEndTime(startValue) {
   if (!startValue) return "00:00";
-  const dt = new Date(startValue);
-  dt.setMinutes(dt.getMinutes() + 30);
-  return `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+  
+  // Parse local time string "2026-06-15T03:00"
+  const [datePart, timePart] = startValue.split('T');
+  const [year, month, day] = datePart.split('-');
+  const [hours, minutes] = timePart.split(':');
+  
+  // Create Date object from local time components
+  const startDt = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+  
+  // Add 30 minutes
+  startDt.setMinutes(startDt.getMinutes() + 30);
+  
+  return `${String(startDt.getHours()).padStart(2, "0")}:${String(startDt.getMinutes()).padStart(2, "0")}`;
 }
 
-// Convert GMT to EST (UTC-5)
+// form.start_time is already in EST (user input), no conversion needed
+// This function is kept for reference but not used
 function convertGMTtoEST(gmtTimeStr) {
-  if (!gmtTimeStr) return "";
-  // gmtTimeStr: "2026-06-24T08:30"
-  const dt = new Date(gmtTimeStr + 'Z'); // Z를 붙여서 UTC로 해석
-  
-  // EST로 변환 (UTC-5, 5시간 빼기)
-  const estDt = new Date(dt.getTime() - 5 * 60 * 60 * 1000);
-  
-  // "2026-06-24T03:30" 형식으로 반환
-  return estDt.toISOString().slice(0, 16);
+  if (!gmtTimeStr || typeof gmtTimeStr !== 'string') return "";
+  return gmtTimeStr; // Already in EST from user input
 }
 
 // Add 1 hour to EST time string
@@ -73,9 +91,10 @@ export default function NewReservationModal({
   const floorRooms = selectedFloor === "all" ? [] : rooms.filter(r => (r.floor ?? 1) === Number(selectedFloor));
   const [showRoomSelector, setShowRoomSelector] = useState(false);
 
-  // Convert GMT times to EST for display
-  const startTimeEST = convertGMTtoEST(form.start_time);
-  const endTimeEST = addOneHourToESTTime(startTimeEST);
+  // form.start_time and form.end_time are already in EST (from user input)
+  const startTimeEST = form.start_time; // Already EST
+  const startDate = (form.start_time && typeof form.start_time === 'string') ? form.start_time.slice(0, 10) : "";
+  const endTimeOnly = (form.end_time && typeof form.end_time === 'string') ? form.end_time.slice(11, 16) : "";
 
   // Set floor and room when modal opens with selectedRoom
   useEffect(() => {
@@ -106,13 +125,24 @@ export default function NewReservationModal({
   // Set start time and end time when selectedDateTime changes
   useEffect(() => {
     if (open && selectedDateTime) {
-      const startTimeStr = selectedDateTime.toISOString().slice(0, 16);
-      const endTimeStr = computeEndTime(startTimeStr);
-      setForm((prev) => ({
-        ...prev,
-        start_time: startTimeStr,
-        end_time: endTimeStr,
-      }));
+      let startTimeStr = "";
+      
+      // Handle both Date objects and strings
+      if (selectedDateTime instanceof Date) {
+        // Use dateToLocalISOString to preserve local time (EDT, not UTC)
+        startTimeStr = dateToLocalISOString(selectedDateTime);
+      } else if (typeof selectedDateTime === 'string') {
+        startTimeStr = selectedDateTime.slice(0, 16);
+      }
+      
+      if (startTimeStr) {
+        const endTimeStr = computeEndTime(startTimeStr);
+        setForm((prev) => ({
+          ...prev,
+          start_time: startTimeStr,
+          end_time: endTimeStr,
+        }));
+      }
     }
   }, [open, selectedDateTime, setForm]);
 
@@ -152,9 +182,6 @@ export default function NewReservationModal({
     }));
   }
 
-  const startDate = startTimeEST ? startTimeEST.slice(0, 10) : "";
-  const endTimeOnly = endTimeEST ? endTimeEST.slice(11, 16) : "";
-
   const isValid =
     form.floor &&
     form.floor !== "all" &&
@@ -164,14 +191,21 @@ export default function NewReservationModal({
     form.email.trim() &&
     form.start_time &&
     form.end_time &&
+    typeof form.start_time === 'string' &&
+    typeof form.end_time === 'string' &&
     form.end_time > form.start_time &&
     form.end_time.slice(0, 10) === form.start_time.slice(0, 10) &&
     form.purpose.trim() &&
     Number(form.attendees) >= 1;
 
+  console.log("[NewReservationModal] isValid:", isValid, "form:", form);
+  console.log("[NewReservationModal] currentUser:", currentUser);
+
   function handleSubmit(e) {
     e.preventDefault();
-    onSubmit(e);
+    if (isValid) {
+      onSubmit(form); // Pass form object, not event
+    }
     if (!isCardMode) {
       onClose();
     }
@@ -253,13 +287,13 @@ export default function NewReservationModal({
           value={endTimeOnly}
           disabled={!form.start_time}
           inputProps={{ min: minEndTime(form.start_time), max: "23:59" }}
-          helperText={!form.start_time ? t("endTimeSelectStart") : t("endTimeMinHint").replace("%s", minEndTime(form.start_time))}
           onChange={(e) => {
-            if (!startDate) return;
+            if (!form.start_time) return;
             const selected = e.target.value;
             const min = minEndTime(form.start_time);
             const enforced = selected < min ? min : selected;
-            setForm((prev) => ({ ...prev, end_time: `${startDate}T${enforced}` }));
+            const dateStr = form.start_time.slice(0, 10);
+            setForm((prev) => ({ ...prev, end_time: `${dateStr}T${enforced}` }));
           }}
         />
       </Box>

@@ -10,6 +10,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { api } from "./api";
+import DataMart from "./common/DataMart";
 import AdminReservationPanel from "./components/room-reservation/AdminReservationPanel";
 import LoginModal from "./components/LoginModal";
 import ReservationRequestForm from "./components/room-reservation/ReservationRequestForm";
@@ -21,6 +22,7 @@ import TopBar from "./components/TopBar";
 import { useLanguage } from "./i18n/LanguageContext";
 import EventPublisher from "./event/EventPublisher";
 import {EventDef} from "./event/EventDef";
+import { localISOStringToUTCISO } from "./utils/datetime";
 
 // Bottom nav SVG icons
 const NavIconTimeline = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
@@ -73,7 +75,7 @@ export default function App() {
   const [userTitle, setUserTitle] = useState(() => localStorage.getItem("milal_title") || "");
   const [userCellGroup, setUserCellGroup] = useState(() => localStorage.getItem("milal_cell_group") || "");
 
-  function handleLogin(name, permission, title, cellGroup) {
+  function handleLogin(name, permission, title, cellGroup, fullUserInfo) {
     localStorage.setItem("milal_user", name);
     localStorage.setItem("milal_permission", permission);
     localStorage.setItem("milal_title", title || "");
@@ -82,6 +84,12 @@ export default function App() {
     setUserPermission(permission);
     setUserTitle(title || "");
     setUserCellGroup(cellGroup || "");
+    
+    // Store full user info in DataMart
+    if (fullUserInfo) {
+      DataMart.setCurrentUser(fullUserInfo);
+    }
+    
     EventPublisher.publish(EventDef.onLoginSuccess, { name, permission, title, cellGroup });
   }
 
@@ -92,6 +100,7 @@ export default function App() {
     setUserName("");
     setUserTitle("");
     setUserCellGroup("");
+    DataMart.clearCurrentUser();
   }
 
   const [form, setForm] = useState({
@@ -129,18 +138,17 @@ export default function App() {
     loadData();
   }, []);
 
-  async function handleCreateReservation(e) {
-    e.preventDefault();
+  async function handleCreateReservation(formData) {
     setError("");
     setSuccess("");
 
     try {
       await api.createReservation({
-        ...form,
-        room_id: Number(form.room_id),
-        attendees: Number(form.attendees),
-        start_time: new Date(form.start_time).toISOString(),
-        end_time: new Date(form.end_time).toISOString(),
+        ...formData,
+        room_id: Number(formData.room_id),
+        attendees: Number(formData.attendees),
+        start_time: localISOStringToUTCISO(formData.start_time),
+        end_time: localISOStringToUTCISO(formData.end_time),
       });
 
       setSuccess("Reservation request created. Admin review is required.");
@@ -154,8 +162,8 @@ export default function App() {
         notes: "",
         ...defaultTimes(),
       }));
-      await loadData();
-      setTab("timeline");
+      // Publish event so calendar components can refresh their data
+      EventPublisher.publish(EventDef.onReservationCreated, { status: "success" });
     } catch (err) {
       setError(err.message || "Failed to create reservation");
     }
@@ -197,6 +205,11 @@ export default function App() {
       };
       const actionLabel = actionLabels[action] || action;
       setSuccess(`예약 #${id} ${actionLabel}됨 - 이메일 발송됨`);
+      
+      // Publish update event for immediate UI refresh (before loadData completes)
+      EventPublisher.publish(EventDef.onReservationUpdated, { id, action, status: "success" });
+      
+      // Fetch updated data in background
       await loadData();
     } catch (err) {
       console.error("Admin action error:", err);

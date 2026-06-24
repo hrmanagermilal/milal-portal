@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import FloorPlanTooltip from "./FloorPlanTooltip";
 import Button from "@mui/material/Button";
@@ -22,6 +22,10 @@ import {
   startOfWeek,
   toDateInputValue,
 } from "../../utils/datetime";
+import DataMart from "../../common/DataMart";
+import { api } from "../../api";
+import EventPublisher from "../../event/EventPublisher";
+import { EventDef } from "../../event/EventDef";
 import NewReservationModal from "./NewReservationModal";
 import { useLanguage } from "../../i18n/LanguageContext";
 
@@ -52,6 +56,8 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
   const gridStart = startOfWeek(monthStart);
   const days = Array.from({ length: 42 }, (_, idx) => addDays(gridStart, idx));
 
+  const [localReservations, setLocalReservations] = useState(reservations || []);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
@@ -67,6 +73,38 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
     attendees: "1",
     notes: "",
   });
+
+  // Auto-refresh reservations every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+      } catch (err) {
+        console.error("[MonthViewCalendar] Failed to refresh reservations:", err);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Subscribe to reservation creation events for immediate refresh
+  useEffect(() => {
+    const handleReservationCreated = async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+      } catch (err) {
+        console.error("[MonthViewCalendar] Failed to refresh after reservation created:", err);
+      }
+    };
+
+    EventPublisher.addEventListener(EventDef.onReservationCreated, "MONTHVIEW", handleReservationCreated);
+
+    return () => {
+      EventPublisher.removeEventListener(EventDef.onReservationCreated, "MONTHVIEW", handleReservationCreated);
+    };
+  }, []);
 
   const handleCellClick = (clickedDate) => {
     setSelectedDate(clickedDate);
@@ -105,10 +143,9 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
     });
   };
 
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
+  const handleFormSubmit = (formData) => {
     if (onSubmitReservation) {
-      onSubmitReservation(form);
+      onSubmitReservation(formData);
     }
     handleModalClose();
   };
@@ -159,7 +196,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
           const dayStart = startOfDay(day);
           const dayEnd = endOfDay(day);
           const dayItems = sortByStartTime(
-            reservations.filter((item) => overlapsPeriod(item, dayStart, dayEnd))
+            localReservations.filter((item) => overlapsPeriod(item, dayStart, dayEnd))
           );
 
           return (
@@ -202,6 +239,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
         setForm={setForm}
         onSubmit={handleFormSubmit}
         selectedRoom={selectedRoomId}
+        currentUser={DataMart.getCurrentUser()}
       />
 
       {/* Reservation Detail Popup */}

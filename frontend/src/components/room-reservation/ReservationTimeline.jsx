@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
@@ -26,6 +26,9 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { calendarModes } from "../../constants";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { api } from "../../api";
+import EventPublisher from "../../event/EventPublisher";
+import { EventDef } from "../../event/EventDef";
 import {
   addDays,
   formatDateTime,
@@ -79,6 +82,39 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [showList, setShowList] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [localReservations, setLocalReservations] = useState(reservations || []);
+
+  // 5-second polling for reservations
+  useEffect(() => {
+    const loadReservations = async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+      } catch (err) {
+        console.error("Failed to load reservations:", err);
+      }
+    };
+
+    loadReservations();
+    const interval = setInterval(loadReservations, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Subscribe to reservation creation events
+  useEffect(() => {
+    const handleReservationCreated = async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+        console.log("[ReservationTimeline] Reservation created event received, updated reservations.", data);
+      } catch (err) {
+        console.error("Failed to refresh reservations:", err);
+      }
+    };
+
+    EventPublisher.addEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
+    return () => EventPublisher.removeEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
+  }, []);
 
   const floorFilteredRooms = useMemo(() => {
     if (selectedFloor === "all") return rooms;
@@ -86,13 +122,13 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   }, [rooms, selectedFloor]);
 
   const filteredReservations = useMemo(() => {
-    return reservations.filter((item) => {
+    return localReservations.filter((item) => {
       if (selectedFloor !== "all" && !floorFilteredRooms.some((r) => r.id === item.room_id)) return false;
       if (selectedRoom !== "all" && String(item.room_id) !== selectedRoom) return false;
       if (selectedStatus !== "all" && item.status !== selectedStatus) return false;
       return true;
     });
-  }, [reservations, selectedFloor, floorFilteredRooms, selectedRoom, selectedStatus]);
+  }, [localReservations, selectedFloor, floorFilteredRooms, selectedRoom, selectedStatus]);
 
   const visibleRange = useMemo(() => {
     if (mode === "day") {

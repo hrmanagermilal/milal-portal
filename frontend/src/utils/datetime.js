@@ -63,3 +63,37 @@ export function sortByStartTime(items) {
     (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
   );
 }
+
+// Convert local Date object to ISO string preserving local time (not UTC)
+// e.g., EDT 13:00 → "2026-06-15T13:00" (not "2026-06-15T17:00")
+export function dateToLocalISOString(date) {
+  if (!date || !(date instanceof Date)) return "";
+  return (
+    date.getFullYear() +
+    "-" +
+    String(date.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(date.getDate()).padStart(2, "0") +
+    "T" +
+    String(date.getHours()).padStart(2, "0") +
+    ":" +
+    String(date.getMinutes()).padStart(2, "0")
+  );
+}
+
+// Convert local ISO string (e.g., "2026-06-15T15:00") to UTC ISO string
+// EDT 15:00 → "2026-06-15T20:00Z" (EDT is UTC-5)
+export function localISOStringToUTCISO(localTimeStr) {
+  if (!localTimeStr || typeof localTimeStr !== 'string') return "";
+  
+  // Parse components
+  const [datePart, timePart] = localTimeStr.split('T');
+  const [year, month, day] = datePart.split('-');
+  const [hours, minutes] = timePart.split(':');
+  
+  // Create Date object from local time
+  const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+  
+  // Convert to UTC ISO string
+  return localDate.toISOString();
+}

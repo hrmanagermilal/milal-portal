@@ -3,6 +3,7 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Typography from "@mui/material/Typography";
 import { useLanguage } from "../../i18n/LanguageContext";
+import DataMart from "../../common/DataMart";
 import NewReservationModal from "./NewReservationModal";
 
 export default function ReservationRequestForm({ rooms, form, setForm, onSubmit, guideText }) {
@@ -22,6 +23,7 @@ export default function ReservationRequestForm({ rooms, form, setForm, onSubmit,
           setForm={setForm}
           onSubmit={onSubmit}
           isCardMode={true}
+          currentUser={DataMart.getCurrentUser()}
         />
       </CardContent>
     </Card>

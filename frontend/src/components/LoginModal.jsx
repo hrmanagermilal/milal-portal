@@ -139,7 +139,17 @@ export default function LoginModal({ open, onLogin }) {
       if (res.access_token) {
         localStorage.setItem("milal_token", res.access_token);
       }
-      onLogin(res.name, res.permission, res.title, res.cell_group);
+      // Pass full user info to parent (App.jsx)
+      onLogin(res.name, res.permission, res.title, res.cell_group, {
+        name: res.name,
+        permission: res.permission,
+        title: res.title,
+        cell_group: res.cell_group,
+        member_id: res.member_id,
+        user_id: res.user_id,
+        email: res.email || "",
+        phone: res.phone || ""
+      });
     } catch (err) {
       setError(err.message || t("authLoginFailed"));
     } finally { setLoading(false); }

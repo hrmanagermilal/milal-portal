@@ -361,6 +361,8 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         "permission": member.permission,
         "title": member.title,
         "cell_group": member.cell_group,
+        "email": member.email,
+        "phone": member.phone,
     }
 
 
