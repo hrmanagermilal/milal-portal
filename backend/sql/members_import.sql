@@ -5,17 +5,6 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
-CREATE TABLE members (
-    id           INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    name         VARCHAR(100) NOT NULL,
-    car_plate    VARCHAR(50)  NOT NULL DEFAULT '',
-    phone        VARCHAR(30)  NOT NULL DEFAULT '',
-    address      VARCHAR(255) NOT NULL DEFAULT '',
-    email        VARCHAR(255) NOT NULL DEFAULT '',
-    title        VARCHAR(12)  NOT NULL DEFAULT '',
-    cell_group   VARCHAR(20)  NOT NULL DEFAULT ''
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
 INSERT INTO members (name, car_plate, phone, address, email, title, cell_group) VALUES
 ('Howell 매튜', '', '', '401 ELMWOOD AVENUE,RICHMOND HILL,ON', '', '순원', '충성7'),
 ('Jin Luke', '', '', '58 MEADOWBROOK LN,MARKHAM,ON', '', '순원', '기쁨6'),

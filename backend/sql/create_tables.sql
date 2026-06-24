@@ -5,6 +5,9 @@
 -- Drop existing tables (order matters due to foreign key)
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS otp_codes;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS rooms;
+DROP TABLE IF EXISTS members;
 DROP TABLE IF EXISTS member_change_logs;
 
 -- ============================================================
