@@ -12,6 +12,7 @@ import { useTheme } from "@mui/material/styles";
 import { api } from "./api";
 import DataMart from "./common/DataMart";
 import AdminReservationPanel from "./components/room-reservation/AdminReservationPanel";
+import UserManagement from "./components/UserManagement";
 import LoginModal from "./components/LoginModal";
 import ReservationRequestForm from "./components/room-reservation/ReservationRequestForm";
 import ReservationTimeline from "./components/room-reservation/ReservationTimeline";
@@ -285,6 +286,9 @@ export default function App() {
               onAdminAction={handleAdminAction}
               guideText={t("adminGuideText")}
             />
+          )}
+          {!loading && tab === "users" && (
+            <UserManagement />
           )}
           {!loading && tab === "space-settings" && (
             <RoomSettingsPanel

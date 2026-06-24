@@ -12,7 +12,8 @@ import Badge from "@mui/material/Badge";
 import Tooltip from "@mui/material/Tooltip";
 import { useLanguage } from "../i18n/LanguageContext";
 import {CloseIcon, MenuIcon, PlusIcon, CheckIcon, SettingsIcon, RefreshIcon, CalendarIcon, ChevronDownIcon, PeopleIcon} from "./common/SideBarIcons";
-
+import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import {EventDef} from "../event/EventDef";
 import EventPublisher from "../event/EventPublisher";
 
@@ -135,7 +136,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
           <Tooltip title={t("navCellGroupInfo")} placement="right">
             <Button
               onClick={() => onTabChange("cell-group")}
-              startIcon={PeopleIcon}
+              startIcon={<PeopleAltIcon />}
               sx={{
                 justifyContent: "flex-start",
                 color: activeTab === "cell-group" ? "#1976d2" : "#313b5e",
@@ -166,6 +167,45 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
               }}
             >
               <Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navCellGroupInfo")}</Box>
+            </Button>
+          </Tooltip>
+        )}
+
+        {permission === "admin" && (
+          <Tooltip title={t("navUserManagement")} placement="right">
+            <Button
+              onClick={() => onTabChange("users")}
+              startIcon={<AdminPanelSettingsIcon />}
+              sx={{
+                justifyContent: "flex-start",
+                color: activeTab === "users" ? "#1976d2" : "#313b5e",
+                textTransform: "none",
+                fontSize: "14px",
+                fontWeight: 700,
+                bgcolor: activeTab === "users" ? "rgba(25, 118, 210, 0.08)" : "transparent",
+                borderRadius: "8px",
+                px: 1.5,
+                py: 1.1,
+                transition: "all 0.2s ease",
+                mb: 1,
+                position: "relative",
+                "&:hover": {
+                  bgcolor: "rgba(25, 118, 210, 0.08)",
+                  color: "#1976d2",
+                },
+                "&::before": activeTab === "users" ? {
+                  content: '""',
+                  position: "absolute",
+                  left: 0,
+                  top: "15%",
+                  bottom: "15%",
+                  width: "3px",
+                  bgcolor: "#1976d2",
+                  borderRadius: "0 3px 3px 0",
+                } : {},
+              }}
+            >
+              <Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navUserManagement")}</Box>
             </Button>
           </Tooltip>
         )}

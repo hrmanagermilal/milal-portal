@@ -12,6 +12,8 @@ export const translations = {
     navSettings: "Room Settings",
     navRefresh: "Refresh",
     navCellGroupInfo: "Cell Group Info",
+    navUserManagement: "User Management",
+    userManagement : "User Management",
 
     // TopBar
     myAccount: "My Account",
@@ -220,6 +222,19 @@ export const translations = {
     colCarPlate: "Car Plate",
     editMember: "Edit",
     close: "Close",
+
+    // UserManagement
+    userDetail: "User Details",
+    adminStatus: "Admin Status",
+    isAdmin: "This user is an admin",
+    notAdmin: "This user is not an admin",
+    userId: "User ID",
+    resetPasswordButton: "Reset Password & Send Email",
+    resetPasswordDesc: "Clicking this button will generate a random temporary password and send it to {email}. The user will need to log in with the temporary password and change it immediately.",
+    changePasswordHelp: "At least 6 characters",
+    currentPassword: "Current Password",
+    newPassword: "New Password",
+    confirmPassword: "Confirm Password",
   },
 
   ko: {
@@ -234,8 +249,10 @@ export const translations = {
     navAdmin: "관리자 검토",
     navSettings: "장소 설정",
     navRefresh: "새로고침",
-    navCellGroupInfo: "셀 그룹 정보",
-    cellGroupGuideText: "셀그룹원의 정보를 확인 및 수정할 수 있습니다.",
+    navCellGroupInfo: "순 정보",
+    navUserManagement: "사용자 관리",
+    cellGroupGuideText: "순원의 정보를 확인 및 수정할 수 있습니다.",
+    userManagement : "사용자 관리",
 
     // TopBar
     myAccount: "내 계정",
@@ -444,5 +461,18 @@ export const translations = {
     colCarPlate: "차량 번호판",
     editMember: "수정",
     close: "닫기",
+
+    // UserManagement
+    userDetail: "사용자 상세",
+    adminStatus: "관리자 상태",
+    isAdmin: "이 사용자는 관리자입니다",
+    notAdmin: "이 사용자는 관리자가 아닙니다",
+    userId: "사용자 ID",
+    resetPasswordButton: "비밀번호 리셋 및 이메일 전송",
+    resetPasswordDesc: "이 버튼을 클릭하면 무작위 임시 비밀번호가 생성되어 {email}로 전송됩니다. 사용자는 임시 비밀번호로 로그인한 후 즉시 변경해야 합니다.",
+    changePasswordHelp: "6자 이상 입력",
+    currentPassword: "현재 비밀번호",
+    newPassword: "새 비밀번호",
+    confirmPassword: "비밀번호 확인",
   },
 };

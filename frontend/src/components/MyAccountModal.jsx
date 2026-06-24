@@ -10,6 +10,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
 import Divider from "@mui/material/Divider";
+import Alert from "@mui/material/Alert";
 import { useLanguage } from "../i18n/LanguageContext";
 import { api } from "../api";
 
@@ -19,6 +20,10 @@ export default function MyAccountModal({ open, onClose, targetMemberId = null, i
   const [editableInfo, setEditableInfo] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -64,6 +69,41 @@ export default function MyAccountModal({ open, onClose, targetMemberId = null, i
       onClose();
     } catch (err) {
       setError(err.message || "Failed to update information.");
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    // Validation
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setPasswordError("All password fields are required");
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError("New password and confirm password do not match");
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await api.changePassword(passwordForm.currentPassword, passwordForm.newPassword);
+      setPasswordSuccess("Password changed successfully!");
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setTimeout(() => {
+        setPasswordSuccess("");
+      }, 3000);
+    } catch (err) {
+      setPasswordError(err.message || "Failed to change password");
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -412,6 +452,168 @@ export default function MyAccountModal({ open, onClose, targetMemberId = null, i
                 />
               </Box>
             </Paper>
+
+            {/* Password Change Section - Only for current user */}
+            {!isEditingOther && (
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  mt: 3,
+                  bgcolor: "#f8f9fa",
+                  border: "1px solid #e0e0e0",
+                  borderRadius: 1,
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    mb: 2,
+                    fontWeight: 600,
+                    fontSize: "16px",
+                    color: "#333",
+                  }}
+                >
+                  {t("changePassword") || "Change Password"}
+                </Typography>
+                <Divider sx={{ mb: 3 }} />
+
+                {passwordError && <Alert severity="error" sx={{ mb: 2 }}>{passwordError}</Alert>}
+                {passwordSuccess && <Alert severity="success" sx={{ mb: 2 }}>{passwordSuccess}</Alert>}
+
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr", gap: 2 }}>
+                  {/* Current Password */}
+                  <Box>
+                    <Typography
+                      component="label"
+                      sx={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        color: "#666",
+                        mb: 0.8,
+                        display: "block",
+                      }}
+                    >
+                      {t("currentPassword") || "Current Password"}
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="password"
+                      placeholder="Enter your current password"
+                      value={passwordForm.currentPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                      disabled={changingPassword}
+                      variant="outlined"
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          fontSize: "15px",
+                          borderRadius: 0.5,
+                          "& fieldset": {
+                            borderColor: "#e0e0e0",
+                          },
+                          "&:hover fieldset": {
+                            borderColor: "#bdbdbd",
+                          },
+                        },
+                      }}
+                    />
+                  </Box>
+
+                  {/* New Password */}
+                  <Box>
+                    <Typography
+                      component="label"
+                      sx={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        color: "#666",
+                        mb: 0.8,
+                        display: "block",
+                      }}
+                    >
+                      {t("newPassword") || "New Password"}
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="password"
+                      placeholder="Enter your new password"
+                      value={passwordForm.newPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                      disabled={changingPassword}
+                      variant="outlined"
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          fontSize: "15px",
+                          borderRadius: 0.5,
+                          "& fieldset": {
+                            borderColor: "#e0e0e0",
+                          },
+                          "&:hover fieldset": {
+                            borderColor: "#bdbdbd",
+                          },
+                        },
+                      }}
+                    />
+                  </Box>
+
+                  {/* Confirm Password */}
+                  <Box>
+                    <Typography
+                      component="label"
+                      sx={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        color: "#666",
+                        mb: 0.8,
+                        display: "block",
+                      }}
+                    >
+                      {t("confirmPassword") || "Confirm Password"}
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="password"
+                      placeholder="Confirm your new password"
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                      disabled={changingPassword}
+                      variant="outlined"
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          fontSize: "15px",
+                          borderRadius: 0.5,
+                          "& fieldset": {
+                            borderColor: "#e0e0e0",
+                          },
+                          "&:hover fieldset": {
+                            borderColor: "#bdbdbd",
+                          },
+                        },
+                      }}
+                    />
+                  </Box>
+
+                  {/* Change Password Button */}
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleChangePassword}
+                    disabled={changingPassword}
+                    sx={{
+                      textTransform: "none",
+                      fontSize: "15px",
+                      fontWeight: 500,
+                      mt: 1,
+                    }}
+                  >
+                    {changingPassword ? "Changing..." : "Change Password"}
+                  </Button>
+                </Box>
+              </Paper>
+            )}
           </Box>
         )}
       </DialogContent>

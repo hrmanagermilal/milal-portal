@@ -74,3 +74,31 @@ class AdminUpdateReservation(BaseModel):
         if value == "":
             return None
         return value
+
+
+# ── User Management schemas ────────────────────────────────────────────────
+class UserOut(BaseModel):
+    """User info for admin panel"""
+    id: int
+    member_id: int
+    member_name: str
+    member_email: str
+    member_phone: str
+    user_id: str
+    is_admin: bool
+    created_at: datetime
+    
+    model_config = {"from_attributes": True}
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=6)
+    new_password: str = Field(min_length=6)
+
+
+class AdminUpdateUserRequest(BaseModel):
+    is_admin: bool
+
+
+class ResetPasswordRequest(BaseModel):
+    pass  # No body needed, just triggers password reset

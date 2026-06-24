@@ -15,11 +15,12 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from .database import get_db
 from .models import Member, OtpCode, User, MemberChangeLog
+from .schemas import UserOut, ChangePasswordRequest, AdminUpdateUserRequest, ResetPasswordRequest
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-for-jwt")
 ALGORITHM = "HS256"
@@ -124,6 +125,19 @@ def _send_sms(phone: str, message: str) -> bool:
     """
     logger.warning("[OTP SMS – not configured] To: %s | %s", phone, message)
     return False  # signals dev mode; caller will return OTP in response
+
+
+def _hash_password(password: str) -> str:
+    """Hash password, ensuring it's within bcrypt's 72-byte limit."""
+    # Ensure password is max 72 bytes when encoded as UTF-8
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        # Truncate string until it's <= 72 bytes
+        truncated = password
+        while len(truncated.encode('utf-8')) > 72:
+            truncated = truncated[:-1]
+        password = truncated
+    return pwd_ctx.hash(password)
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
@@ -286,9 +300,9 @@ def create_account(body: CreateAccountRequest, db: Session = Depends(get_db)):
     ).scalar_one_or_none()
 
     if existing:
-        existing.password_hash = body.password
+        existing.password_hash = _hash_password(body.password)
     else:
-        db.add(User(member_id=body.member_id, password_hash=body.password))
+        db.add(User(member_id=body.member_id, password_hash=_hash_password(body.password)))
 
     db.commit()
     db.refresh(member)
@@ -344,8 +358,14 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         select(User).where(User.member_id == member.id)
     ).scalar_one_or_none()
 
-    if not user or not body.password == user.password_hash:
+    if not user or not pwd_ctx.verify(body.password, user.password_hash):
         raise HTTPException(401, "Invalid user ID or password")
+
+    # Sync admin status from member.permission to user.is_admin
+    if member.permission == "admin":
+        if not user.is_admin:
+            user.is_admin = True
+            db.commit()
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -476,3 +496,201 @@ def _get_valid_otp(member_id: int, code: str, db: Session) -> OtpCode:
     if not otp:
         raise HTTPException(400, "Invalid or expired code")
     return otp
+
+
+# ── User Management (Admin only) ────────────────────────────────────────────
+
+def _is_admin(current_user: Member, db: Session) -> bool:
+    """Check if current user is admin."""
+    user = db.execute(
+        select(User).where(User.member_id == current_user.id)
+    ).scalar_one_or_none()
+    return user and user.is_admin
+
+
+def _get_admin_or_403(current_user: Member, db: Session) -> Member:
+    """Verify current user is admin, raise 403 if not."""
+    if not _is_admin(current_user, db):
+        raise HTTPException(403, "Permission denied - admin access required")
+    return current_user
+
+
+@router.get("/admin/users")
+async def list_users(
+    skip: int = 0,
+    limit: int = 20,
+    current_user: Member = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List all users with pagination (admin only)."""
+    _get_admin_or_403(current_user, db)
+    
+    # Get all users joined with members
+    users = db.execute(
+        select(User, Member)
+        .join(Member, User.member_id == Member.id)
+        .order_by(User.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    ).all()
+    
+    result = []
+    for user, member in users:
+        result.append({
+            "id": user.id,
+            "member_id": member.id,
+            "member_name": member.name,
+            "member_email": member.email,
+            "member_phone": member.phone,
+            "user_id": member.user_id,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at,
+        })
+    
+    return result
+
+
+@router.get("/admin/users/total")
+async def count_users(
+    current_user: Member = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get total user count (admin only)."""
+    _get_admin_or_403(current_user, db)
+    total = db.scalar(select(func.count()).select_from(User))
+    return {"total": total}
+
+
+@router.get("/admin/users/{user_id}")
+async def get_user_detail(
+    user_id: int,
+    current_user: Member = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get user details (admin only)."""
+    _get_admin_or_403(current_user, db)
+    
+    user = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    member = db.execute(
+        select(Member).where(Member.id == user.member_id)
+    ).scalar_one_or_none()
+    
+    return {
+        "id": user.id,
+        "member_id": member.id,
+        "member_name": member.name,
+        "member_email": member.email,
+        "member_phone": member.phone,
+        "user_id": member.user_id,
+        "is_admin": user.is_admin,
+        "created_at": user.created_at,
+    }
+
+
+@router.patch("/admin/users/{user_id}/admin")
+async def update_user_admin_status(
+    user_id: int,
+    body: AdminUpdateUserRequest,
+    current_user: Member = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update user admin status (admin only)."""
+    _get_admin_or_403(current_user, db)
+    
+    user = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    user.is_admin = body.is_admin
+    db.commit()
+    db.refresh(user)
+    
+    member = user.member
+    return {
+        "id": user.id,
+        "member_id": member.id,
+        "member_name": member.name,
+        "is_admin": user.is_admin,
+    }
+
+
+@router.post("/admin/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: int,
+    current_user: Member = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Reset user password to random temp password and send via email (admin only)."""
+    _get_admin_or_403(current_user, db)
+    
+    user = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    member = user.member
+    
+    # Generate random 7-digit password
+    temp_password = "".join(random.choices(string.digits, k=7))
+    user.password_hash = temp_password
+    db.commit()
+    
+    # Send email
+    subject = "[Milal] Password Reset"
+    body = f"""
+안녕하세요,
+
+Your account password has been reset.
+
+User ID: {member.user_id}
+Temporary Password: {temp_password}
+
+Please log in and change your password immediately.
+
+Best regards,
+Milal Admin
+    """
+    
+    success = _send_email(member.email, subject, body)
+    
+    return {
+        "success": success,
+        "message": "Password reset email sent" if success else "Failed to send email",
+        "user_id": user_id,
+    }
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: Member = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Change password for logged-in user."""
+    user = db.execute(
+        select(User).where(User.member_id == current_user.id)
+    ).scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    # Verify current password
+    if not pwd_ctx.verify(body.current_password, user.password_hash):
+        raise HTTPException(401, "Current password is incorrect")
+    
+    # Hash and update new password
+    user.password_hash = _hash_password(body.new_password)
+    db.commit()
+    
+    return {"message": "Password changed successfully"}

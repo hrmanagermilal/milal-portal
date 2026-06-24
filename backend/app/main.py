@@ -76,6 +76,15 @@ def startup() -> None:
             conn.commit()
         except Exception:
             pass  # Column already exists
+    
+    # Migrate: add is_admin column to users if it doesn't exist yet
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+    
     db = next(get_db())
     try:
         seed_rooms(db)

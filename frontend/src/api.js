@@ -193,4 +193,42 @@ export const api = {
       headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
       body: payload,
     }),
+
+  // ── User Management (Admin only) ────────────────────────────────────────
+  adminGetUsers: (skip = 0, limit = 20) =>
+    request(`/api/auth/admin/users?skip=${skip}&limit=${limit}`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  adminGetUserCount: () =>
+    request("/api/auth/admin/users/total", {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  adminGetUserDetail: (userId) =>
+    request(`/api/auth/admin/users/${userId}`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  adminUpdateUserAdmin: (userId, isAdmin) =>
+    request(`/api/auth/admin/users/${userId}/admin`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      body: { is_admin: isAdmin },
+    }),
+
+  adminResetUserPassword: (userId) =>
+    request(`/api/auth/admin/users/${userId}/reset-password`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      body: {},
+    }),
+
+  // ── Change Password ────────────────────────────────────────────────────
+  changePassword: (currentPassword, newPassword) =>
+    request("/api/auth/change-password", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      body: { current_password: currentPassword, new_password: newPassword },
+    }),
 };
