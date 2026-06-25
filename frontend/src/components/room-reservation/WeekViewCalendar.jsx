@@ -163,6 +163,9 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
     purpose: "",
     attendees: "1",
     notes: "",
+    permission: "member",
+    repeat_type: "none",
+    repeat_count: 1,
   });
 
   // Auto-refresh reservations every 5 seconds
@@ -228,7 +231,14 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
 
   const handleFormSubmit = (formData) => {
     if (onSubmitReservation) {
-      onSubmitReservation(formData);
+      const processedData = {
+        ...formData,
+        room_id: Number(formData.room_id),
+        attendees: Number(formData.attendees),
+        repeat_count: Number(formData.repeat_count),
+        permission: formData.permission || "member",
+      };
+      onSubmitReservation(processedData);
     }
     handleModalClose();
   };
@@ -325,7 +335,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
           const isAvailable = weekDays.every((day) => {
             const { start: dayStart, end: dayEnd } = buildWindowForDay(day);
             return localReservations.filter(
-              (item) => item.room_id === room.id && overlapsPeriod(item, dayStart, dayEnd)
+              (item) => item.status !== "rejected" && item.room_id === room.id && overlapsPeriod(item, dayStart, dayEnd)
             ).length === 0;
           });
 
@@ -343,7 +353,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
                 const { start: dayStart, end: dayEnd } = buildWindowForDay(day);
                 const items = sortByStartTime(
                   localReservations.filter(
-                    (item) => item.room_id === room.id && overlapsPeriod(item, dayStart, dayEnd)
+                    (item) => item.status !== "rejected" && item.room_id === room.id && overlapsPeriod(item, dayStart, dayEnd)
                   )
                 );
 

@@ -135,7 +135,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     return encoded_jwt
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=401,
         detail="Could not validate credentials",
@@ -360,12 +360,6 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     
     logger.info(f"✓ Password matched for user_id={body.user_id}")
 
-    # Sync admin status from member.permission to user.is_admin
-    if member.permission == "admin":
-        if not user.is_admin:
-            user.is_admin = True
-            db.commit()
-
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": member.user_id}, expires_delta=access_token_expires
@@ -388,11 +382,11 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me")
-async def read_users_me(current_user: Member = Depends(get_current_user)):
+def read_users_me(current_user: Member = Depends(get_current_user)):
     return current_user
 
 @router.patch("/me")
-async def update_users_me(body: MyAccountUpdateRequest, current_user: Member = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_users_me(body: MyAccountUpdateRequest, current_user: Member = Depends(get_current_user), db: Session = Depends(get_db)):
     changes = []
     update_data = body.dict(exclude_unset=True)
 
@@ -419,7 +413,7 @@ async def update_users_me(body: MyAccountUpdateRequest, current_user: Member = D
 
 
 @router.get("/cell-group-members")
-async def get_cell_group_members(current_user: Member = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_cell_group_members(current_user: Member = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get all members in the same cell group as current user."""
     members = db.execute(
         select(Member).where(Member.cell_group == current_user.cell_group)
@@ -428,7 +422,7 @@ async def get_cell_group_members(current_user: Member = Depends(get_current_user
 
 
 @router.get("/member/{member_id}")
-async def get_member(member_id: int, db: Session = Depends(get_db)):
+def get_member(member_id: int, db: Session = Depends(get_db)):
     """Get member details by ID."""
     member = db.execute(
         select(Member).where(Member.id == member_id)
@@ -441,7 +435,7 @@ async def get_member(member_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/member/{member_id}")
-async def update_member(member_id: int, body: MyAccountUpdateRequest, current_user: Member = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_member(member_id: int, body: MyAccountUpdateRequest, current_user: Member = Depends(get_current_user), db: Session = Depends(get_db)):
     """Update another member's information (must be 순장 of the same cell group)."""
     target_member = db.execute(
         select(Member).where(Member.id == member_id)
@@ -503,10 +497,7 @@ def _get_valid_otp(member_id: int, code: str, db: Session) -> OtpCode:
 
 def _is_admin(current_user: Member, db: Session) -> bool:
     """Check if current user is admin."""
-    user = db.execute(
-        select(User).where(User.member_id == current_user.id)
-    ).scalar_one_or_none()
-    return user and user.is_admin
+    return current_user and current_user.permission == "admin"
 
 
 def _get_admin_or_403(current_user: Member, db: Session) -> Member:
@@ -517,7 +508,7 @@ def _get_admin_or_403(current_user: Member, db: Session) -> Member:
 
 
 @router.get("/admin/users")
-async def list_users(
+def list_users(
     skip: int = 0,
     limit: int = 20,
     current_user: Member = Depends(get_current_user),
@@ -543,8 +534,8 @@ async def list_users(
             "member_name": member.name,
             "member_email": member.email,
             "member_phone": member.phone,
+            "member_permission": member.permission,
             "user_id": member.user_id,
-            "is_admin": user.is_admin,
             "created_at": user.created_at,
         })
     
@@ -552,7 +543,7 @@ async def list_users(
 
 
 @router.get("/admin/users/total")
-async def count_users(
+def count_users(
     current_user: Member = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -563,7 +554,7 @@ async def count_users(
 
 
 @router.get("/admin/users/{user_id}")
-async def get_user_detail(
+def get_user_detail(
     user_id: int,
     current_user: Member = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -588,20 +579,20 @@ async def get_user_detail(
         "member_name": member.name,
         "member_email": member.email,
         "member_phone": member.phone,
+        "member_permission": member.permission,
         "user_id": member.user_id,
-        "is_admin": user.is_admin,
         "created_at": user.created_at,
     }
 
 
 @router.patch("/admin/users/{user_id}/admin")
-async def update_user_admin_status(
+def update_user_admin_status(
     user_id: int,
     body: AdminUpdateUserRequest,
     current_user: Member = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update user admin status (admin only)."""
+    """Update user permission status (admin only)."""
     _get_admin_or_403(current_user, db)
     
     user = db.execute(
@@ -611,21 +602,21 @@ async def update_user_admin_status(
     if not user:
         raise HTTPException(404, "User not found")
     
-    user.is_admin = body.is_admin
-    db.commit()
-    db.refresh(user)
-    
     member = user.member
+    member.permission = body.permission
+    db.commit()
+    db.refresh(member)
+    
     return {
         "id": user.id,
         "member_id": member.id,
         "member_name": member.name,
-        "is_admin": user.is_admin,
+        "member_permission": member.permission,
     }
 
 
 @router.post("/admin/users/{user_id}/reset-password")
-async def reset_user_password(
+def reset_user_password(
     user_id: int,
     current_user: Member = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -673,7 +664,7 @@ Milal Admin
 
 
 @router.post("/change-password")
-async def change_password(
+def change_password(
     body: ChangePasswordRequest,
     current_user: Member = Depends(get_current_user),
     db: Session = Depends(get_db)

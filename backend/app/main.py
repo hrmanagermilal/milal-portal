@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -285,66 +285,138 @@ def delete_room_location(
     return {"message": "room location deleted"}
 
 
-@app.post("/api/reservations", response_model=ReservationOut)
-def create_reservation(payload: ReservationCreate, db: Session = Depends(get_db)) -> ReservationOut:
+@app.post("/api/reservations", response_model=dict)
+def create_reservation(
+    payload: ReservationCreate,
+    db: Session = Depends(get_db),
+    token: str | None = None,
+) -> dict:
+    """
+    Create reservation(s). 
+    - Regular users: create pending reservation
+    - Admin users: create auto-approved reservation(s) with optional repeat
+    """
     validate_reservation_times(payload.start_time, payload.end_time)
 
     room = db.get(Room, payload.room_id)
     if not room or not room.is_active:
         raise HTTPException(status_code=404, detail="room not found")
+    
+    # Check if requester is admin
+    is_admin = payload.permission == "admin"
 
-    overlapping = db.scalar(
-        select(Reservation)
-        .where(
-            and_(
-                Reservation.room_id == payload.room_id,
-                Reservation.status.in_([
-                    ReservationStatus.pending,
-                    ReservationStatus.approved,
-                    ReservationStatus.changed,
-                ]),
-                Reservation.start_time < payload.end_time,
-                Reservation.end_time > payload.start_time,
+    # print out payload for debugging
+    print("Creating reservation with payload:", payload.dict())
+
+    # Validate repeat settings (only for admin)
+    if not is_admin:
+        payload.repeat_type = "none"
+        payload.repeat_count = 1
+    
+    # Create reservation(s)
+    reservations = []
+    parent_reservation_id = None
+    
+    for i in range(payload.repeat_count):
+        # Calculate time for this instance
+        if payload.repeat_type == "weekly":
+            current_start = payload.start_time + timedelta(weeks=i)
+            current_end = payload.end_time + timedelta(weeks=i)
+        elif payload.repeat_type == "monthly":
+            # Add months (approximate: 30 days per month)
+            current_start = payload.start_time + timedelta(days=30 * i)
+            current_end = payload.end_time + timedelta(days=30 * i)
+        else:
+            current_start = payload.start_time
+            current_end = payload.end_time
+
+        # Check for conflicts
+        overlapping = db.scalar(
+            select(Reservation)
+            .where(
+                and_(
+                    Reservation.room_id == payload.room_id,
+                    Reservation.status.in_([
+                        ReservationStatus.pending,
+                        ReservationStatus.approved,
+                        ReservationStatus.changed,
+                    ]),
+                    Reservation.start_time < current_end,
+                    Reservation.end_time > current_start,
+                )
             )
+            .limit(1)
         )
-        .limit(1)
-    )
-    if overlapping:
-        raise HTTPException(status_code=409, detail="time slot conflicts with an existing reservation")
+        if overlapping:
+            raise HTTPException(status_code=409, detail=f"time slot conflicts with an existing reservation (repeat #{i+1})")
 
-    new_item = Reservation(
-        room_id=payload.room_id,
-        requester_name=payload.requester_name,
-        phone=payload.phone,
-        email=payload.email,
-        purpose=payload.purpose,
-        attendees=payload.attendees,
-        notes=payload.notes,
-        start_time=payload.start_time,
-        end_time=payload.end_time,
-        status=ReservationStatus.pending,
-    )
-    db.add(new_item)
-    db.commit()
-    db.refresh(new_item)
+        # Create reservation
+        new_item = Reservation(
+            room_id=payload.room_id,
+            requester_name=payload.requester_name,
+            phone=payload.phone,
+            email=payload.email,
+            purpose=payload.purpose,
+            attendees=payload.attendees,
+            notes=payload.notes,
+            start_time=current_start,
+            end_time=current_end,
+            status=ReservationStatus.approved if is_admin else ReservationStatus.pending,
+            repeat_type=payload.repeat_type,
+            repeat_count=payload.repeat_count,
+            parent_reservation_id=parent_reservation_id,
+        )
+        db.add(new_item)
+        db.commit()
+        db.refresh(new_item)
+        
+        # Set parent_reservation_id for first instance
+        if i == 0:
+            parent_reservation_id = new_item.id
 
-    return ReservationOut(
-        id=new_item.id,
-        room_id=new_item.room_id,
-        room_name=room.name,
-        requester_name=new_item.requester_name,
-        phone=new_item.phone,
-        email=new_item.email,
-        purpose=new_item.purpose,
-        attendees=new_item.attendees,
-        notes=new_item.notes,
-        start_time=new_item.start_time,
-        end_time=new_item.end_time,
-        status=new_item.status.value,
-        admin_comment=new_item.admin_comment,
-        created_at=new_item.created_at,
-        updated_at=new_item.updated_at,
-    )
+        reservations.append(new_item)
+
+    # Send email with repeat info
+    email_subject = f"[예약 알림] {room.name} - {payload.requester_name}"
+    if payload.repeat_count > 1:
+        repeat_info = f"(매{'' if payload.repeat_type == 'weekly' else '달'} {payload.repeat_count}회 반복)"
+        email_subject += f" {repeat_info}"
+    
+    email_body = f"""
+    새로운 예약이 접수되었습니다.
+    
+    예약자: {payload.requester_name}
+    연락처: {payload.phone}
+    이메일: {payload.email}
+    장소: {room.name}
+    목적: {payload.purpose}
+    참석인원: {payload.attendees}
+    예약 시간: {reservations[0].start_time} - {reservations[0].end_time}
+    메모: {payload.notes}
+    """
+    
+    if payload.repeat_count > 1:
+        repeat_type_kr = "매주" if payload.repeat_type == "weekly" else "매달"
+        email_body += f"\n반복 예약: {repeat_type_kr} {payload.repeat_count}회\n"
+        for idx, res in enumerate(reservations, 1):
+            email_body += f"  {idx}. {res.start_time} - {res.end_time}\n"
+    
+    if is_admin:
+        email_body += "\n[자동승인] 관리자 예약으로 자동승인되었습니다."
+    else:
+        email_body += "\n[대기중] 예약이 승인 대기 중입니다."
+
+    _send_email(payload.email, email_subject, email_body)
+
+    return {
+        "message": "reservation created successfully",
+        "reservation_count": len(reservations),
+        "is_approved": is_admin,
+        "repeat_info": {
+            "type": payload.repeat_type,
+            "count": payload.repeat_count,
+        } if payload.repeat_count > 1 else None,
+    }
 
 
 @app.get("/api/reservations", response_model=list[ReservationOut])
@@ -377,6 +449,9 @@ def list_reservations(
             end_time=item.end_time,
             status=item.status.value,
             admin_comment=item.admin_comment,
+            repeat_type=item.repeat_type,
+            repeat_count=item.repeat_count,
+            parent_reservation_id=item.parent_reservation_id,
             created_at=item.created_at,
             updated_at=item.updated_at,
         )
@@ -481,6 +556,9 @@ def update_reservation_by_admin(
         end_time=item.end_time,
         status=item.status.value,
         admin_comment=item.admin_comment,
+        repeat_type=item.repeat_type,
+        repeat_count=item.repeat_count,
+        parent_reservation_id=item.parent_reservation_id,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )

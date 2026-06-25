@@ -123,6 +123,9 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
 
   const filteredReservations = useMemo(() => {
     return localReservations.filter((item) => {
+      // Always exclude rejected reservations from calendar display
+      if (item.status === "rejected") return false;
+      
       if (selectedFloor !== "all" && !floorFilteredRooms.some((r) => r.id === item.room_id)) return false;
       if (selectedRoom !== "all" && String(item.room_id) !== selectedRoom) return false;
       if (selectedStatus !== "all" && item.status !== selectedStatus) return false;
@@ -214,7 +217,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                 sx={{ minWidth: { xs: 0, md: 130 } }}
               >
                 <MenuItem value="all">{t("filterAllStatus")}</MenuItem>
-                {Object.keys(statusLabel).map((s) => (
+                {Object.keys(statusLabel).filter(s => s !== "rejected").map((s) => (
                   <MenuItem key={s} value={s}>{statusLabel[s]}</MenuItem>
                 ))}
               </TextField>

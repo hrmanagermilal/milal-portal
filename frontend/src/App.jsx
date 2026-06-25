@@ -144,13 +144,15 @@ export default function App() {
     setSuccess("");
 
     try {
-      await api.createReservation({
+      const requestObj = {
         ...formData,
         room_id: Number(formData.room_id),
         attendees: Number(formData.attendees),
         start_time: localISOStringToUTCISO(formData.start_time),
         end_time: localISOStringToUTCISO(formData.end_time),
-      });
+      };
+      console.log("Creating reservation with data:", requestObj);
+      await api.createReservation(requestObj );
 
       setSuccess("Reservation request created. Admin review is required.");
       setForm((prev) => ({

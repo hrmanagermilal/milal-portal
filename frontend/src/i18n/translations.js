@@ -140,6 +140,13 @@ export const translations = {
     capacity: "capacity",
     floor1Label: "1F (Floor 1)",
     floor2Label: "2F (Floor 2)",
+    repeatSettingsTitle: "📅 Repeat Reservation Settings (Admin)",
+    repeatType: "Repeat Type",
+    repeatTypeNone: "No Repeat",
+    repeatTypeWeekly: "Weekly",
+    repeatTypeMonthly: "Monthly",
+    repeatCount: "Repeat Count",
+    repeatCountHint: "💡 %d reservations will be created %s and all auto-approved.",
 
     // AdminReservationEditModal
     adminEditTitle: "Edit Reservation",
@@ -388,6 +395,13 @@ export const translations = {
     capacity: "최대",
     floor1Label: "1층",
     floor2Label: "2층",
+    repeatSettingsTitle: "📅 반복 예약 설정 (관리자)",
+    repeatType: "반복 유형",
+    repeatTypeNone: "반복 없음",
+    repeatTypeWeekly: "매주",
+    repeatTypeMonthly: "매달",
+    repeatCount: "반복 횟수",
+    repeatCountHint: "💡 %d개의 예약이 %s 생성되며, 모두 자동승인됩니다.",
 
     // AdminReservationEditModal
     adminEditTitle: "예약 수정",

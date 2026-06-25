@@ -34,7 +34,6 @@ class User(Base):
     id:            Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     member_id:     Mapped[int] = mapped_column(ForeignKey("members.id"), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_admin:      Mapped[bool] = mapped_column(Boolean, default=False)
     created_at:    Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     member: Mapped["Member"] = relationship(back_populates="user")
@@ -133,6 +132,11 @@ class Reservation(Base):
         nullable=False,
     )
     admin_comment: Mapped[str] = mapped_column(Text, default="")
+
+    # Repeat settings (for admin recurring reservations)
+    repeat_type: Mapped[str] = mapped_column(String(20), default="none")  # "none", "weekly", "monthly"
+    repeat_count: Mapped[int] = mapped_column(Integer, default=1)  # number of times to repeat
+    parent_reservation_id: Mapped[Optional[int]] = mapped_column(ForeignKey("reservations.id"), nullable=True)  # for grouping repeat instances
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

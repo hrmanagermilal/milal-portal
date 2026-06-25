@@ -109,9 +109,13 @@ CREATE TABLE reservations (
     end_time       DATETIME     NOT NULL,
     status         ENUM('pending','approved','changed','rejected') NOT NULL DEFAULT 'pending',
     admin_comment  TEXT         NOT NULL,
+    repeat_type    VARCHAR(20)  NOT NULL DEFAULT 'none',  -- 'none', 'weekly', 'monthly'
+    repeat_count   INT          NOT NULL DEFAULT 1,  -- number of times to repeat
+    parent_reservation_id INT,  -- for grouping repeat instances
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_room FOREIGN KEY (room_id) REFERENCES rooms(id)
+    CONSTRAINT fk_room FOREIGN KEY (room_id) REFERENCES rooms(id),
+    CONSTRAINT fk_parent_reservation FOREIGN KEY (parent_reservation_id) REFERENCES reservations(id)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ============================================================

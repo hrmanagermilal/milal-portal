@@ -72,6 +72,9 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
     purpose: "",
     attendees: "1",
     notes: "",
+    permission: "member",
+    repeat_type: "none",
+    repeat_count: 1,
   });
 
   // Auto-refresh reservations every 5 seconds
@@ -145,7 +148,14 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
 
   const handleFormSubmit = (formData) => {
     if (onSubmitReservation) {
-      onSubmitReservation(formData);
+      const processedData = {
+        ...formData,
+        room_id: Number(formData.room_id),
+        attendees: Number(formData.attendees),
+        repeat_count: Number(formData.repeat_count),
+        permission: formData.permission || "member",
+      };
+      onSubmitReservation(processedData);
     }
     handleModalClose();
   };
@@ -196,7 +206,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
           const dayStart = startOfDay(day);
           const dayEnd = endOfDay(day);
           const dayItems = sortByStartTime(
-            localReservations.filter((item) => overlapsPeriod(item, dayStart, dayEnd))
+            localReservations.filter((item) => item.status !== "rejected" && overlapsPeriod(item, dayStart, dayEnd))
           );
 
           return (

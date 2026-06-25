@@ -43,6 +43,7 @@ function getEventsForRoomDay(reservations, roomId, day) {
   d1.setHours(23, 59, 59, 999);
   
   return reservations.filter((item) => {
+    if (item.status === "rejected") return false; // Exclude rejected
     if (item.room_id !== roomId) return false;
     const s = new Date(item.start_time);
     const e = new Date(item.end_time);
@@ -71,6 +72,9 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
     purpose: "",
     attendees: "1",
     notes: "",
+    permission: "member",
+    repeat_type: "none",
+    repeat_count: 1,
   });
 
   // Auto-refresh reservations every 5 seconds
@@ -142,7 +146,16 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
 
   const handleFormSubmit = (formData) => {
     if (onSubmitReservation) {
-      onSubmitReservation(formData);
+      // Convert data types for backend API
+      const processedData = {
+        ...formData,
+        room_id: Number(formData.room_id), // Convert to int
+        attendees: Number(formData.attendees), // Convert to int
+        repeat_count: Number(formData.repeat_count), // Convert to int
+        permission: formData.permission || "member", // Include permission
+        // start_time and end_time are already in correct format (local ISO string)
+      };
+      onSubmitReservation(processedData);
     }
     handleModalClose();
   };
