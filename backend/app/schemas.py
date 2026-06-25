@@ -41,6 +41,10 @@ class ReservationCreate(BaseModel):
     notes: str = Field(default="", max_length=2000)
     start_time: datetime
     end_time: datetime
+    permission: str = Field(default="member")
+    # Admin repeat settings
+    repeat_type: Literal["none", "weekly", "monthly"] = Field(default="none")
+    repeat_count: int = Field(default=1, ge=1, le=52)  # max 52 weeks or 12 months
 
 
 class ReservationOut(BaseModel):
@@ -57,6 +61,9 @@ class ReservationOut(BaseModel):
     end_time: datetime
     status: str
     admin_comment: str
+    repeat_type: str
+    repeat_count: int
+    parent_reservation_id: int | None
     created_at: datetime
     updated_at: datetime
 
@@ -84,8 +91,8 @@ class UserOut(BaseModel):
     member_name: str
     member_email: str
     member_phone: str
+    member_permission: str
     user_id: str
-    is_admin: bool
     created_at: datetime
     
     model_config = {"from_attributes": True}
@@ -97,7 +104,7 @@ class ChangePasswordRequest(BaseModel):
 
 
 class AdminUpdateUserRequest(BaseModel):
-    is_admin: bool
+    permission: str = Field(default="member")  # "member" or "admin"
 
 
 class ResetPasswordRequest(BaseModel):

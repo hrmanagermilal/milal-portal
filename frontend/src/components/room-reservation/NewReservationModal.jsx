@@ -117,7 +117,8 @@ export default function NewReservationModal({
         ...prev,
         requester_name: currentUser.name || "",
         phone: currentUser.phone || "",
-        email: currentUser.email || ""
+        email: currentUser.email || "",
+        permission: currentUser.permission || "member"
       }));
     }
   }, [open, currentUser, setForm]);
@@ -303,6 +304,48 @@ export default function NewReservationModal({
       <TextField label={t("attendees")} type="number" fullWidth required inputProps={{ min: 1 }} {...field("attendees")} />
 
       <TextField label={t("notes")} fullWidth multiline rows={2} {...field("notes")} />
+
+      {/* Admin Repeat Options */}
+      {currentUser?.permission === "admin" && (
+        <Box sx={{ pt: 1, pb: 1, px: 2, bgcolor: "rgba(47,104,249,0.05)", borderRadius: "8px", border: "1px solid rgba(47,104,249,0.2)" }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#2f68f9", mb: 1.5, fontSize: "13px" }}>
+            📅 반복 예약 설정 (관리자)
+          </Typography>
+          
+          <Stack spacing={1.5}>
+            <TextField
+              select
+              label="반복 유형"
+              size="small"
+              fullWidth
+              value={form.repeat_type || "none"}
+              onChange={(e) => setForm((prev) => ({ ...prev, repeat_type: e.target.value }))}
+            >
+              <MenuItem value="none">반복 없음</MenuItem>
+              <MenuItem value="weekly">매주</MenuItem>
+              <MenuItem value="monthly">매달</MenuItem>
+            </TextField>
+
+            {form.repeat_type !== "none" && (
+              <TextField
+                label="반복 횟수"
+                type="number"
+                size="small"
+                fullWidth
+                inputProps={{ min: 1, max: 52 }}
+                value={form.repeat_count || 1}
+                onChange={(e) => setForm((prev) => ({ ...prev, repeat_count: Math.max(1, parseInt(e.target.value) || 1) }))}
+              />
+            )}
+
+            {form.repeat_type !== "none" && form.repeat_count > 1 && (
+              <Typography variant="caption" sx={{ color: "#666", fontSize: "12px", fontStyle: "italic" }}>
+                💡 {form.repeat_count}개의 예약이 {form.repeat_type === "weekly" ? "매주" : "매달"} 생성되며, 모두 자동승인됩니다.
+              </Typography>
+            )}
+          </Stack>
+        </Box>
+      )}
 
       {/* Buttons */}
       <Stack direction="row" spacing={1.5} sx={{ width: "100%", justifyContent: "flex-end", pt: 1 }}>

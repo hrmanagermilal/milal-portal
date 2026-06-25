@@ -46,6 +46,7 @@ function getEventsForRoomDay(reservations, roomId, day) {
   const d0 = new Date(day); d0.setHours(0, 0, 0, 0);
   const d1 = new Date(day); d1.setHours(23, 59, 59, 999);
   return reservations.filter((item) => {
+    if (item.status === "rejected") return false; // Exclude rejected
     if (item.room_id !== roomId) return false;
     const s = new Date(item.start_time);
     const e = new Date(item.end_time);
@@ -66,6 +67,8 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
   const [form, setForm] = useState({
     room_id: "", requester_name: "", phone: "", email: "",
     start_time: "", end_time: "", purpose: "", attendees: "1", notes: "",
+    permission: "member",
+    repeat_type: "none", repeat_count: 1,
   });
 
   // Auto-refresh reservations every 5 seconds
@@ -259,8 +262,8 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
                     ))}
                   </Box>
 
-                  {/* Events */}
-                  {events.map((item) => {
+                  {/* Events - exclude rejected reservations */}
+                  {events.filter((item) => item.status !== "rejected").map((item) => {
                     const placement = getEventPosition(item);
                     return (
                       <div
@@ -295,7 +298,19 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
         rooms={rooms}
         form={form}
         setForm={setForm}
-        onSubmit={(formData) => { if (onSubmitReservation) onSubmitReservation(formData); closeModal(); }}
+        onSubmit={(formData) => { 
+          if (onSubmitReservation) {
+            const processedData = {
+              ...formData,
+              room_id: Number(formData.room_id),
+              attendees: Number(formData.attendees),
+              repeat_count: Number(formData.repeat_count),
+              permission: formData.permission || "member",
+            };
+            onSubmitReservation(processedData);
+          }
+          closeModal();
+        }}
         selectedRoom={selectedRoomId}
         currentUser={DataMart.getCurrentUser()}
       />
