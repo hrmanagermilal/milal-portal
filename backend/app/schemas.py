@@ -149,4 +149,6 @@ class ChatRequest(BaseModel):
     user_name: str = ""
     user_phone: str = ""
     user_email: str = ""
+    user_title: str = ""        # e.g. "순장"
+    user_cell_group: str = ""   # cell group name
     language: str = "ko"

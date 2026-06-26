@@ -620,11 +620,45 @@ _CHAT_TOOLS = [
                     "room_id": {"type": "integer", "description": "Room ID"},
                     "purpose": {"type": "string", "description": "Purpose/reason for the reservation"},
                     "attendees": {"type": "integer", "description": "Number of attendees", "default": 1},
-                    "start_time": {"type": "string", "description": "Start time in UTC ISO format"},
-                    "end_time": {"type": "string", "description": "End time in UTC ISO format"},
+                    "start_time": {"type": "string", "description": "Start time in ISO format (no timezone conversion needed)"},
+                    "end_time": {"type": "string", "description": "End time in ISO format (no timezone conversion needed)"},
                     "notes": {"type": "string", "description": "Additional notes", "default": ""},
                 },
                 "required": ["room_id", "purpose", "start_time", "end_time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_cell_group_members",
+            "description": "Get members of the current user's cell group (순). Supports search by name, phone, email, address, and car plate.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Optional search keyword (name, title, phone, email, address, car plate)",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_cell_group_member",
+            "description": "Update contact info (email, phone, address) of a cell group member. Only available for 순장. Confirm with user before updating.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "integer", "description": "Member ID to update"},
+                    "email": {"type": "string", "description": "New email address (omit if not changing)"},
+                    "phone": {"type": "string", "description": "New phone number (omit if not changing)"},
+                    "address": {"type": "string", "description": "New address (omit if not changing)"},
+                },
+                "required": ["member_id"],
             },
         },
     },
@@ -670,13 +704,15 @@ def chat_with_ai(
     tz_label = f"EDT (UTC{utc_offset_hours:+d})" if utc_offset_hours == -4 else f"EST (UTC{utc_offset_hours:+d})"
     lang_hint = "Please respond in Korean (한국어로 응답하세요)." if payload.language == "ko" else "Please respond in English."
 
+    # Only send non-sensitive identity info to the AI; phone/email stay server-side only
     user_ctx = ""
     if payload.user_name:
         user_ctx = f"\nCurrently logged-in user: name={payload.user_name}"
-        if payload.user_phone:
-            user_ctx += f", phone={payload.user_phone}"
-        if payload.user_email:
-            user_ctx += f", email={payload.user_email}"
+        if payload.user_title:
+            user_ctx += f", title={payload.user_title}"
+        if payload.user_cell_group:
+            user_ctx += f", cell_group={payload.user_cell_group}"
+        # phone/email intentionally omitted — used internally by tools only
 
     system_prompt = f"""You are a helpful AI assistant for the Milal Church community room reservation portal.
 {lang_hint}
@@ -691,6 +727,7 @@ You can help users:
 1. Browse rooms and check availability
 2. View existing reservations
 3. Create new reservations
+4. If the user is 순장 (cell group leader): view and update cell group member information
 
 Important rules:
 - The server stores times as-is without timezone conversion. Pass times EXACTLY as the user specifies them (do NOT add or subtract hours for UTC conversion).
@@ -698,6 +735,9 @@ Important rules:
 - Always call check_availability before create_reservation.
 - For create_reservation, use the logged-in user's name/phone/email from the context. If the user is not logged in (no user info), inform them they must log in first.
 - After creating a reservation, the status is 'pending' and requires admin approval.
+- For cell group tools (get_cell_group_members, update_cell_group_member): only available when user title is '순장'.
+- For get_cell_group_members, when the user asks about a car number/plate, pass it in query and include car_plate in your answer.
+- Always confirm with the user before calling update_cell_group_member.
 - Be concise, friendly, and helpful."""
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -723,7 +763,7 @@ Important rules:
             {
                 "id": i.id,
                 "room_name": i.room.name if i.room else "Unknown",
-                "requester_name": i.requester_name,
+                "requester_name": i.requester_name,  # name only, no contact info
                 "purpose": i.purpose,
                 "start_time": i.start_time.isoformat(),
                 "end_time": i.end_time.isoformat(),
@@ -826,6 +866,72 @@ Important rules:
             "status": "pending",
         }
 
+    def _exec_get_cell_group_members(query: str | None = None) -> list[dict] | dict:
+        if payload.user_title != "순장":
+            return {"error": "순장 권한이 있는 사용자만 순 정보에 접근할 수 있습니다."}
+        if not payload.user_cell_group:
+            return {"error": "셀 그룹 정보가 없습니다. 로그인 상태를 확인해주세요."}
+        members = db.scalars(select(Member).where(Member.cell_group == payload.user_cell_group)).all()
+
+        if query:
+            needle = query.strip().lower()
+            members = [
+                m for m in members
+                if needle in (m.name or "").lower()
+                or needle in (m.title or "").lower()
+                or needle in (m.phone or "").lower()
+                or needle in (m.email or "").lower()
+                or needle in (m.address or "").lower()
+                or needle in (m.car_plate or "").lower()
+            ]
+
+        return [
+            {
+                "id": m.id,
+                "name": m.name,
+                "title": m.title,
+                "phone": m.phone,
+                "email": m.email,
+                "address": m.address,
+                "cell_group": m.cell_group,
+                "car_plate": m.car_plate,
+            }
+            for m in members
+        ]
+
+    def _exec_update_cell_group_member(
+        member_id: int,
+        email: str | None = None,
+        phone: str | None = None,
+        address: str | None = None,
+    ) -> dict:
+        if payload.user_title != "순장":
+            return {"error": "순장 권한이 있는 사용자만 순원 정보를 수정할 수 있습니다."}
+        target = db.get(Member, member_id)
+        if not target:
+            return {"error": f"멤버 ID {member_id}를 찾을 수 없습니다."}
+        if target.cell_group != payload.user_cell_group:
+            return {"error": "같은 셀 그룹 멤버만 수정할 수 있습니다."}
+        updated_fields = []
+        if email is not None and email != target.email:
+            target.email = email
+            updated_fields.append("email")
+        if phone is not None and phone != target.phone:
+            target.phone = phone
+            updated_fields.append("phone")
+        if address is not None and address != target.address:
+            target.address = address
+            updated_fields.append("address")
+        if updated_fields:
+            db.commit()
+            db.refresh(target)
+        return {
+            "success": True,
+            "member_id": target.id,
+            "name": target.name,
+            "updated_fields": updated_fields,
+        }
+
     def _dispatch(name: str, args: dict):
         if name == "get_rooms":
             return _exec_get_rooms()
@@ -835,6 +941,10 @@ Important rules:
             return _exec_check_availability(**args)
         if name == "create_reservation":
             return _exec_create_reservation(**args)
+        if name == "get_cell_group_members":
+            return _exec_get_cell_group_members(**args)
+        if name == "update_cell_group_member":
+            return _exec_update_cell_group_member(**args)
         return {"error": f"Unknown tool: {name}"}
 
     # ── AI tool-call loop ─────────────────────────────────────────────────
