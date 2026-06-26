@@ -1081,7 +1081,7 @@ Important rules:
         if payload.user_title != "순장":
             return {"error": "순장 권한이 있는 사용자만 순 정보에 접근할 수 있습니다."}
         if not payload.user_cell_group:
-            return {"error": "셀 그룹 정보가 없습니다. 로그인 상태를 확인해주세요."}
+            return {"error": "순 정보가 없습니다. 로그인 상태를 확인해주세요."}
         members = db.scalars(select(Member).where(Member.cell_group == payload.user_cell_group)).all()
 
         if query:
@@ -1122,7 +1122,7 @@ Important rules:
         if not target:
             return {"error": f"멤버 ID {member_id}를 찾을 수 없습니다."}
         if target.cell_group != payload.user_cell_group:
-            return {"error": "같은 셀 그룹 멤버만 수정할 수 있습니다."}
+            return {"error": "같은 순 멤버만 수정할 수 있습니다."}
         updated_fields = []
         if email is not None and email != target.email:
             target.email = email
@@ -1153,7 +1153,7 @@ Important rules:
         if payload.user_title != "순장":
             return {"error": "순장 권한이 있는 사용자만 순보고서를 작성할 수 있습니다."}
         if not payload.user_cell_group:
-            return {"error": "셀 그룹 정보가 없습니다. 로그인 상태를 확인해주세요."}
+            return {"error": "순 정보가 없습니다. 로그인 상태를 확인해주세요."}
 
         try:
             report_date = date.fromisoformat(meeting_date)
@@ -1185,7 +1185,7 @@ Important rules:
             if not target:
                 return {"error": f"멤버 ID {member_id}를 찾을 수 없습니다."}
             if target.cell_group != payload.user_cell_group:
-                return {"error": "같은 셀 그룹 멤버만 순보고에 포함할 수 있습니다."}
+                return {"error": "같은 순 멤버만 순보고에 포함할 수 있습니다."}
             normalized_members.append(
                 {
                     "member": target,

@@ -66,3 +66,22 @@ export const PeopleIcon = (
     <path d="M16 3.13a4 4 0 0 1 0 7.75" />
   </svg>
 );
+
+export const CellGroupInfoIcon = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="9" cy="8" r="3" />
+    <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+    <path d="M16 7h5" />
+    <path d="M16 11h5" />
+  </svg>
+);
+
+export const CellReportIcon = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M7 3h8l4 4v14H7z" />
+    <path d="M15 3v4h4" />
+    <path d="M10 13h6" />
+    <path d="M10 17h6" />
+    <path d="M10 9h2" />
+  </svg>
+);

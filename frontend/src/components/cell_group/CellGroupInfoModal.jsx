@@ -62,9 +62,6 @@ export default function CellGroupInfoModal() {
             <Typography variant="h6" sx={{ fontWeight: 600, color: "#313b5e", fontSize: "16px" }}>
               {t("cellGroupTitle")}
             </Typography>
-            <Button variant="outlined" size="small" onClick={fetchCellGroupMembers}>
-              {t("refresh")}
-            </Button>
           </Stack>
 
           {error && (
