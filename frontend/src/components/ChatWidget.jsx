@@ -21,11 +21,13 @@ const QUICK_PROMPTS_KO = [
   "오늘 예약 현황 알려줘",
   "내일 오후 2시 장소 예약 가능해?",
   "예약 신청해줘",
+  "채팅으로 순보고서 작성 도와줘",
 ];
 const QUICK_PROMPTS_EN = [
   "Show today's reservations",
   "Is the conference room free tomorrow 2pm?",
   "Help me make a reservation",
+  "Help me write a cell report",
 ];
 
 function TypingDots() {

@@ -18,6 +18,7 @@ import ReservationRequestForm from "./components/room-reservation/ReservationReq
 import ReservationTimeline from "./components/room-reservation/ReservationTimeline";
 import RoomSettingsPanel from "./components/room-reservation/RoomSettingsPanel";
 import CellGroupInfoModal from "./components/cell_group/CellGroupInfoModal";
+import CellReportPanel from "./components/cell_group/CellReportPanel";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ChatWidget from "./components/ChatWidget";
@@ -51,6 +52,8 @@ export default function App() {
     switch (tab) {
       case "cell-group":
         return t("cellGroupGuideText");
+      case "cell-report":
+        return t("cellReportGuideText");
       default:
         return t("appSubtitle");
     }
@@ -62,6 +65,7 @@ export default function App() {
     { key: "admin",    label: t("navAdmin") },
     { key: "space-settings", label: t("navSettings") },
     { key: "cell-group", label: t("navCellGroupInfo") },
+    { key: "cell-report", label: t("navCellReport") },
   ];
 
   const [tab, setTab] = useState("timeline");
@@ -331,6 +335,9 @@ export default function App() {
           )}
           {tab === "cell-group" && (
             <CellGroupInfoModal />
+          )}
+          {tab === "cell-report" && (
+            <CellReportPanel />
           )}
         </Box>
       </Box>

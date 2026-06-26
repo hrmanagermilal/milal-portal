@@ -1,8 +1,8 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -25,6 +25,8 @@ class Member(Base):
     user:      Mapped[Optional["User"]]      = relationship(back_populates="member", uselist=False)
     otp_codes: Mapped[list["OtpCode"]]       = relationship(back_populates="member")
     change_logs: Mapped[list["MemberChangeLog"]] = relationship(back_populates="member")
+    cell_reports: Mapped[list["CellReport"]] = relationship(back_populates="leader")
+    cell_report_entries: Mapped[list["CellReportMemberEntry"]] = relationship(back_populates="member")
 
 
 # ── User (account with password) ───────────────────────────────────────────
@@ -67,6 +69,44 @@ class MemberChangeLog(Base):
     new_value: Mapped[str] = mapped_column(Text)
 
     member: Mapped["Member"] = relationship(back_populates="change_logs")
+
+
+# ── Cell Group Report ─────────────────────────────────────────────────────
+class CellReport(Base):
+    __tablename__ = "cell_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    leader_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    cell_group: Mapped[str] = mapped_column(String(20), nullable=False)
+    meeting_date: Mapped[date] = mapped_column(Date, nullable=False)
+    meeting_time: Mapped[str] = mapped_column(String(20), default="")
+    meeting_place: Mapped[str] = mapped_column(String(255), default="")
+    overall_prayer: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    leader: Mapped["Member"] = relationship(back_populates="cell_reports")
+    entries: Mapped[list["CellReportMemberEntry"]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+    )
+
+
+class CellReportMemberEntry(Base):
+    __tablename__ = "cell_report_member_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("cell_reports.id"), nullable=False)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    attended: Mapped[bool] = mapped_column(Boolean, default=False)
+    prayer: Mapped[str] = mapped_column(Text, default="")
+
+    report: Mapped["CellReport"] = relationship(back_populates="entries")
+    member: Mapped["Member"] = relationship(back_populates="cell_report_entries")
 
 
 # ── Reservation status ──────────────────────────────────────────────────────
