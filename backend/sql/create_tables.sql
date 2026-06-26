@@ -3,6 +3,8 @@
 -- ============================================================
 
 -- Drop existing tables (order matters due to foreign key)
+DROP TABLE IF EXISTS cell_report_member_entries;
+DROP TABLE IF EXISTS cell_reports;
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS room_locations;
 DROP TABLE IF EXISTS otp_codes;
@@ -116,6 +118,35 @@ CREATE TABLE reservations (
     updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_room FOREIGN KEY (room_id) REFERENCES rooms(id),
     CONSTRAINT fk_parent_reservation FOREIGN KEY (parent_reservation_id) REFERENCES reservations(id)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ============================================================
+-- Table: cell_reports
+-- ============================================================
+CREATE TABLE cell_reports (
+    id               INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    leader_member_id INT          NOT NULL,
+    cell_group       VARCHAR(20)  NOT NULL,
+    meeting_date     DATE         NOT NULL,
+    meeting_time     VARCHAR(20)  NOT NULL DEFAULT '',
+    meeting_place    VARCHAR(255) NOT NULL DEFAULT '',
+    overall_prayer   TEXT         NOT NULL,
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cell_report_leader FOREIGN KEY (leader_member_id) REFERENCES members(id)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ============================================================
+-- Table: cell_report_member_entries
+-- ============================================================
+CREATE TABLE cell_report_member_entries (
+    id         INT         NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    report_id  INT         NOT NULL,
+    member_id  INT         NOT NULL,
+    attended   TINYINT(1)  NOT NULL DEFAULT 0,
+    prayer     TEXT        NOT NULL,
+    CONSTRAINT fk_cell_report_entry_report FOREIGN KEY (report_id) REFERENCES cell_reports(id),
+    CONSTRAINT fk_cell_report_entry_member FOREIGN KEY (member_id) REFERENCES members(id)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ============================================================

@@ -201,6 +201,23 @@ export const api = {
       headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
     }),
 
+  createCellReport: (payload) =>
+    request("/api/cell-reports", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
+  getCellReports: () =>
+    request("/api/cell-reports", {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
+  getCellReportDetail: (reportId) =>
+    request(`/api/cell-reports/${reportId}`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
   getMember: (memberId) =>
     request(`/api/auth/member/${memberId}`, {
       headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },

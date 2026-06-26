@@ -11,7 +11,6 @@ import Badge from "@mui/material/Badge";
 import Tooltip from "@mui/material/Tooltip";
 import { useLanguage } from "../i18n/LanguageContext";
 import {MenuIcon, PlusIcon, CheckIcon, SettingsIcon, RefreshIcon, CalendarIcon, ChevronDownIcon, PeopleIcon} from "./common/SideBarIcons";
-import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import {EventDef} from "../event/EventDef";
 import EventPublisher from "../event/EventPublisher";
@@ -22,10 +21,17 @@ const MODULE = 'Sidebar';
 export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCount = 0, mobileOpen = false, onClose }) {
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(true);
+  const [cellMeetingOpen, setCellMeetingOpen] = useState(true);
   const [permission, setPermission] = useState(localStorage.getItem("milal_permission") || "");
   const [title, setTitle] = useState(localStorage.getItem("milal_title") || "");
   const [cellGroup, setCellGroup] = useState(localStorage.getItem("milal_cell_group") || "");
   const [navItems, setNavItems] = useState([]);
+
+  useEffect(() => {
+    if (activeTab === "cell-group" || activeTab === "cell-report") {
+      setCellMeetingOpen(true);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     EventPublisher.addEventListener(EventDef.onLoginSuccess, MODULE, onLoginSuccess);
@@ -123,44 +129,85 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
 
       {/* Navigation Tree */}
       <Stack sx={{ p: 1.5, pb: 2 }}>
-        {/* Cell Group Info - Top level button for 순장 users */}
+        {/* Cell Meeting section - for 순장 users */}
         {title === "순장" && (
-          <Tooltip title={t("navCellGroupInfo")} placement="right">
+          <>
             <Button
-              onClick={() => onTabChange("cell-group")}
-              startIcon={<PeopleAltIcon />}
+              onClick={() => setCellMeetingOpen((prev) => !prev)}
+              startIcon={PeopleIcon}
               sx={{
                 justifyContent: "flex-start",
-                color: activeTab === "cell-group" ? "#1976d2" : "#313b5e",
                 textTransform: "none",
                 fontSize: "14px",
                 fontWeight: 700,
-                bgcolor: activeTab === "cell-group" ? "rgba(25, 118, 210, 0.08)" : "transparent",
+                color: (activeTab === "cell-group" || activeTab === "cell-report") ? "#1976d2" : "#313b5e",
                 borderRadius: "8px",
                 px: 1.5,
                 py: 1.1,
                 transition: "all 0.2s ease",
-                mb: 1,
-                position: "relative",
-                "&:hover": {
-                  bgcolor: "rgba(25, 118, 210, 0.08)",
-                  color: "#1976d2",
-                },
-                "&::before": activeTab === "cell-group" ? {
-                  content: '""',
-                  position: "absolute",
-                  left: 0,
-                  top: "15%",
-                  bottom: "15%",
-                  width: "3px",
-                  bgcolor: "#1976d2",
-                  borderRadius: "0 3px 3px 0",
-                } : {},
+                mb: 0.25,
+                "&:hover": { bgcolor: "#e8ecf2" },
               }}
             >
-              <Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navCellGroupInfo")}</Box>
+              <Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navCellMeeting")}</Box>
+              <Box sx={{
+                transform: cellMeetingOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                transition: "transform 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                opacity: 0.5,
+              }}>
+                {ChevronDownIcon}
+              </Box>
             </Button>
-          </Tooltip>
+
+            <Collapse in={cellMeetingOpen}>
+              <Stack spacing={0.25} sx={{ pl: 1.5, mt: 0.25, mb: 1 }}>
+                <Box sx={{ position: "relative" }}>
+                  <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 8, width: "1.5px", bgcolor: "#d8dfe7" }} />
+                  <Stack spacing={0.25}>
+                    {[{ key: "cell-group", label: t("navCellGroupInfo") }, { key: "cell-report", label: t("navCellReport") }].map((item) => (
+                      <Tooltip key={item.key} title={item.label} placement="right">
+                        <Button
+                          onClick={() => onTabChange(item.key)}
+                          sx={{
+                            justifyContent: "flex-start",
+                            color: activeTab === item.key ? "#1976d2" : "#5d7186",
+                            textTransform: "none",
+                            fontSize: "13px",
+                            fontWeight: activeTab === item.key ? 700 : 500,
+                            bgcolor: activeTab === item.key ? "rgba(25, 118, 210, 0.08)" : "transparent",
+                            borderRadius: "8px",
+                            pl: 2,
+                            pr: 1.5,
+                            py: 1,
+                            transition: "all 0.2s ease",
+                            position: "relative",
+                            "&:hover": {
+                              bgcolor: "rgba(25, 118, 210, 0.08)",
+                              color: "#1976d2",
+                            },
+                            "&::before": activeTab === item.key ? {
+                              content: '""',
+                              position: "absolute",
+                              left: 0,
+                              top: "25%",
+                              bottom: "25%",
+                              width: "3px",
+                              bgcolor: "#1976d2",
+                              borderRadius: "0 3px 3px 0",
+                            } : {},
+                          }}
+                        >
+                          <Box sx={{ flexGrow: 1, textAlign: "left" }}>{item.label}</Box>
+                        </Button>
+                      </Tooltip>
+                    ))}
+                  </Stack>
+                </Box>
+              </Stack>
+            </Collapse>
+          </>
         )}
 
         {permission === "admin" && (

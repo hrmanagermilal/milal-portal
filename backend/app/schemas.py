@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -152,3 +152,51 @@ class ChatRequest(BaseModel):
     user_title: str = ""        # e.g. "순장"
     user_cell_group: str = ""   # cell group name
     language: str = "ko"
+
+
+# ── Cell report ───────────────────────────────────────────────────────────
+class CellReportMemberEntryCreate(BaseModel):
+    member_id: int
+    attended: bool = False
+    prayer: str = ""
+
+
+class CellReportCreate(BaseModel):
+    meeting_date: date
+    meeting_time: str = ""
+    meeting_place: str = ""
+    overall_prayer: str = ""
+    members: list[CellReportMemberEntryCreate] = []
+
+
+class CellReportListItem(BaseModel):
+    id: int
+    meeting_date: date
+    meeting_time: str
+    meeting_place: str
+    overall_prayer: str
+    attendee_count: int
+    total_count: int
+    leader_name: str
+    created_at: datetime
+
+
+class CellReportMemberEntryOut(BaseModel):
+    member_id: int
+    member_name: str
+    member_title: str
+    attended: bool
+    prayer: str
+
+
+class CellReportDetailOut(BaseModel):
+    id: int
+    cell_group: str
+    leader_name: str
+    meeting_date: date
+    meeting_time: str
+    meeting_place: str
+    overall_prayer: str
+    entries: list[CellReportMemberEntryOut]
+    created_at: datetime
+    updated_at: datetime

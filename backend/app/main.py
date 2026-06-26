@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -10,15 +10,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import and_, select, text
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 # Load environment variables from .env file
 load_dotenv()
 
 from .database import Base, engine, get_db
-from .models import Member, OtpCode, Reservation, ReservationStatus, Room, RoomLocation, User
+from .models import (
+    CellReport,
+    CellReportMemberEntry,
+    Member,
+    OtpCode,
+    Reservation,
+    ReservationStatus,
+    Room,
+    RoomLocation,
+    User,
+)
 from .schemas import (
     AdminUpdateReservation,
+    CellReportCreate,
+    CellReportDetailOut,
+    CellReportListItem,
     ChatRequest,
     ReservationCreate,
     ReservationOut,
@@ -567,6 +580,169 @@ def update_reservation_by_admin(
     )
 
 
+# ── Cell Report ───────────────────────────────────────────────────────────
+def _ensure_cell_group_access(current_user: Member, report_cell_group: str) -> None:
+    if current_user.permission == "admin":
+        return
+    if not current_user.cell_group or current_user.cell_group != report_cell_group:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+
+@app.post("/api/cell-reports", response_model=CellReportDetailOut)
+def create_cell_report(
+    payload: CellReportCreate,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> CellReportDetailOut:
+    current_user = get_current_user(token, db)
+    if current_user.title != "순장" and current_user.permission != "admin":
+        raise HTTPException(status_code=403, detail="Only cell group leaders can create reports")
+
+    member_ids = [entry.member_id for entry in payload.members]
+    members_map: dict[int, Member] = {}
+    if member_ids:
+        members = db.scalars(select(Member).where(Member.id.in_(member_ids))).all()
+        members_map = {m.id: m for m in members}
+
+    for entry in payload.members:
+        member = members_map.get(entry.member_id)
+        if not member:
+            raise HTTPException(status_code=400, detail=f"member not found: {entry.member_id}")
+        if member.cell_group != current_user.cell_group:
+            raise HTTPException(status_code=403, detail="Cannot include members from another cell group")
+
+    report = CellReport(
+        leader_member_id=current_user.id,
+        cell_group=current_user.cell_group or "",
+        meeting_date=payload.meeting_date,
+        meeting_time=payload.meeting_time,
+        meeting_place=payload.meeting_place,
+        overall_prayer=payload.overall_prayer,
+    )
+    db.add(report)
+    db.flush()
+
+    for entry in payload.members:
+        db.add(
+            CellReportMemberEntry(
+                report_id=report.id,
+                member_id=entry.member_id,
+                attended=entry.attended,
+                prayer=entry.prayer,
+            )
+        )
+
+    db.commit()
+
+    saved = db.scalar(
+        select(CellReport)
+        .where(CellReport.id == report.id)
+        .options(
+            joinedload(CellReport.leader),
+            selectinload(CellReport.entries).joinedload(CellReportMemberEntry.member),
+        )
+    )
+    if not saved:
+        raise HTTPException(status_code=500, detail="failed to load saved report")
+
+    return CellReportDetailOut(
+        id=saved.id,
+        cell_group=saved.cell_group,
+        leader_name=saved.leader.name if saved.leader else "",
+        meeting_date=saved.meeting_date,
+        meeting_time=saved.meeting_time,
+        meeting_place=saved.meeting_place,
+        overall_prayer=saved.overall_prayer,
+        entries=[
+            {
+                "member_id": e.member_id,
+                "member_name": e.member.name if e.member else "",
+                "member_title": e.member.title if e.member else "",
+                "attended": e.attended,
+                "prayer": e.prayer,
+            }
+            for e in saved.entries
+        ],
+        created_at=saved.created_at,
+        updated_at=saved.updated_at,
+    )
+
+
+@app.get("/api/cell-reports", response_model=list[CellReportListItem])
+def list_cell_reports(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> list[CellReportListItem]:
+    current_user = get_current_user(token, db)
+    stmt = (
+        select(CellReport)
+        .options(joinedload(CellReport.leader), selectinload(CellReport.entries))
+        .order_by(CellReport.meeting_date.desc(), CellReport.created_at.desc())
+    )
+
+    if current_user.permission != "admin":
+        stmt = stmt.where(CellReport.cell_group == (current_user.cell_group or ""))
+
+    reports = db.scalars(stmt).all()
+    return [
+        CellReportListItem(
+            id=r.id,
+            meeting_date=r.meeting_date,
+            meeting_time=r.meeting_time,
+            meeting_place=r.meeting_place,
+            overall_prayer=r.overall_prayer,
+            attendee_count=sum(1 for e in r.entries if e.attended),
+            total_count=len(r.entries),
+            leader_name=r.leader.name if r.leader else "",
+            created_at=r.created_at,
+        )
+        for r in reports
+    ]
+
+
+@app.get("/api/cell-reports/{report_id}", response_model=CellReportDetailOut)
+def get_cell_report_detail(
+    report_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> CellReportDetailOut:
+    current_user = get_current_user(token, db)
+    report = db.scalar(
+        select(CellReport)
+        .where(CellReport.id == report_id)
+        .options(
+            joinedload(CellReport.leader),
+            selectinload(CellReport.entries).joinedload(CellReportMemberEntry.member),
+        )
+    )
+    if not report:
+        raise HTTPException(status_code=404, detail="report not found")
+
+    _ensure_cell_group_access(current_user, report.cell_group)
+
+    return CellReportDetailOut(
+        id=report.id,
+        cell_group=report.cell_group,
+        leader_name=report.leader.name if report.leader else "",
+        meeting_date=report.meeting_date,
+        meeting_time=report.meeting_time,
+        meeting_place=report.meeting_place,
+        overall_prayer=report.overall_prayer,
+        entries=[
+            {
+                "member_id": e.member_id,
+                "member_name": e.member.name if e.member else "",
+                "member_title": e.member.title if e.member else "",
+                "attended": e.attended,
+                "prayer": e.prayer,
+            }
+            for e in report.entries
+        ],
+        created_at=report.created_at,
+        updated_at=report.updated_at,
+    )
+
+
 # ── AI Chat ───────────────────────────────────────────────────────────────
 
 _CHAT_TOOLS = [
@@ -662,6 +838,36 @@ _CHAT_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_cell_report",
+            "description": "Create a new cell group report for the current user's cell group. Only available for 순장. Confirm with the user before saving.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "meeting_date": {"type": "string", "description": "Meeting date in YYYY-MM-DD format"},
+                    "meeting_time": {"type": "string", "description": "Meeting time text, e.g. 19:30", "default": ""},
+                    "meeting_place": {"type": "string", "description": "Meeting place", "default": ""},
+                    "overall_prayer": {"type": "string", "description": "Overall prayer topics for the meeting", "default": ""},
+                    "members": {
+                        "type": "array",
+                        "description": "Per-member attendance and prayer data",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "member_id": {"type": "integer", "description": "Member ID"},
+                                "attended": {"type": "boolean", "description": "Whether this member attended"},
+                                "prayer": {"type": "string", "description": "Prayer topic for this member", "default": ""}
+                            },
+                            "required": ["member_id", "attended"]
+                        }
+                    }
+                },
+                "required": ["meeting_date", "members"],
+            },
+        },
+    },
 ]
 
 
@@ -728,6 +934,7 @@ You can help users:
 2. View existing reservations
 3. Create new reservations
 4. If the user is 순장 (cell group leader): view and update cell group member information
+5. If the user is 순장 (cell group leader): create a cell report for a meeting
 
 Important rules:
 - The server stores times as-is without timezone conversion. Pass times EXACTLY as the user specifies them (do NOT add or subtract hours for UTC conversion).
@@ -736,8 +943,12 @@ Important rules:
 - For create_reservation, use the logged-in user's name/phone/email from the context. If the user is not logged in (no user info), inform them they must log in first.
 - After creating a reservation, the status is 'pending' and requires admin approval.
 - For cell group tools (get_cell_group_members, update_cell_group_member): only available when user title is '순장'.
+- For create_cell_report: only available when user title is '순장'. Gather meeting date/time/place, attendance, member prayer topics, and overall prayer topics before saving.
 - For get_cell_group_members, when the user asks about a car number/plate, pass it in query and include car_plate in your answer.
 - Always confirm with the user before calling update_cell_group_member.
+- Always confirm with the user before calling create_cell_report.
+- update_cell_group_member requires member_id. If unknown, call get_cell_group_members first to find the correct ID.
+- create_cell_report requires member_id values for each attendee/member entry. If unknown, call get_cell_group_members first.
 - Be concise, friendly, and helpful."""
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -932,6 +1143,90 @@ Important rules:
             "updated_fields": updated_fields,
         }
 
+    def _exec_create_cell_report(
+        meeting_date: str,
+        members: list[dict],
+        meeting_time: str = "",
+        meeting_place: str = "",
+        overall_prayer: str = "",
+    ) -> dict:
+        if payload.user_title != "순장":
+            return {"error": "순장 권한이 있는 사용자만 순보고서를 작성할 수 있습니다."}
+        if not payload.user_cell_group:
+            return {"error": "셀 그룹 정보가 없습니다. 로그인 상태를 확인해주세요."}
+
+        try:
+            report_date = date.fromisoformat(meeting_date)
+        except ValueError:
+            return {"error": "meeting_date는 YYYY-MM-DD 형식이어야 합니다."}
+
+        if not isinstance(members, list) or len(members) == 0:
+            return {"error": "최소 1명 이상의 순원 정보가 필요합니다."}
+
+        leader = db.scalar(
+            select(Member)
+            .where(Member.name == payload.user_name, Member.cell_group == payload.user_cell_group)
+            .limit(1)
+        )
+        if not leader:
+            return {"error": "순장 사용자 정보를 찾을 수 없습니다."}
+
+        member_ids = [entry.get("member_id") for entry in members if entry.get("member_id") is not None]
+        if not member_ids:
+            return {"error": "member_id가 포함된 순원 정보가 필요합니다."}
+
+        member_rows = db.scalars(select(Member).where(Member.id.in_(member_ids))).all()
+        member_map = {member.id: member for member in member_rows}
+
+        normalized_members: list[dict] = []
+        for entry in members:
+            member_id = entry.get("member_id")
+            target = member_map.get(member_id)
+            if not target:
+                return {"error": f"멤버 ID {member_id}를 찾을 수 없습니다."}
+            if target.cell_group != payload.user_cell_group:
+                return {"error": "같은 셀 그룹 멤버만 순보고에 포함할 수 있습니다."}
+            normalized_members.append(
+                {
+                    "member": target,
+                    "attended": bool(entry.get("attended", False)),
+                    "prayer": str(entry.get("prayer") or ""),
+                }
+            )
+
+        report = CellReport(
+            leader_member_id=leader.id,
+            cell_group=payload.user_cell_group,
+            meeting_date=report_date,
+            meeting_time=meeting_time,
+            meeting_place=meeting_place,
+            overall_prayer=overall_prayer,
+        )
+
+        db.add(report)
+        db.flush()
+
+        for entry in normalized_members:
+            db.add(
+                CellReportMemberEntry(
+                    report_id=report.id,
+                    member_id=entry["member"].id,
+                    attended=entry["attended"],
+                    prayer=entry["prayer"],
+                )
+            )
+
+        db.commit()
+        return {
+            "success": True,
+            "report_id": report.id,
+            "meeting_date": meeting_date,
+            "meeting_time": meeting_time,
+            "meeting_place": meeting_place,
+            "member_count": len(normalized_members),
+            "attended_count": sum(1 for entry in normalized_members if entry["attended"]),
+        }
+
     def _dispatch(name: str, args: dict):
         if name == "get_rooms":
             return _exec_get_rooms()
@@ -945,6 +1240,8 @@ Important rules:
             return _exec_get_cell_group_members(**args)
         if name == "update_cell_group_member":
             return _exec_update_cell_group_member(**args)
+        if name == "create_cell_report":
+            return _exec_create_cell_report(**args)
         return {"error": f"Unknown tool: {name}"}
 
     # ── AI tool-call loop ─────────────────────────────────────────────────
