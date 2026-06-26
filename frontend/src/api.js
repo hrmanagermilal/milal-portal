@@ -269,4 +269,11 @@ export const api = {
       method: "DELETE",
       headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
     }),
+
+  // ── AI Chat ────────────────────────────────────────────────────────────
+  sendChat: (payload) =>
+    request("/api/chat", {
+      method: "POST",
+      body: payload,
+    }),
 };

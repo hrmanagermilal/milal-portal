@@ -5,13 +5,12 @@ import Button from "@mui/material/Button";
 import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
-import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import Badge from "@mui/material/Badge";
 import Tooltip from "@mui/material/Tooltip";
 import { useLanguage } from "../i18n/LanguageContext";
-import {CloseIcon, MenuIcon, PlusIcon, CheckIcon, SettingsIcon, RefreshIcon, CalendarIcon, ChevronDownIcon, PeopleIcon} from "./common/SideBarIcons";
+import {MenuIcon, PlusIcon, CheckIcon, SettingsIcon, RefreshIcon, CalendarIcon, ChevronDownIcon, PeopleIcon} from "./common/SideBarIcons";
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import {EventDef} from "../event/EventDef";
@@ -69,15 +68,8 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
         overflow: "hidden",
       }}
     >
-      {/* Mobile close button */}
-      <Box sx={{ display: { xs: "flex", md: "none" }, justifyContent: "flex-end", px: 1.5, pt: 1 }}>
-        <IconButton size="small" onClick={onClose} sx={{ color: "#5d7186" }}>
-          {CloseIcon}
-        </IconButton>
-      </Box>
-
       {/* Sidebar Header - Velok Branding */}
-      <Box sx={{ p: 3, pb: 2, pt: { xs: 1, md: 3 } }}>
+      <Box sx={{ p: 3, pb: 2 }}>
         <Stack spacing={1.5}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {/* Velok Logo */}
@@ -331,7 +323,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
           flexDirection: "column",
           position: "relative",
           overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+          borderRight: "1px solid #e0e6ef",
         }}
       >
         {sidebarContent}
@@ -344,7 +336,16 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: "block", md: "none" },
-          "& .MuiDrawer-paper": { width: SIDEBAR_W, boxSizing: "border-box", bgcolor: "#eef2f7" },
+          "& .MuiDrawer-paper": {
+            width: SIDEBAR_W,
+            boxSizing: "border-box",
+            bgcolor: "#eef2f7",
+            top: "52px",
+            height: "calc(100% - 52px)",
+          },
+          "& .MuiModal-backdrop": {
+            top: "52px",
+          },
         }}
       >
         {sidebarContent}

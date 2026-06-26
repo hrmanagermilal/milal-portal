@@ -1,6 +1,8 @@
+import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -17,6 +19,7 @@ from .database import Base, engine, get_db
 from .models import Member, OtpCode, Reservation, ReservationStatus, Room, RoomLocation, User
 from .schemas import (
     AdminUpdateReservation,
+    ChatRequest,
     ReservationCreate,
     ReservationOut,
     RoomCreate,
@@ -562,6 +565,329 @@ def update_reservation_by_admin(
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
+
+
+# ── AI Chat ───────────────────────────────────────────────────────────────
+
+_CHAT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_rooms",
+            "description": "Get list of all active rooms with their details (id, name, capacity, description, floor)",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_reservations",
+            "description": "Get reservations for an optional date range. Dates are in UTC ISO format.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from_date": {"type": "string", "description": "Start date (UTC ISO format, e.g. 2024-06-10T00:00:00)"},
+                    "to_date": {"type": "string", "description": "End date (UTC ISO format)"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_availability",
+            "description": "Check if a room is available for a given time slot. Returns available=true/false and any conflicts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "room_id": {"type": "integer", "description": "Room ID"},
+                    "start_time": {"type": "string", "description": "Start time in UTC ISO format"},
+                    "end_time": {"type": "string", "description": "End time in UTC ISO format"},
+                },
+                "required": ["room_id", "start_time", "end_time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_reservation",
+            "description": "Create a new room reservation for the current user. Always check availability first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "room_id": {"type": "integer", "description": "Room ID"},
+                    "purpose": {"type": "string", "description": "Purpose/reason for the reservation"},
+                    "attendees": {"type": "integer", "description": "Number of attendees", "default": 1},
+                    "start_time": {"type": "string", "description": "Start time in UTC ISO format"},
+                    "end_time": {"type": "string", "description": "End time in UTC ISO format"},
+                    "notes": {"type": "string", "description": "Additional notes", "default": ""},
+                },
+                "required": ["room_id", "purpose", "start_time", "end_time"],
+            },
+        },
+    },
+]
+
+
+@app.post("/api/chat")
+def chat_with_ai(
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """AI-powered natural language chat endpoint (Gemini)"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return {"message": "openai 패키지가 설치되지 않았습니다. requirements.txt를 확인하세요.", "error": True}
+
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        return {
+            "message": (
+                "AI 채팅 기능을 사용하려면 .env 파일에 GEMINI_API_KEY를 설정해야 합니다.\n"
+                "무료 발급: https://aistudio.google.com/apikey"
+            ),
+            "error": True,
+        }
+
+    client = OpenAI(
+        api_key=gemini_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
+    default_model = "gemini-2.5-flash"
+
+    # Gather rooms for context
+    rooms = db.scalars(select(Room).where(Room.is_active.is_(True)).order_by(Room.id)).all()
+    rooms_info = "\n".join(
+        [f"  - ID {r.id}: {r.name} (수용: {r.capacity}명, {r.floor}층, {r.description})" for r in rooms]
+    )
+    now_utc = datetime.utcnow()
+    _eastern = ZoneInfo("America/New_York")
+    now_eastern = datetime.now(_eastern)
+    utc_offset_hours = int(now_eastern.utcoffset().total_seconds() / 3600)  # -5 (EST) or -4 (EDT)
+    tz_label = f"EDT (UTC{utc_offset_hours:+d})" if utc_offset_hours == -4 else f"EST (UTC{utc_offset_hours:+d})"
+    lang_hint = "Please respond in Korean (한국어로 응답하세요)." if payload.language == "ko" else "Please respond in English."
+
+    user_ctx = ""
+    if payload.user_name:
+        user_ctx = f"\nCurrently logged-in user: name={payload.user_name}"
+        if payload.user_phone:
+            user_ctx += f", phone={payload.user_phone}"
+        if payload.user_email:
+            user_ctx += f", email={payload.user_email}"
+
+    system_prompt = f"""You are a helpful AI assistant for the Milal Church community room reservation portal.
+{lang_hint}
+
+Current local date/time (Eastern Time, {tz_label}): {now_eastern.strftime('%Y-%m-%d %H:%M')}
+{user_ctx}
+
+Available rooms:
+{rooms_info}
+
+You can help users:
+1. Browse rooms and check availability
+2. View existing reservations
+3. Create new reservations
+
+Important rules:
+- The server stores times as-is without timezone conversion. Pass times EXACTLY as the user specifies them (do NOT add or subtract hours for UTC conversion).
+- For example, if the user says "6pm tomorrow", pass "YYYY-MM-DDT18:00:00" as-is.
+- Always call check_availability before create_reservation.
+- For create_reservation, use the logged-in user's name/phone/email from the context. If the user is not logged in (no user info), inform them they must log in first.
+- After creating a reservation, the status is 'pending' and requires admin approval.
+- Be concise, friendly, and helpful."""
+
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    for msg in payload.history[-12:]:
+        messages.append({"role": msg.role, "content": msg.content})
+    messages.append({"role": "user", "content": payload.message})
+
+    # ── Tool execution helpers ─────────────────────────────────────────────
+    def _exec_get_rooms() -> list[dict]:
+        return [
+            {"id": r.id, "name": r.name, "capacity": r.capacity, "description": r.description, "floor": r.floor}
+            for r in db.scalars(select(Room).where(Room.is_active.is_(True)).order_by(Room.id)).all()
+        ]
+
+    def _exec_get_reservations(from_date: str | None = None, to_date: str | None = None) -> list[dict]:
+        stmt = select(Reservation).options(joinedload(Reservation.room)).order_by(Reservation.start_time.asc())
+        if from_date:
+            stmt = stmt.where(Reservation.end_time >= datetime.fromisoformat(from_date))
+        if to_date:
+            stmt = stmt.where(Reservation.start_time <= datetime.fromisoformat(to_date))
+        items = db.scalars(stmt).all()
+        return [
+            {
+                "id": i.id,
+                "room_name": i.room.name if i.room else "Unknown",
+                "requester_name": i.requester_name,
+                "purpose": i.purpose,
+                "start_time": i.start_time.isoformat(),
+                "end_time": i.end_time.isoformat(),
+                "status": i.status.value,
+            }
+            for i in items
+        ]
+
+    def _parse_dt(s: str) -> datetime:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
+
+    def _exec_check_availability(room_id: int, start_time: str, end_time: str) -> dict:
+        start = _parse_dt(start_time)
+        end = _parse_dt(end_time)
+        conflicts = db.scalars(
+            select(Reservation)
+            .options(joinedload(Reservation.room))
+            .where(
+                and_(
+                    Reservation.room_id == room_id,
+                    Reservation.status.in_([ReservationStatus.pending, ReservationStatus.approved, ReservationStatus.changed]),
+                    Reservation.start_time < end,
+                    Reservation.end_time > start,
+                )
+            )
+        ).all()
+        return {
+            "available": len(conflicts) == 0,
+            "conflicts": [
+                {
+                    "requester_name": c.requester_name,
+                    "purpose": c.purpose,
+                    "start_time": c.start_time.isoformat(),
+                    "end_time": c.end_time.isoformat(),
+                    "status": c.status.value,
+                }
+                for c in conflicts
+            ],
+        }
+
+    def _exec_create_reservation(
+        room_id: int,
+        purpose: str,
+        start_time: str,
+        end_time: str,
+        attendees: int = 1,
+        notes: str = "",
+    ) -> dict:
+        if not payload.user_name:
+            return {"error": "예약을 생성하려면 먼저 로그인해주세요."}
+
+        phone = payload.user_phone or "000-0000-0000"
+        email = payload.user_email or "noreply@milal.org"
+        start = _parse_dt(start_time)
+        end = _parse_dt(end_time)
+
+        if end <= start:
+            return {"error": "종료 시간은 시작 시간 이후여야 합니다."}
+
+        room = db.get(Room, room_id)
+        if not room or not room.is_active:
+            return {"error": f"Room ID {room_id}를 찾을 수 없습니다."}
+
+        conflict = db.scalar(
+            select(Reservation).where(
+                and_(
+                    Reservation.room_id == room_id,
+                    Reservation.status.in_([ReservationStatus.pending, ReservationStatus.approved, ReservationStatus.changed]),
+                    Reservation.start_time < end,
+                    Reservation.end_time > start,
+                )
+            ).limit(1)
+        )
+        if conflict:
+            return {"error": "선택한 시간에 이미 예약이 있습니다."}
+
+        new_item = Reservation(
+            room_id=room_id,
+            requester_name=payload.user_name,
+            phone=phone,
+            email=email,
+            purpose=purpose,
+            attendees=attendees,
+            notes=notes,
+            start_time=start,
+            end_time=end,
+            status=ReservationStatus.pending,
+            repeat_type="none",
+            repeat_count=1,
+        )
+        db.add(new_item)
+        db.commit()
+        db.refresh(new_item)
+        return {
+            "success": True,
+            "reservation_id": new_item.id,
+            "room_name": room.name,
+            "start_time": start.isoformat(),
+            "end_time": end.isoformat(),
+            "status": "pending",
+        }
+
+    def _dispatch(name: str, args: dict):
+        if name == "get_rooms":
+            return _exec_get_rooms()
+        if name == "get_reservations":
+            return _exec_get_reservations(**args)
+        if name == "check_availability":
+            return _exec_check_availability(**args)
+        if name == "create_reservation":
+            return _exec_create_reservation(**args)
+        return {"error": f"Unknown tool: {name}"}
+
+    # ── AI tool-call loop ─────────────────────────────────────────────────
+    model_name = os.getenv("OPENAI_MODEL", default_model)
+    try:
+        for _ in range(6):  # max 6 iterations
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                tools=_CHAT_TOOLS,
+                tool_choice="auto",
+            )
+            choice = response.choices[0]
+            msg = choice.message
+
+            # Append assistant message
+            assistant_msg: dict = {"role": "assistant"}
+            if msg.content:
+                assistant_msg["content"] = msg.content
+            if msg.tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in msg.tool_calls
+                ]
+            messages.append(assistant_msg)
+
+            if choice.finish_reason == "tool_calls" and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tool_args = json.loads(tc.function.arguments)
+                    result = _dispatch(tc.function.name, tool_args)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(result, ensure_ascii=False, default=str),
+                        }
+                    )
+            else:
+                return {"message": msg.content or ""}
+
+        return {"message": "처리 시간이 초과되었습니다. 다시 시도해주세요."}
+    except Exception as exc:
+        print(f"[chat] Gemini error: {exc}")
+        exc_str = str(exc)
+        if "429" in exc_str or "quota" in exc_str.lower():
+            return {"message": "Gemini API 요청 한도에 도달했습니다. 잠시 후 다시 시도해주세요.", "error": True}
+        if "401" in exc_str or "invalid" in exc_str.lower():
+            return {"message": "GEMINI_API_KEY가 유효하지 않습니다. .env 파일을 확인해주세요.", "error": True}
+        return {"message": f"AI 처리 중 오류가 발생했습니다: {exc}", "error": True}
 
 
 if FRONTEND_DIST_DIR.exists():
