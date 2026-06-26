@@ -97,9 +97,11 @@ export default function App() {
 
   function handleLogout() {
     localStorage.removeItem("milal_user");
+    localStorage.removeItem("milal_permission");
     localStorage.removeItem("milal_title");
     localStorage.removeItem("milal_cell_group");
     setUserName("");
+    setUserPermission("member");
     setUserTitle("");
     setUserCellGroup("");
     DataMart.clearCurrentUser();
@@ -387,6 +389,8 @@ export default function App() {
           userName={userName}
           userPhone={DataMart.getCurrentUser()?.phone || ""}
           userEmail={DataMart.getCurrentUser()?.email || ""}
+          userTitle={userTitle}
+          userCellGroup={userCellGroup}
         />
       )}
     </Box>

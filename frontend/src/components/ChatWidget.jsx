@@ -112,7 +112,7 @@ MessageBubble.propTypes = {
   msg: PropTypes.shape({ role: PropTypes.string, content: PropTypes.string }).isRequired,
 };
 
-export default function ChatWidget({ userName, userPhone, userEmail }) {
+export default function ChatWidget({ userName, userPhone, userEmail, userTitle, userCellGroup }) {
   const { t, language } = useLanguage();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -163,6 +163,8 @@ export default function ChatWidget({ userName, userPhone, userEmail }) {
           user_name: userName || "",
           user_phone: userPhone || "",
           user_email: userEmail || "",
+          user_title: userTitle || "",
+          user_cell_group: userCellGroup || "",
           language: language || "ko",
         });
         setMessages((prev) =>
@@ -422,4 +424,6 @@ ChatWidget.propTypes = {
   userName: PropTypes.string,
   userPhone: PropTypes.string,
   userEmail: PropTypes.string,
+  userTitle: PropTypes.string,
+  userCellGroup: PropTypes.string,
 };

@@ -255,7 +255,7 @@ export const translations = {
     // AI Chat Widget
     chatTooltip: "AI Assistant",
     chatTitle: "AI Assistant",
-    chatOnline: "Online · GPT-4o",
+    chatOnline: "Online · LLM",
     chatWelcome: "Hi! I'm your AI assistant for Milal Community. I can help you check room availability, view reservations, or even create a reservation. What can I help you with?",
     chatPlaceholder: "Ask me anything about reservations...",
     chatError: "An error occurred. Please try again.",
@@ -518,7 +518,7 @@ export const translations = {
     // AI Chat Widget
     chatTooltip: "AI 도우미",
     chatTitle: "AI 도우미",
-    chatOnline: "온라인 · GPT-4o",
+    chatOnline: "온라인 · LLM",
     chatWelcome: "안녕하세요! 밀알 포털 AI 도우미입니다. 장소 예약 현황 확인, 예약 가능 여부 조회, 예약 신청 등을 자연어로 도와드릴 수 있어요. 무엇을 도와드릴까요?",
     chatPlaceholder: "예약 관련 질문을 입력하세요...",
     chatError: "오류가 발생했습니다. 다시 시도해주세요.",
