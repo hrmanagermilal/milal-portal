@@ -245,7 +245,7 @@ export default function CellReportPanel() {
                           sx={{
                             color: "#2f68f9",
                             borderColor: "#2f68f9",
-                            fontSize: "14px",
+                            fontSize: "12px",
                             fontWeight: 600,
                             textTransform: "none",
                             "&:hover": {

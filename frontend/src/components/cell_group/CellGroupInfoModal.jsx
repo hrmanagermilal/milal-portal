@@ -136,6 +136,8 @@ export default function CellGroupInfoModal() {
                           variant="outlined"
                           onClick={() => handleEditMember(member)}
                           sx={{
+                            color: "#2f68f9",
+                            borderColor: "#2f68f9",
                             textTransform: "none",
                             fontSize: "12px",
                           }}
