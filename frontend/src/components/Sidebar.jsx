@@ -10,7 +10,7 @@ import Stack from "@mui/material/Stack";
 import Badge from "@mui/material/Badge";
 import Tooltip from "@mui/material/Tooltip";
 import { useLanguage } from "../i18n/LanguageContext";
-import {MenuIcon, PlusIcon, CheckIcon, SettingsIcon, RefreshIcon, CalendarIcon, ChevronDownIcon, PeopleIcon} from "./common/SideBarIcons";
+import {MenuIcon, PlusIcon, CheckIcon, SettingsIcon, RefreshIcon, CalendarIcon, ChevronDownIcon, PeopleIcon, CellGroupInfoIcon, CellReportIcon} from "./common/SideBarIcons";
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import {EventDef} from "../event/EventDef";
 import EventPublisher from "../event/EventPublisher";
@@ -166,10 +166,14 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                 <Box sx={{ position: "relative" }}>
                   <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 8, width: "1.5px", bgcolor: "#d8dfe7" }} />
                   <Stack spacing={0.25}>
-                    {[{ key: "cell-group", label: t("navCellGroupInfo") }, { key: "cell-report", label: t("navCellReport") }].map((item) => (
+                    {[
+                      { key: "cell-group", label: t("navCellGroupInfo"), icon: CellGroupInfoIcon },
+                      { key: "cell-report", label: t("navCellReport"), icon: CellReportIcon },
+                    ].map((item) => (
                       <Tooltip key={item.key} title={item.label} placement="right">
                         <Button
                           onClick={() => onTabChange(item.key)}
+                          startIcon={item.icon}
                           sx={{
                             justifyContent: "flex-start",
                             color: activeTab === item.key ? "#1976d2" : "#5d7186",

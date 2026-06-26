@@ -9,8 +9,6 @@ import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
-import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -189,28 +187,31 @@ export default function CellReportPanel() {
 
   return (
     <Stack spacing={2}>
-      <Card sx={{ borderRadius: "14px" }}>
-        <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>{t("cellReportTitle")}</Typography>
-              <Typography variant="body2" sx={{ color: "#64748b" }}>{t("cellReportGuideText")}</Typography>
-            </Box>
-            <Button variant="contained" onClick={() => setWriteOpen(true)}>
-              {t("cellReportCreateButton")}
-            </Button>
-          </Stack>
-        </CardContent>
-      </Card>
-
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
       {success && <Alert severity="success" onClose={() => setSuccess("")}>{success}</Alert>}
 
       <Card sx={{ borderRadius: "14px" }}>
         <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{t("cellReportListTitle")}</Typography>
-            <Button size="small" onClick={loadReports}>{t("navRefresh")}</Button>
+          <Stack direction="row" alignItems="center" sx={{ mb: 1.25, width: "100%" }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{t("cellReportListTitle")}</Typography>
+            </Stack>
+            <Button
+              variant="contained"
+              onClick={() => setWriteOpen(true)}
+              sx={{
+                ml: "auto",
+                bgcolor: "#2f68f9",
+                fontSize: "14px",
+                fontWeight: 600,
+                textTransform: "none",
+                "&:hover": {
+                  bgcolor: "#1e50c7",
+                },
+              }}
+            >
+              {t("cellReportCreateButton")}
+            </Button>
           </Stack>
 
           {listLoading ? (
@@ -237,7 +238,24 @@ export default function CellReportPanel() {
                       <TableCell>{r.meeting_place || "-"}</TableCell>
                       <TableCell>{`${r.attendee_count}/${r.total_count}`}</TableCell>
                       <TableCell>
-                        <Button size="small" onClick={() => openDetail(r.id)}>{t("cellReportDetailView")}</Button>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => openDetail(r.id)}
+                          sx={{
+                            color: "#2f68f9",
+                            borderColor: "#2f68f9",
+                            fontSize: "14px",
+                            fontWeight: 600,
+                            textTransform: "none",
+                            "&:hover": {
+                              borderColor: "#1e50c7",
+                              bgcolor: "rgba(47,104,249,0.06)",
+                            },
+                          }}
+                        >
+                          {t("cellReportDetailView")}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -300,7 +318,6 @@ export default function CellReportPanel() {
                         <TableRow sx={{ bgcolor: "#f8fafc" }}>
                           <TableCell sx={{ width: 100, fontWeight: 700 }}>{t("cellReportAttended")}</TableCell>
                           <TableCell sx={{ width: 180, fontWeight: 700 }}>{t("name")}</TableCell>
-                          <TableCell sx={{ width: 120, fontWeight: 700 }}>{t("title")}</TableCell>
                           <TableCell sx={{ fontWeight: 700 }}>{t("cellReportMemberPrayer")}</TableCell>
                         </TableRow>
                       </TableHead>
@@ -316,7 +333,6 @@ export default function CellReportPanel() {
                               />
                             </TableCell>
                             <TableCell>{m.name}</TableCell>
-                            <TableCell>{m.title || "-"}</TableCell>
                             <TableCell>
                               <TextField
                                 value={m.prayer}
@@ -352,8 +368,6 @@ export default function CellReportPanel() {
             </Card>
 
             <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button variant="outlined" onClick={clearDraft}>{t("clear")}</Button>
-              <Button variant="outlined" onClick={saveDraft}>{t("save")}</Button>
               <Button variant="contained" onClick={submitReport} disabled={submitLoading}>
                 {submitLoading ? t("saving") : t("cellReportSubmit")}
               </Button>
@@ -381,7 +395,6 @@ export default function CellReportPanel() {
                     <TableRow sx={{ bgcolor: "#f8fafc" }}>
                       <TableCell sx={{ width: 90, fontWeight: 700 }}>{t("cellReportAttended")}</TableCell>
                       <TableCell sx={{ width: 180, fontWeight: 700 }}>{t("name")}</TableCell>
-                      <TableCell sx={{ width: 120, fontWeight: 700 }}>{t("title")}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>{t("cellReportMemberPrayer")}</TableCell>
                     </TableRow>
                   </TableHead>
@@ -390,7 +403,6 @@ export default function CellReportPanel() {
                       <TableRow key={`${detail.id}-${entry.member_id}`}>
                         <TableCell>{entry.attended ? "O" : "-"}</TableCell>
                         <TableCell>{entry.member_name}</TableCell>
-                        <TableCell>{entry.member_title || "-"}</TableCell>
                         <TableCell>{entry.prayer || "-"}</TableCell>
                       </TableRow>
                     ))}
