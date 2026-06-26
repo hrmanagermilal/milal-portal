@@ -2,3 +2,8 @@
 /frontend/template
 /package-lock.json
 dist
+
+.env
+.env.local
+.env.*.local
+/backend/.env.example

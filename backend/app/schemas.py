@@ -135,3 +135,18 @@ class RoomLocationUpdate(BaseModel):
     y1: float
     x2: float
     y2: float
+
+
+# ── AI Chat ────────────────────────────────────────────────────────────────
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = []
+    user_name: str = ""
+    user_phone: str = ""
+    user_email: str = ""
+    language: str = "ko"

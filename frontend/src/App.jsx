@@ -20,6 +20,7 @@ import RoomSettingsPanel from "./components/room-reservation/RoomSettingsPanel";
 import CellGroupInfoModal from "./components/cell_group/CellGroupInfoModal";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
+import ChatWidget from "./components/ChatWidget";
 import { useLanguage } from "./i18n/LanguageContext";
 import EventPublisher from "./event/EventPublisher";
 import {EventDef} from "./event/EventDef";
@@ -138,6 +139,34 @@ export default function App() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // ── Silent background polling ──────────────────────────────────────────
+  useEffect(() => {
+    if (!userName) return;
+    const INTERVAL = tab === "admin" ? 5_000 : 10_000;
+    const timer = setInterval(async () => {
+      try {
+        const [roomData, reservationData] = await Promise.all([
+          api.getRooms(),
+          api.getReservations(),
+        ]);
+        setRooms(roomData);
+        setReservations((prev) => {
+          if (userPermission === "admin") {
+            const prevPending = prev.filter((r) => r.status === "pending").length;
+            const newPending  = reservationData.filter((r) => r.status === "pending").length;
+            if (newPending > prevPending) {
+              setSuccess(`🔔 새로운 예약 신청 ${newPending - prevPending}건이 접수됐습니다.`);
+            }
+          }
+          return reservationData;
+        });
+      } catch {
+        // silent — don't surface background errors
+      }
+    }, INTERVAL);
+    return () => clearInterval(timer);
+  }, [userName, tab, userPermission]);
 
   async function handleCreateReservation(formData) {
     setError("");
@@ -350,6 +379,15 @@ export default function App() {
             />
           </BottomNavigation>
         </Paper>
+      )}
+
+      {/* AI Chat Widget - always visible when logged in */}
+      {userName && (
+        <ChatWidget
+          userName={userName}
+          userPhone={DataMart.getCurrentUser()?.phone || ""}
+          userEmail={DataMart.getCurrentUser()?.email || ""}
+        />
       )}
     </Box>
   );
