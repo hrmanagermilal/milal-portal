@@ -177,6 +177,7 @@ class CellReportListItem(BaseModel):
     overall_prayer: str
     attendee_count: int
     total_count: int
+    prayer_recorded_count: int
     leader_name: str
     created_at: datetime
 
