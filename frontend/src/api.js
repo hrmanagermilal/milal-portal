@@ -218,6 +218,11 @@ export const api = {
       headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
     }),
 
+  getCellReportDateAnalysis: (meetingDate) =>
+    request(`/api/cell-reports/date-analysis?meeting_date=${encodeURIComponent(meetingDate)}`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+    }),
+
   getMember: (memberId) =>
     request(`/api/auth/member/${memberId}`, {
       headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
@@ -288,6 +293,9 @@ export const api = {
     }),
 
   // ── AI Chat ────────────────────────────────────────────────────────────
+  fetchEncouragingVerse: (language = "ko") =>
+    request(`/api/chat/encouraging-verse?language=${encodeURIComponent(language)}`),
+
   sendChat: (payload) =>
     request("/api/chat", {
       method: "POST",

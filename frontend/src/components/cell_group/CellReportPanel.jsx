@@ -19,10 +19,16 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
 import Alert from "@mui/material/Alert";
+import Pagination from "@mui/material/Pagination";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
 
 const DRAFT_KEY = "milal_cell_report_draft";
+const REPORTS_PER_PAGE = 6;
 
 function todayDate() {
   return new Date().toISOString().slice(0, 10);
@@ -30,6 +36,8 @@ function todayDate() {
 
 export default function CellReportPanel() {
   const { t } = useLanguage();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -37,10 +45,13 @@ export default function CellReportPanel() {
   const [writeOpen, setWriteOpen] = useState(false);
   const [members, setMembers] = useState([]);
   const [reports, setReports] = useState([]);
+  const [reportPage, setReportPage] = useState(1);
   const [listLoading, setListLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
   const [detail, setDetail] = useState(null);
+  const currentCellGroup = localStorage.getItem("milal_cell_group") || "";
 
   const [meetingDate, setMeetingDate] = useState(todayDate());
   const [meetingAt, setMeetingAt] = useState("");
@@ -85,6 +96,8 @@ export default function CellReportPanel() {
           draftMembers = {};
         }
       }
+
+      console.log("Draft members loaded:", data);
 
       setMembers(
         data.map((m) => ({
@@ -183,18 +196,169 @@ export default function CellReportPanel() {
     }
   };
 
-  const attendedCount = useMemo(() => members.filter((m) => m.attended).length, [members]);
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
 
+  const buildPdfMarkup = (report) => {
+    const attendedCount = report.entries.filter((entry) => entry.attended).length;
+    const rows = report.entries
+      .map(
+        (entry) => `
+          <tr>
+            <td>${entry.attended ? "O" : "-"}</td>
+            <td>${escapeHtml(entry.member_name)}</td>
+            <td>${escapeHtml(entry.prayer || "-")}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    return `
+      <div style="font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; color:#1e3258; width:760px; background:#ffffff; padding:28px 30px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #dce6fb; padding-bottom:14px;">
+          <div>
+            <div style="font-size:28px; font-weight:800; letter-spacing:0.2px;">${escapeHtml(t("cellReportTitle"))}</div>
+            <div style="font-size:13px; color:#4a5f86; margin-top:6px;">${escapeHtml(report.cell_group || "")}</div>
+          </div>
+          <div style="font-size:12px; color:#4a5f86; text-align:right; line-height:1.6;">
+            <div>${escapeHtml(t("cellReportDate"))}: ${escapeHtml(report.meeting_date || "-")}</div>
+            <div>${escapeHtml(t("cellReportTime"))}: ${escapeHtml(report.meeting_time || "-")}</div>
+            <div>${escapeHtml(t("cellReportPlace"))}: ${escapeHtml(report.meeting_place || "-")}</div>
+          </div>
+        </div>
+
+        <div style="margin-top:14px; background:#f4f8ff; border:1px solid #dbe7ff; border-radius:10px; padding:10px 12px; font-size:13px; color:#355083;">
+          ${escapeHtml(t("cellReportAttendanceCount")).replace("{attended}", String(attendedCount)).replace("{total}", String(report.entries.length))}
+        </div>
+
+        <table style="width:100%; margin-top:14px; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="background:#edf2fa;">
+              <th style="text-align:left; border:1px solid #d5deec; padding:9px 10px; width:70px;">${escapeHtml(t("cellReportAttended"))}</th>
+              <th style="text-align:left; border:1px solid #d5deec; padding:9px 10px; width:160px;">${escapeHtml(t("name"))}</th>
+              <th style="text-align:left; border:1px solid #d5deec; padding:9px 10px;">${escapeHtml(t("cellReportMemberPrayer"))}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+
+        <div style="margin-top:16px;">
+          <div style="font-size:13px; font-weight:700; color:#1e3258; margin-bottom:8px;">${escapeHtml(t("cellReportOverallPrayerSection"))}</div>
+          <div style="border:1px solid #d5deec; border-radius:10px; background:#fcfdff; min-height:120px; padding:12px 13px; font-size:13px; color:#2f3e5f; line-height:1.7; white-space:pre-wrap;">${escapeHtml(report.overall_prayer || "-")}</div>
+        </div>
+      </div>
+    `;
+  };
+
+  const exportReportPdf = async (report) => {
+    const container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.left = "-10000px";
+    container.style.top = "0";
+    container.style.zIndex = "-1";
+    container.style.background = "#fff";
+    container.innerHTML = buildPdfMarkup(report);
+    document.body.appendChild(container);
+
+    try {
+      const canvas = await html2canvas(container.firstElementChild, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+      });
+
+      const pdf = new jsPDF("p", "pt", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      const imgWidth = pageWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/png");
+      const printableHeight = pageHeight - margin * 2;
+
+      let offset = 0;
+      while (offset < imgHeight) {
+        if (offset > 0) {
+          pdf.addPage();
+        }
+        pdf.addImage(imgData, "PNG", margin, margin - offset, imgWidth, imgHeight);
+        offset += printableHeight;
+      }
+
+      const datePart = report.meeting_date || "report";
+      pdf.save(`cell-report-${datePart}.pdf`);
+    } finally {
+      document.body.removeChild(container);
+    }
+  };
+
+  const downloadReport = async (reportId) => {
+    try {
+      setDownloadingId(reportId);
+      setError("");
+      const report = await api.getCellReportDetail(reportId);
+      report.cell_group = cellGroupDisplay;
+      await exportReportPdf(report);
+      setSuccess(t("cellReportDownloadSuccess"));
+    } catch (err) {
+      setError(err.message || t("cellReportDownloadFailed"));
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const attendedCount = useMemo(() => members.filter((m) => m.attended).length, [members]);
+  const cellLeader = useMemo(() => members.find((member) => member.title === "순장"), [members]);
+  const cellGroupDisplay = currentCellGroup
+    ? `${currentCellGroup}${cellLeader?.name ? `(${cellLeader.name} 순장)` : ""}`
+    : "";
+  const totalReportPages = useMemo(
+    () => Math.max(1, Math.ceil(reports.length / REPORTS_PER_PAGE)),
+    [reports.length]
+  );
+  const pagedReports = useMemo(() => {
+    const start = (reportPage - 1) * REPORTS_PER_PAGE;
+    return reports.slice(start, start + REPORTS_PER_PAGE);
+  }, [reportPage, reports]);
+
+  useEffect(() => {
+    setReportPage(1);
+  }, [reports.length]);
+
+  console.log("Members state:", members, cellLeader, cellGroupDisplay);
   return (
-    <Stack spacing={2}>
+    <Stack
+      spacing={2}
+      sx={{
+        "& .MuiTypography-root": { fontSize: "13px" },
+        "& .MuiButton-root": { fontSize: "13px" },
+        "& .MuiInputBase-input": { fontSize: "13px" },
+        "& .MuiInputLabel-root": { fontSize: "13px" },
+        "& .MuiTableCell-root": { fontSize: "13px" },
+        "& .MuiPaginationItem-root": { fontSize: "13px" },
+        "& .MuiDialogTitle-root": { fontSize: "13px" },
+      }}
+    >
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
       {success && <Alert severity="success" onClose={() => setSuccess("")}>{success}</Alert>}
 
       <Card sx={{ borderRadius: "14px" }}>
         <CardContent>
           <Stack direction="row" alignItems="center" sx={{ mb: 1.25, width: "100%" }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{t("cellReportListTitle")}</Typography>
+            <Stack direction="row" alignItems="center" spacing={1.25}>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>{t("cellReportListTitle")}</Typography>
+              {cellGroupDisplay && (
+                <Typography variant="body2" sx={{ color: "#5d7186", fontWeight: 500 }}>
+                  {cellGroupDisplay}
+                </Typography>
+              )}
             </Stack>
             <Button
               variant="contained"
@@ -202,7 +366,7 @@ export default function CellReportPanel() {
               sx={{
                 ml: "auto",
                 bgcolor: "#2f68f9",
-                fontSize: "14px",
+                fontSize: "13px",
                 fontWeight: 600,
                 textTransform: "none",
                 "&:hover": {
@@ -219,49 +383,140 @@ export default function CellReportPanel() {
           ) : reports.length === 0 ? (
             <Typography variant="body2" sx={{ color: "#64748b" }}>{t("cellReportEmpty")}</Typography>
           ) : (
-            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: "10px" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow sx={{ bgcolor: "#f8fafc" }}>
-                    <TableCell sx={{ fontWeight: 700 }}>{t("cellReportDate")}</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>{t("cellReportTime")}</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>{t("cellReportPlace")}</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>{t("cellReportAttendanceSection")}</TableCell>
-                    <TableCell sx={{ width: 120 }} />
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {reports.map((r) => (
-                    <TableRow key={r.id} hover>
-                      <TableCell>{r.meeting_date}</TableCell>
-                      <TableCell>{r.meeting_time || "-"}</TableCell>
-                      <TableCell>{r.meeting_place || "-"}</TableCell>
-                      <TableCell>{`${r.attendee_count}/${r.total_count}`}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => openDetail(r.id)}
-                          sx={{
-                            color: "#2f68f9",
-                            borderColor: "#2f68f9",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                            textTransform: "none",
-                            "&:hover": {
-                              borderColor: "#1e50c7",
-                              bgcolor: "rgba(47,104,249,0.06)",
-                            },
-                          }}
+            <Stack spacing={1.25}>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" },
+                  gap: 1.25,
+                }}
+              >
+                {pagedReports.map((r) => (
+                  <Card
+                    key={r.id}
+                    variant="outlined"
+                    onClick={isMobile ? () => openDetail(r.id) : undefined}
+                    sx={{
+                      borderRadius: "8px",
+                      borderColor: "#2f68f9",
+                      bgcolor: "#f8fbff",
+                      cursor: isMobile ? "pointer" : "default",
+                    }}
+                  >
+                    <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                      <Stack spacing={1.15}>
+                        <Stack
+                          spacing={0.55}
+                          onClick={!isMobile ? () => openDetail(r.id) : undefined}
+                          sx={{ cursor: "pointer" }}
                         >
-                          {t("cellReportDetailView")}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                          <Stack
+                            direction="row"
+                            spacing={isMobile ? 1.6 : 1}
+                            sx={{ alignItems: "center", minWidth: 0 }}
+                          >
+                            <Typography
+                              sx={{
+                                fontWeight: 700,
+                                color: "#1976d2",
+                                fontSize: "13px",
+                                lineHeight: 1.4,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {r.meeting_date}
+                            </Typography>
+                            <Typography sx={{ color: "#94a3b8", fontSize: "13px", lineHeight: 1.4, mx: isMobile ? 0.6 : 0 }}>|</Typography>
+                            <Typography
+                              sx={{
+                                fontWeight: 600,
+                                color: "#0f264a",
+                                fontSize: "13px",
+                                lineHeight: 1.4,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {r.meeting_time || "-"}
+                            </Typography>
+                            <Typography sx={{ color: "#94a3b8", fontSize: "13px", lineHeight: 1.4, mx: isMobile ? 0.6 : 0 }}>|</Typography>
+                            <Typography
+                              sx={{
+                                fontWeight: 600,
+                                color: "#0f264a",
+                                fontSize: "13px",
+                                lineHeight: 1.4,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {r.meeting_place || "-"}
+                            </Typography>
+                          </Stack>
+                        </Stack>
+
+                        <Typography sx={{ color: "#4a5568", fontSize: "13px", lineHeight: 1.6 }}>
+                          {t("cellReportAttendanceSection")}: {r.attendee_count}/{r.total_count} · {t("cellReportMemberPrayer")}: {r.prayer_recorded_count}
+                        </Typography>
+
+                        {!isMobile && (
+                          <Stack direction="row" spacing={0.8}>
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={() => openDetail(r.id)}
+                              sx={{
+                                bgcolor: "#2196f3",
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                px: 2,
+                                py: 0.5,
+                                borderRadius: "6px",
+                                textTransform: "none",
+                                "&:hover": {
+                                  bgcolor: "#1e88e5",
+                                },
+                              }}
+                            >
+                              {t("cellReportDetailView")}
+                            </Button>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              disabled={downloadingId === r.id}
+                              onClick={() => downloadReport(r.id)}
+                              sx={{
+                                color: "#2f68f9",
+                                borderColor: "#2f68f9",
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                textTransform: "none",
+                                "&:hover": {
+                                  borderColor: "#1e50c7",
+                                  bgcolor: "rgba(47,104,249,0.06)",
+                                },
+                              }}
+                            >
+                              {downloadingId === r.id ? t("cellReportDownloading") : t("cellReportDownload")}
+                            </Button>
+                          </Stack>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
+
+              <Stack direction="row" justifyContent="center" sx={{ pt: 0.75 }}>
+                <Pagination
+                  count={totalReportPages}
+                  page={reportPage}
+                  onChange={(_, value) => setReportPage(value)}
+                  size={isMobile ? "small" : "medium"}
+                  color="primary"
+                />
+              </Stack>
+            </Stack>
           )}
         </CardContent>
       </Card>
@@ -272,7 +527,7 @@ export default function CellReportPanel() {
           <Stack spacing={2} sx={{ pt: 0.75, pb: 1 }}>
             <Card sx={{ borderRadius: "14px" }}>
               <CardContent>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>{t("cellReportMetaSection")}</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, mb: 1.25 }}>{t("cellReportMetaSection")}</Typography>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
                   <TextField
                     label={t("cellReportDate")}
@@ -303,7 +558,7 @@ export default function CellReportPanel() {
             <Card sx={{ borderRadius: "14px" }}>
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{t("cellReportAttendanceSection")}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{t("cellReportAttendanceSection")}</Typography>
                   <Typography variant="body2" sx={{ color: "#64748b" }}>
                     {t("cellReportAttendanceCount").replace("{attended}", String(attendedCount)).replace("{total}", String(members.length))}
                   </Typography>
@@ -355,7 +610,7 @@ export default function CellReportPanel() {
 
             <Card sx={{ borderRadius: "14px" }}>
               <CardContent>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>{t("cellReportOverallPrayerSection")}</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, mb: 1.25 }}>{t("cellReportOverallPrayerSection")}</Typography>
                 <TextField
                   multiline
                   minRows={5}
@@ -377,13 +632,39 @@ export default function CellReportPanel() {
       </Dialog>
 
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>{t("cellReportDetailTitle")}</DialogTitle>
+        <DialogTitle sx={{ pr: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ width: "100%" }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "13px" }}>{t("cellReportDetailTitle")}</Typography>
+            {isMobile && detail && (
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={downloadingId === detail.id}
+                onClick={() => downloadReport(detail.id)}
+                sx={{
+                  ml: "auto",
+                  color: "#2f68f9",
+                  borderColor: "#2f68f9",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  textTransform: "none",
+                  "&:hover": {
+                    borderColor: "#1e50c7",
+                    bgcolor: "rgba(47,104,249,0.06)",
+                  },
+                }}
+              >
+                {downloadingId === detail.id ? t("cellReportDownloading") : t("cellReportDownload")}
+              </Button>
+            )}
+          </Stack>
+        </DialogTitle>
         <DialogContent sx={{ pt: 2.5 }}>
           {detailLoading ? (
             <Box sx={{ py: 3, display: "flex", justifyContent: "center" }}><CircularProgress size={24} /></Box>
           ) : detail ? (
             <Stack spacing={2} sx={{ pt: 0.75, pb: 1 }}>
-              <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 0.5 }}>
+              <Stack direction={{ xs: "column", md: "row" }} spacing={{ xs: 2, md: 1 }} sx={{ mt: 0.5 }}>
                 <TextField label={t("cellReportDate")} value={detail.meeting_date || ""} fullWidth InputProps={{ readOnly: true }} />
                 <TextField label={t("cellReportTime")} value={detail.meeting_time || ""} fullWidth InputProps={{ readOnly: true }} />
                 <TextField label={t("cellReportPlace")} value={detail.meeting_place || ""} fullWidth InputProps={{ readOnly: true }} />
@@ -418,6 +699,23 @@ export default function CellReportPanel() {
                 minRows={4}
                 InputProps={{ readOnly: true }}
               />
+
+              <Stack direction="row" justifyContent="flex-end">
+                <Button
+                  variant="contained"
+                  onClick={() => setDetailOpen(false)}
+                  sx={{
+                    bgcolor: "#2f68f9",
+                    fontWeight: 600,
+                    textTransform: "none",
+                    "&:hover": {
+                      bgcolor: "#1e50c7",
+                    },
+                  }}
+                >
+                  {t("close")}
+                </Button>
+              </Stack>
             </Stack>
           ) : null}
         </DialogContent>

@@ -16,18 +16,71 @@ import { api } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 
 const FAVICON = "/favicon.png";
+const CHAT_LAST_ACTIVE_KEY = "milal_chat_last_active_at";
+const LONG_IDLE_MS = 1000 * 60 * 60 * 6;
+
+const ENCOURAGING_VERSES_KO = [
+  "두려워하지 말라 내가 너와 함께 함이라 놀라지 말라 나는 네 하나님이 됨이라 내가 너를 굳세게 하리라 참으로 너를 도와 주리라. (이사야 41:10)",
+  "수고하고 무거운 짐 진 자들아 다 내게로 오라 내가 너희를 쉬게 하리라. (마태복음 11:28)",
+  "아무 것도 염려하지 말고 오직 모든 일에 기도와 간구로 너희 구할 것을 하나님께 아뢰라. (빌립보서 4:6)",
+  "내가 너희를 고아와 같이 버려두지 아니하고 너희에게로 오리라. (요한복음 14:18)",
+  "여호와는 나의 목자시니 내게 부족함이 없으리로다. (시편 23:1)",
+];
+
+const ENCOURAGING_VERSES_EN = [
+  "Do not fear, for I am with you; do not be dismayed, for I am your God. (Isaiah 41:10)",
+  "Come to me, all you who are weary and burdened, and I will give you rest. (Matthew 11:28)",
+  "Do not be anxious about anything, but in every situation, by prayer and petition, present your requests to God. (Philippians 4:6)",
+  "I will not leave you as orphans; I will come to you. (John 14:18)",
+  "The Lord is my shepherd; I shall not want. (Psalm 23:1)",
+];
+
+function buildLocalEncouragingGreeting(language) {
+  const isKo = language === "ko";
+  const verses = isKo ? ENCOURAGING_VERSES_KO : ENCOURAGING_VERSES_EN;
+  const verse = verses[Math.floor(Math.random() * verses.length)];
+  const intro = isKo
+    ? "샬롬. 함께 마음을 나누기 전에 말씀으로 먼저 인사드릴게요."
+    : "Shalom. Before we begin, let me greet you with a verse.";
+  return `${intro}\n${verse}`;
+}
+
+async function buildEncouragingGreeting(language) {
+  const isKo = language === "ko";
+  const intro = isKo
+    ? "샬롬. 함께 마음을 나누기 전에 말씀으로 먼저 인사드릴게요."
+    : "Shalom. Before we begin, let me greet you with a verse.";
+
+  try {
+    const result = await api.fetchEncouragingVerse(language || "ko");
+    const verse = String(result?.verse || "").trim();
+    if (verse) {
+      return `${intro}\n${verse}`;
+    }
+  } catch {
+    // Fallback to local verses when API/network/model fails.
+  }
+
+  return buildLocalEncouragingGreeting(language);
+}
 
 const QUICK_PROMPTS_KO = [
   "오늘 예약 현황 알려줘",
   "내일 오후 2시 장소 예약 가능해?",
   "예약 신청해줘",
   "채팅으로 순보고서 작성 도와줘",
+  "올해 순모임 분석해줘",
+  "지난달 순모임 보고 분석해줘",
+  "순원의 지난 5개월 기도제목 변화 분석해줘",
 ];
 const QUICK_PROMPTS_EN = [
   "Show today's reservations",
   "Is the conference room free tomorrow 2pm?",
   "Help me make a reservation",
   "Help me write a cell report",
+  "Analyze this year's cell meeting trends",
+  "Analyze last month's cell report",
+  "Analyze one member's prayer topic changes over the last 5 months",
 ];
 
 function TypingDots() {
@@ -134,18 +187,33 @@ export default function ChatWidget({ userName, userPhone, userEmail, userTitle, 
   }, [messages, loading, scrollToBottom]);
 
   useEffect(() => {
-    if (open && messages.length === 0) {
-      setMessages([
-        {
-          role: "assistant",
-          content: t("chatWelcome"),
-        },
-      ]);
-    }
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [open]);  // eslint-disable-line react-hooks/exhaustive-deps
+    let active = true;
+
+    const initGreeting = async () => {
+      if (open && messages.length === 0) {
+        const greeting = await buildEncouragingGreeting(language);
+        if (!active) {
+          return;
+        }
+        setMessages([
+          {
+            role: "assistant",
+            content: `${greeting}\n\n${t("chatWelcome")}`,
+          },
+        ]);
+        localStorage.setItem(CHAT_LAST_ACTIVE_KEY, String(Date.now()));
+      }
+      if (open) {
+        setTimeout(() => inputRef.current?.focus(), 100);
+      }
+    };
+
+    initGreeting();
+
+    return () => {
+      active = false;
+    };
+  }, [open, language]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSend = useCallback(
     async (text) => {
@@ -155,8 +223,21 @@ export default function ChatWidget({ userName, userPhone, userEmail, userTitle, 
 
       const userMsg = { role: "user", content };
       const history = messages.filter((m) => m.role !== "typing");
-      setMessages((prev) => [...prev, userMsg, { role: "typing", content: "" }]);
+      const now = Date.now();
+      const lastActive = Number(localStorage.getItem(CHAT_LAST_ACTIVE_KEY) || "0");
+      const shouldSendEncouragingGreeting = history.length > 0 && now - lastActive >= LONG_IDLE_MS;
+      const greetingMsg = shouldSendEncouragingGreeting
+        ? { role: "assistant", content: await buildEncouragingGreeting(language) }
+        : null;
+
+      setMessages((prev) => [
+        ...prev,
+        ...(greetingMsg ? [greetingMsg] : []),
+        userMsg,
+        { role: "typing", content: "" },
+      ]);
       setLoading(true);
+      localStorage.setItem(CHAT_LAST_ACTIVE_KEY, String(now));
 
       try {
         const result = await api.sendChat({
@@ -182,9 +263,13 @@ export default function ChatWidget({ userName, userPhone, userEmail, userTitle, 
         );
       } finally {
         setLoading(false);
+        localStorage.setItem(CHAT_LAST_ACTIVE_KEY, String(Date.now()));
+        if (open) {
+          setTimeout(() => inputRef.current?.focus(), 0);
+        }
       }
     },
-    [input, loading, messages, userName, userPhone, userEmail, language, t]
+    [input, loading, messages, userName, userPhone, userEmail, userTitle, userCellGroup, language, t, open]
   );
 
   const handleKeyDown = (e) => {

@@ -1,8 +1,7 @@
-import json
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
+import re
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -32,7 +31,6 @@ from .schemas import (
     CellReportCreate,
     CellReportDetailOut,
     CellReportListItem,
-    ChatRequest,
     ReservationCreate,
     ReservationOut,
     RoomCreate,
@@ -43,6 +41,7 @@ from .schemas import (
     RoomLocationUpdate,
 )
 from .auth_routes import router as auth_router, _send_email, get_current_user, oauth2_scheme
+from .ai_chat import create_ai_chat_router
 
 app = FastAPI(title="Milal Community API", version="1.0.0")
 
@@ -588,6 +587,310 @@ def _ensure_cell_group_access(current_user: Member, report_cell_group: str) -> N
         raise HTTPException(status_code=403, detail="Permission denied")
 
 
+def _analyze_cell_reports(
+    db: Session,
+    cell_group: str,
+    year: int,
+) -> dict:
+    start_date = date(year, 1, 1)
+    end_date = date(year + 1, 1, 1)
+
+    report_ids = db.scalars(
+        select(CellReport.id)
+        .where(
+            CellReport.cell_group == cell_group,
+            CellReport.meeting_date >= start_date,
+            CellReport.meeting_date < end_date,
+        )
+    ).all()
+
+    if not report_ids:
+        return {
+            "year": year,
+            "cell_group": cell_group,
+            "meeting_count": 0,
+            "message": "해당 연도의 순보고 데이터가 없습니다.",
+            "lowest_attendance_member": None,
+            "most_shared_prayer_member": None,
+            "attendance_rank": [],
+            "prayer_sharing_rank": [],
+        }
+
+    entries = db.scalars(
+        select(CellReportMemberEntry)
+        .where(CellReportMemberEntry.report_id.in_(report_ids))
+        .options(joinedload(CellReportMemberEntry.member))
+    ).all()
+
+    attendance_stats: dict[int, dict] = {}
+    prayer_stats: dict[int, dict] = {}
+
+    for entry in entries:
+        if not entry.member:
+            continue
+
+        att = attendance_stats.setdefault(
+            entry.member_id,
+            {"member_id": entry.member_id, "member_name": entry.member.name, "total": 0, "attended": 0},
+        )
+        att["total"] += 1
+        if entry.attended:
+            att["attended"] += 1
+
+        prayer_text = (entry.prayer or "").strip()
+        if prayer_text:
+            pr = prayer_stats.setdefault(
+                entry.member_id,
+                {
+                    "member_id": entry.member_id,
+                    "member_name": entry.member.name,
+                    "entry_count": 0,
+                    "sample": prayer_text,
+                },
+            )
+            pr["entry_count"] += 1
+            if len(prayer_text) > len(pr["sample"]):
+                pr["sample"] = prayer_text
+
+    attendance_rank = []
+    for _, stat in attendance_stats.items():
+        if stat["total"] <= 0:
+            continue
+        rate = stat["attended"] / stat["total"]
+        attendance_rank.append(
+            {
+                "member_id": stat["member_id"],
+                "member_name": stat["member_name"],
+                "attended": stat["attended"],
+                "total": stat["total"],
+                "attendance_rate": round(rate, 4),
+            }
+        )
+
+    attendance_rank.sort(key=lambda row: (row["attendance_rate"], row["member_name"]))
+
+    prayer_sharing_rank = list(prayer_stats.values())
+    prayer_sharing_rank.sort(key=lambda row: (-row["entry_count"], row["member_name"]))
+
+    return {
+        "year": year,
+        "cell_group": cell_group,
+        "meeting_count": len(report_ids),
+        "lowest_attendance_member": attendance_rank[0] if attendance_rank else None,
+        "most_shared_prayer_member": prayer_sharing_rank[0] if prayer_sharing_rank else None,
+        "attendance_rank": attendance_rank[:5],
+        "prayer_sharing_rank": prayer_sharing_rank[:5],
+        "analysis_note": "기도 나눔 빈도와 기록 내용을 중심으로 정리한 참고 정보입니다.",
+    }
+
+
+def _analyze_cell_report_by_date(
+    db: Session,
+    cell_group: str,
+    meeting_date: date,
+) -> dict:
+    reports = db.scalars(
+        select(CellReport)
+        .where(
+            CellReport.cell_group == cell_group,
+            CellReport.meeting_date == meeting_date,
+        )
+        .options(
+            joinedload(CellReport.leader),
+            selectinload(CellReport.entries).joinedload(CellReportMemberEntry.member),
+        )
+        .order_by(CellReport.created_at.desc(), CellReport.id.desc())
+    ).all()
+
+    if not reports:
+        return {
+            "meeting_date": meeting_date.isoformat(),
+            "cell_group": cell_group,
+            "report_found": False,
+            "message": "해당 날짜의 순보고 데이터가 없습니다.",
+            "analysis_note": "해당 날짜에 저장된 순보고가 있을 때 분석이 가능합니다.",
+        }
+
+    report = reports[0]
+    entries = report.entries or []
+    attended_entries = [e for e in entries if e.attended]
+    absent_members = [e.member.name for e in entries if (not e.attended and e.member)]
+    prayer_entries = [
+        {
+            "member_id": e.member_id,
+            "member_name": e.member.name if e.member else "",
+            "prayer": (e.prayer or "").strip(),
+        }
+        for e in entries
+        if (e.prayer or "").strip()
+    ]
+
+    keyword_counts: dict[str, int] = {}
+    for kw in _extract_keywords(report.overall_prayer or ""):
+        keyword_counts[kw] = keyword_counts.get(kw, 0) + 1
+    for item in prayer_entries:
+        for kw in _extract_keywords(item["prayer"]):
+            keyword_counts[kw] = keyword_counts.get(kw, 0) + 1
+    top_keywords = sorted(keyword_counts.items(), key=lambda x: (-x[1], x[0]))[:8]
+
+    total_members = len(entries)
+    attended_count = len(attended_entries)
+    attendance_rate = round((attended_count / total_members), 4) if total_members else 0.0
+
+    return {
+        "meeting_date": report.meeting_date.isoformat(),
+        "cell_group": report.cell_group,
+        "report_found": True,
+        "report_id": report.id,
+        "report_count_on_date": len(reports),
+        "leader_name": report.leader.name if report.leader else "",
+        "meeting_time": report.meeting_time,
+        "meeting_place": report.meeting_place,
+        "overall_prayer": report.overall_prayer,
+        "total_members": total_members,
+        "attended_count": attended_count,
+        "attendance_rate": attendance_rate,
+        "absent_members": absent_members,
+        "prayer_sharing_members": [item["member_name"] for item in prayer_entries],
+        "prayer_sharing_entries": prayer_entries,
+        "top_keywords": [{"keyword": k, "count": c} for k, c in top_keywords],
+        "analysis_note": "해당 날짜 순보고를 바탕으로 출석과 기도 나눔 흐름을 정리한 참고 정보입니다.",
+    }
+
+
+def _month_start(d: date) -> date:
+    return date(d.year, d.month, 1)
+
+
+def _add_months(d: date, months: int) -> date:
+    total = d.year * 12 + (d.month - 1) + months
+    year = total // 12
+    month = total % 12 + 1
+    return date(year, month, 1)
+
+
+def _extract_keywords(text_value: str) -> list[str]:
+    if not text_value:
+        return []
+    tokens = re.findall(r"[가-힣A-Za-z0-9]{2,}", text_value.lower())
+    stop = {
+        "그리고", "하지만", "또한", "위한", "기도", "기도제목", "있기", "있도록",
+        "the", "and", "for", "with", "that", "this", "from", "have", "been",
+    }
+    return [t for t in tokens if t not in stop]
+
+
+def _analyze_member_prayer_trend(
+    db: Session,
+    cell_group: str,
+    member_name: str,
+    months: int,
+) -> dict:
+    months = max(1, min(months, 24))
+    now = datetime.now().date()
+    period_end = _add_months(_month_start(now), 1)
+    period_start = _add_months(period_end, -months)
+
+    candidates = db.scalars(
+        select(Member)
+        .where(Member.cell_group == cell_group, Member.name.contains(member_name.strip()))
+        .order_by(Member.name.asc())
+    ).all()
+
+    if not candidates:
+        return {
+            "cell_group": cell_group,
+            "member_name": member_name,
+            "months": months,
+            "message": "해당 이름의 순원을 찾지 못했습니다.",
+            "member": None,
+        }
+
+    exact = [m for m in candidates if m.name == member_name.strip()]
+    target = exact[0] if exact else candidates[0]
+
+    rows = db.execute(
+        select(CellReportMemberEntry, CellReport)
+        .join(CellReport, CellReportMemberEntry.report_id == CellReport.id)
+        .where(
+            CellReport.cell_group == cell_group,
+            CellReportMemberEntry.member_id == target.id,
+            CellReport.meeting_date >= period_start,
+            CellReport.meeting_date < period_end,
+        )
+        .order_by(CellReport.meeting_date.asc())
+    ).all()
+
+    timeline = []
+    monthly: dict[str, dict] = {}
+    all_keywords: dict[str, int] = {}
+    attended_count = 0
+
+    for entry, report in rows:
+        prayer_text = (entry.prayer or "").strip()
+        if entry.attended:
+            attended_count += 1
+
+        month_key = report.meeting_date.strftime("%Y-%m")
+        item = monthly.setdefault(
+            month_key,
+            {
+                "month": month_key,
+                "meeting_count": 0,
+                "attended_count": 0,
+                "prayer_entry_count": 0,
+            },
+        )
+        item["meeting_count"] += 1
+        if entry.attended:
+            item["attended_count"] += 1
+        if prayer_text:
+            item["prayer_entry_count"] += 1
+
+        timeline.append(
+            {
+                "meeting_date": report.meeting_date.isoformat(),
+                "attended": entry.attended,
+                "prayer": prayer_text,
+            }
+        )
+
+        for keyword in _extract_keywords(prayer_text):
+            all_keywords[keyword] = all_keywords.get(keyword, 0) + 1
+
+    total_meetings = len(rows)
+    attendance_rate = round((attended_count / total_meetings), 4) if total_meetings else 0.0
+
+    top_keywords = sorted(all_keywords.items(), key=lambda x: (-x[1], x[0]))[:8]
+    prayer_entry_count = sum(1 for item in timeline if item["prayer"])
+    months_with_prayer = sum(1 for item in monthly.values() if item["prayer_entry_count"] > 0)
+
+    if prayer_entry_count == 0:
+        prayer_journey_note = "최근 기간에 기록된 개인 기도제목이 없어, 함께 기도할 주제를 새롭게 나누어 보시는 것을 권합니다."
+    else:
+        prayer_journey_note = (
+            f"최근 {months}개월 동안 {prayer_entry_count}회의 기도 나눔이 있었고, "
+            f"{months_with_prayer}개월에 걸쳐 중보 제목이 이어졌습니다."
+        )
+
+    return {
+        "cell_group": cell_group,
+        "member": {"member_id": target.id, "name": target.name, "title": target.title},
+        "months": months,
+        "period_start": period_start.isoformat(),
+        "period_end": (period_end - timedelta(days=1)).isoformat(),
+        "total_meetings": total_meetings,
+        "attended_count": attended_count,
+        "attendance_rate": attendance_rate,
+        "monthly_summary": sorted(monthly.values(), key=lambda x: x["month"]),
+        "timeline": timeline,
+        "top_keywords": [{"keyword": k, "count": c} for k, c in top_keywords],
+        "prayer_journey_note": prayer_journey_note,
+        "analysis_note": "기도제목 변화는 기록된 내용과 키워드를 바탕으로 정리한 참고 정보이며, 실제 돌봄과 목회적 분별을 함께 고려해 주세요.",
+        "candidate_names": [m.name for m in candidates],
+    }
+
+
 @app.post("/api/cell-reports", response_model=CellReportDetailOut)
 def create_cell_report(
     payload: CellReportCreate,
@@ -693,6 +996,7 @@ def list_cell_reports(
             overall_prayer=r.overall_prayer,
             attendee_count=sum(1 for e in r.entries if e.attended),
             total_count=len(r.entries),
+            prayer_recorded_count=sum(1 for e in r.entries if (e.prayer or "").strip()),
             leader_name=r.leader.name if r.leader else "",
             created_at=r.created_at,
         )
@@ -743,559 +1047,74 @@ def get_cell_report_detail(
     )
 
 
-# ── AI Chat ───────────────────────────────────────────────────────────────
-
-_CHAT_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_rooms",
-            "description": "Get list of all active rooms with their details (id, name, capacity, description, floor)",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_reservations",
-            "description": "Get reservations for an optional date range. Dates are in UTC ISO format.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "from_date": {"type": "string", "description": "Start date (UTC ISO format, e.g. 2024-06-10T00:00:00)"},
-                    "to_date": {"type": "string", "description": "End date (UTC ISO format)"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "check_availability",
-            "description": "Check if a room is available for a given time slot. Returns available=true/false and any conflicts.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "room_id": {"type": "integer", "description": "Room ID"},
-                    "start_time": {"type": "string", "description": "Start time in UTC ISO format"},
-                    "end_time": {"type": "string", "description": "End time in UTC ISO format"},
-                },
-                "required": ["room_id", "start_time", "end_time"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_reservation",
-            "description": "Create a new room reservation for the current user. Always check availability first.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "room_id": {"type": "integer", "description": "Room ID"},
-                    "purpose": {"type": "string", "description": "Purpose/reason for the reservation"},
-                    "attendees": {"type": "integer", "description": "Number of attendees", "default": 1},
-                    "start_time": {"type": "string", "description": "Start time in ISO format (no timezone conversion needed)"},
-                    "end_time": {"type": "string", "description": "End time in ISO format (no timezone conversion needed)"},
-                    "notes": {"type": "string", "description": "Additional notes", "default": ""},
-                },
-                "required": ["room_id", "purpose", "start_time", "end_time"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_cell_group_members",
-            "description": "Get members of the current user's cell group (순). Supports search by name, phone, email, address, and car plate.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Optional search keyword (name, title, phone, email, address, car plate)",
-                    }
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_cell_group_member",
-            "description": "Update contact info (email, phone, address) of a cell group member. Only available for 순장. Confirm with user before updating.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "member_id": {"type": "integer", "description": "Member ID to update"},
-                    "email": {"type": "string", "description": "New email address (omit if not changing)"},
-                    "phone": {"type": "string", "description": "New phone number (omit if not changing)"},
-                    "address": {"type": "string", "description": "New address (omit if not changing)"},
-                },
-                "required": ["member_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_cell_report",
-            "description": "Create a new cell group report for the current user's cell group. Only available for 순장. Confirm with the user before saving.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "meeting_date": {"type": "string", "description": "Meeting date in YYYY-MM-DD format"},
-                    "meeting_time": {"type": "string", "description": "Meeting time text, e.g. 19:30", "default": ""},
-                    "meeting_place": {"type": "string", "description": "Meeting place", "default": ""},
-                    "overall_prayer": {"type": "string", "description": "Overall prayer topics for the meeting", "default": ""},
-                    "members": {
-                        "type": "array",
-                        "description": "Per-member attendance and prayer data",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "member_id": {"type": "integer", "description": "Member ID"},
-                                "attended": {"type": "boolean", "description": "Whether this member attended"},
-                                "prayer": {"type": "string", "description": "Prayer topic for this member", "default": ""}
-                            },
-                            "required": ["member_id", "attended"]
-                        }
-                    }
-                },
-                "required": ["meeting_date", "members"],
-            },
-        },
-    },
-]
-
-
-@app.post("/api/chat")
-def chat_with_ai(
-    payload: ChatRequest,
+@app.get("/api/cell-reports/analysis")
+def analyze_cell_reports(
+    year: int | None = Query(default=None),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> dict:
-    """AI-powered natural language chat endpoint (Gemini)"""
-    try:
-        from openai import OpenAI
-    except ImportError:
-        return {"message": "openai 패키지가 설치되지 않았습니다. requirements.txt를 확인하세요.", "error": True}
+    current_user = get_current_user(token, db)
+    if current_user.permission != "admin" and current_user.title != "순장":
+        raise HTTPException(status_code=403, detail="Only admins or cell leaders can analyze reports")
+    if not current_user.cell_group:
+        raise HTTPException(status_code=400, detail="cell group not found")
 
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_key:
-        return {
-            "message": (
-                "AI 채팅 기능을 사용하려면 .env 파일에 GEMINI_API_KEY를 설정해야 합니다.\n"
-                "무료 발급: https://aistudio.google.com/apikey"
-            ),
-            "error": True,
-        }
+    target_year = year or datetime.now().year
+    if target_year < 2000 or target_year > 2100:
+        raise HTTPException(status_code=400, detail="invalid year")
 
-    client = OpenAI(
-        api_key=gemini_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    return _analyze_cell_reports(db=db, cell_group=current_user.cell_group, year=target_year)
+
+
+@app.get("/api/cell-reports/date-analysis")
+def analyze_cell_report_by_date(
+    meeting_date: date = Query(...),
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    if current_user.permission != "admin" and current_user.title != "순장":
+        raise HTTPException(status_code=403, detail="Only admins or cell leaders can analyze reports")
+    if not current_user.cell_group:
+        raise HTTPException(status_code=400, detail="cell group not found")
+
+    return _analyze_cell_report_by_date(
+        db=db,
+        cell_group=current_user.cell_group,
+        meeting_date=meeting_date,
     )
-    default_model = "gemini-2.5-flash"
 
-    # Gather rooms for context
-    rooms = db.scalars(select(Room).where(Room.is_active.is_(True)).order_by(Room.id)).all()
-    rooms_info = "\n".join(
-        [f"  - ID {r.id}: {r.name} (수용: {r.capacity}명, {r.floor}층, {r.description})" for r in rooms]
+
+@app.get("/api/cell-reports/member-prayer-trend")
+def analyze_member_prayer_trend(
+    member_name: str = Query(...),
+    months: int = Query(default=5),
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    if current_user.permission != "admin" and current_user.title != "순장":
+        raise HTTPException(status_code=403, detail="Only admins or cell leaders can analyze reports")
+    if not current_user.cell_group:
+        raise HTTPException(status_code=400, detail="cell group not found")
+
+    return _analyze_member_prayer_trend(
+        db=db,
+        cell_group=current_user.cell_group,
+        member_name=member_name,
+        months=months,
     )
-    now_utc = datetime.utcnow()
-    _eastern = ZoneInfo("America/New_York")
-    now_eastern = datetime.now(_eastern)
-    utc_offset_hours = int(now_eastern.utcoffset().total_seconds() / 3600)  # -5 (EST) or -4 (EDT)
-    tz_label = f"EDT (UTC{utc_offset_hours:+d})" if utc_offset_hours == -4 else f"EST (UTC{utc_offset_hours:+d})"
-    lang_hint = "Please respond in Korean (한국어로 응답하세요)." if payload.language == "ko" else "Please respond in English."
 
-    # Only send non-sensitive identity info to the AI; phone/email stay server-side only
-    user_ctx = ""
-    if payload.user_name:
-        user_ctx = f"\nCurrently logged-in user: name={payload.user_name}"
-        if payload.user_title:
-            user_ctx += f", title={payload.user_title}"
-        if payload.user_cell_group:
-            user_ctx += f", cell_group={payload.user_cell_group}"
-        # phone/email intentionally omitted — used internally by tools only
 
-    system_prompt = f"""You are a helpful AI assistant for the Milal Church community room reservation portal.
-{lang_hint}
+# ── AI Chat ───────────────────────────────────────────────────────────────
 
-Current local date/time (Eastern Time, {tz_label}): {now_eastern.strftime('%Y-%m-%d %H:%M')}
-{user_ctx}
-
-Available rooms:
-{rooms_info}
-
-You can help users:
-1. Browse rooms and check availability
-2. View existing reservations
-3. Create new reservations
-4. If the user is 순장 (cell group leader): view and update cell group member information
-5. If the user is 순장 (cell group leader): create a cell report for a meeting
-
-Important rules:
-- The server stores times as-is without timezone conversion. Pass times EXACTLY as the user specifies them (do NOT add or subtract hours for UTC conversion).
-- For example, if the user says "6pm tomorrow", pass "YYYY-MM-DDT18:00:00" as-is.
-- Always call check_availability before create_reservation.
-- For create_reservation, use the logged-in user's name/phone/email from the context. If the user is not logged in (no user info), inform them they must log in first.
-- After creating a reservation, the status is 'pending' and requires admin approval.
-- For cell group tools (get_cell_group_members, update_cell_group_member): only available when user title is '순장'.
-- For create_cell_report: only available when user title is '순장'. Gather meeting date/time/place, attendance, member prayer topics, and overall prayer topics before saving.
-- For get_cell_group_members, when the user asks about a car number/plate, pass it in query and include car_plate in your answer.
-- Always confirm with the user before calling update_cell_group_member.
-- Always confirm with the user before calling create_cell_report.
-- update_cell_group_member requires member_id. If unknown, call get_cell_group_members first to find the correct ID.
-- create_cell_report requires member_id values for each attendee/member entry. If unknown, call get_cell_group_members first.
-- Be concise, friendly, and helpful."""
-
-    messages: list[dict] = [{"role": "system", "content": system_prompt}]
-    for msg in payload.history[-12:]:
-        messages.append({"role": msg.role, "content": msg.content})
-    messages.append({"role": "user", "content": payload.message})
-
-    # ── Tool execution helpers ─────────────────────────────────────────────
-    def _exec_get_rooms() -> list[dict]:
-        return [
-            {"id": r.id, "name": r.name, "capacity": r.capacity, "description": r.description, "floor": r.floor}
-            for r in db.scalars(select(Room).where(Room.is_active.is_(True)).order_by(Room.id)).all()
-        ]
-
-    def _exec_get_reservations(from_date: str | None = None, to_date: str | None = None) -> list[dict]:
-        stmt = select(Reservation).options(joinedload(Reservation.room)).order_by(Reservation.start_time.asc())
-        if from_date:
-            stmt = stmt.where(Reservation.end_time >= datetime.fromisoformat(from_date))
-        if to_date:
-            stmt = stmt.where(Reservation.start_time <= datetime.fromisoformat(to_date))
-        items = db.scalars(stmt).all()
-        return [
-            {
-                "id": i.id,
-                "room_name": i.room.name if i.room else "Unknown",
-                "requester_name": i.requester_name,  # name only, no contact info
-                "purpose": i.purpose,
-                "start_time": i.start_time.isoformat(),
-                "end_time": i.end_time.isoformat(),
-                "status": i.status.value,
-            }
-            for i in items
-        ]
-
-    def _parse_dt(s: str) -> datetime:
-        return datetime.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
-
-    def _exec_check_availability(room_id: int, start_time: str, end_time: str) -> dict:
-        start = _parse_dt(start_time)
-        end = _parse_dt(end_time)
-        conflicts = db.scalars(
-            select(Reservation)
-            .options(joinedload(Reservation.room))
-            .where(
-                and_(
-                    Reservation.room_id == room_id,
-                    Reservation.status.in_([ReservationStatus.pending, ReservationStatus.approved, ReservationStatus.changed]),
-                    Reservation.start_time < end,
-                    Reservation.end_time > start,
-                )
-            )
-        ).all()
-        return {
-            "available": len(conflicts) == 0,
-            "conflicts": [
-                {
-                    "requester_name": c.requester_name,
-                    "purpose": c.purpose,
-                    "start_time": c.start_time.isoformat(),
-                    "end_time": c.end_time.isoformat(),
-                    "status": c.status.value,
-                }
-                for c in conflicts
-            ],
-        }
-
-    def _exec_create_reservation(
-        room_id: int,
-        purpose: str,
-        start_time: str,
-        end_time: str,
-        attendees: int = 1,
-        notes: str = "",
-    ) -> dict:
-        if not payload.user_name:
-            return {"error": "예약을 생성하려면 먼저 로그인해주세요."}
-
-        phone = payload.user_phone or "000-0000-0000"
-        email = payload.user_email or "noreply@milal.org"
-        start = _parse_dt(start_time)
-        end = _parse_dt(end_time)
-
-        if end <= start:
-            return {"error": "종료 시간은 시작 시간 이후여야 합니다."}
-
-        room = db.get(Room, room_id)
-        if not room or not room.is_active:
-            return {"error": f"Room ID {room_id}를 찾을 수 없습니다."}
-
-        conflict = db.scalar(
-            select(Reservation).where(
-                and_(
-                    Reservation.room_id == room_id,
-                    Reservation.status.in_([ReservationStatus.pending, ReservationStatus.approved, ReservationStatus.changed]),
-                    Reservation.start_time < end,
-                    Reservation.end_time > start,
-                )
-            ).limit(1)
-        )
-        if conflict:
-            return {"error": "선택한 시간에 이미 예약이 있습니다."}
-
-        new_item = Reservation(
-            room_id=room_id,
-            requester_name=payload.user_name,
-            phone=phone,
-            email=email,
-            purpose=purpose,
-            attendees=attendees,
-            notes=notes,
-            start_time=start,
-            end_time=end,
-            status=ReservationStatus.pending,
-            repeat_type="none",
-            repeat_count=1,
-        )
-        db.add(new_item)
-        db.commit()
-        db.refresh(new_item)
-        return {
-            "success": True,
-            "reservation_id": new_item.id,
-            "room_name": room.name,
-            "start_time": start.isoformat(),
-            "end_time": end.isoformat(),
-            "status": "pending",
-        }
-
-    def _exec_get_cell_group_members(query: str | None = None) -> list[dict] | dict:
-        if payload.user_title != "순장":
-            return {"error": "순장 권한이 있는 사용자만 순 정보에 접근할 수 있습니다."}
-        if not payload.user_cell_group:
-            return {"error": "순 정보가 없습니다. 로그인 상태를 확인해주세요."}
-        members = db.scalars(select(Member).where(Member.cell_group == payload.user_cell_group)).all()
-
-        if query:
-            needle = query.strip().lower()
-            members = [
-                m for m in members
-                if needle in (m.name or "").lower()
-                or needle in (m.title or "").lower()
-                or needle in (m.phone or "").lower()
-                or needle in (m.email or "").lower()
-                or needle in (m.address or "").lower()
-                or needle in (m.car_plate or "").lower()
-            ]
-
-        return [
-            {
-                "id": m.id,
-                "name": m.name,
-                "title": m.title,
-                "phone": m.phone,
-                "email": m.email,
-                "address": m.address,
-                "cell_group": m.cell_group,
-                "car_plate": m.car_plate,
-            }
-            for m in members
-        ]
-
-    def _exec_update_cell_group_member(
-        member_id: int,
-        email: str | None = None,
-        phone: str | None = None,
-        address: str | None = None,
-    ) -> dict:
-        if payload.user_title != "순장":
-            return {"error": "순장 권한이 있는 사용자만 순원 정보를 수정할 수 있습니다."}
-        target = db.get(Member, member_id)
-        if not target:
-            return {"error": f"멤버 ID {member_id}를 찾을 수 없습니다."}
-        if target.cell_group != payload.user_cell_group:
-            return {"error": "같은 순 멤버만 수정할 수 있습니다."}
-        updated_fields = []
-        if email is not None and email != target.email:
-            target.email = email
-            updated_fields.append("email")
-        if phone is not None and phone != target.phone:
-            target.phone = phone
-            updated_fields.append("phone")
-        if address is not None and address != target.address:
-            target.address = address
-            updated_fields.append("address")
-        if updated_fields:
-            db.commit()
-            db.refresh(target)
-        return {
-            "success": True,
-            "member_id": target.id,
-            "name": target.name,
-            "updated_fields": updated_fields,
-        }
-
-    def _exec_create_cell_report(
-        meeting_date: str,
-        members: list[dict],
-        meeting_time: str = "",
-        meeting_place: str = "",
-        overall_prayer: str = "",
-    ) -> dict:
-        if payload.user_title != "순장":
-            return {"error": "순장 권한이 있는 사용자만 순보고서를 작성할 수 있습니다."}
-        if not payload.user_cell_group:
-            return {"error": "순 정보가 없습니다. 로그인 상태를 확인해주세요."}
-
-        try:
-            report_date = date.fromisoformat(meeting_date)
-        except ValueError:
-            return {"error": "meeting_date는 YYYY-MM-DD 형식이어야 합니다."}
-
-        if not isinstance(members, list) or len(members) == 0:
-            return {"error": "최소 1명 이상의 순원 정보가 필요합니다."}
-
-        leader = db.scalar(
-            select(Member)
-            .where(Member.name == payload.user_name, Member.cell_group == payload.user_cell_group)
-            .limit(1)
-        )
-        if not leader:
-            return {"error": "순장 사용자 정보를 찾을 수 없습니다."}
-
-        member_ids = [entry.get("member_id") for entry in members if entry.get("member_id") is not None]
-        if not member_ids:
-            return {"error": "member_id가 포함된 순원 정보가 필요합니다."}
-
-        member_rows = db.scalars(select(Member).where(Member.id.in_(member_ids))).all()
-        member_map = {member.id: member for member in member_rows}
-
-        normalized_members: list[dict] = []
-        for entry in members:
-            member_id = entry.get("member_id")
-            target = member_map.get(member_id)
-            if not target:
-                return {"error": f"멤버 ID {member_id}를 찾을 수 없습니다."}
-            if target.cell_group != payload.user_cell_group:
-                return {"error": "같은 순 멤버만 순보고에 포함할 수 있습니다."}
-            normalized_members.append(
-                {
-                    "member": target,
-                    "attended": bool(entry.get("attended", False)),
-                    "prayer": str(entry.get("prayer") or ""),
-                }
-            )
-
-        report = CellReport(
-            leader_member_id=leader.id,
-            cell_group=payload.user_cell_group,
-            meeting_date=report_date,
-            meeting_time=meeting_time,
-            meeting_place=meeting_place,
-            overall_prayer=overall_prayer,
-        )
-
-        db.add(report)
-        db.flush()
-
-        for entry in normalized_members:
-            db.add(
-                CellReportMemberEntry(
-                    report_id=report.id,
-                    member_id=entry["member"].id,
-                    attended=entry["attended"],
-                    prayer=entry["prayer"],
-                )
-            )
-
-        db.commit()
-        return {
-            "success": True,
-            "report_id": report.id,
-            "meeting_date": meeting_date,
-            "meeting_time": meeting_time,
-            "meeting_place": meeting_place,
-            "member_count": len(normalized_members),
-            "attended_count": sum(1 for entry in normalized_members if entry["attended"]),
-        }
-
-    def _dispatch(name: str, args: dict):
-        if name == "get_rooms":
-            return _exec_get_rooms()
-        if name == "get_reservations":
-            return _exec_get_reservations(**args)
-        if name == "check_availability":
-            return _exec_check_availability(**args)
-        if name == "create_reservation":
-            return _exec_create_reservation(**args)
-        if name == "get_cell_group_members":
-            return _exec_get_cell_group_members(**args)
-        if name == "update_cell_group_member":
-            return _exec_update_cell_group_member(**args)
-        if name == "create_cell_report":
-            return _exec_create_cell_report(**args)
-        return {"error": f"Unknown tool: {name}"}
-
-    # ── AI tool-call loop ─────────────────────────────────────────────────
-    model_name = os.getenv("OPENAI_MODEL", default_model)
-    try:
-        for _ in range(6):  # max 6 iterations
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                tools=_CHAT_TOOLS,
-                tool_choice="auto",
-            )
-            choice = response.choices[0]
-            msg = choice.message
-
-            # Append assistant message
-            assistant_msg: dict = {"role": "assistant"}
-            if msg.content:
-                assistant_msg["content"] = msg.content
-            if msg.tool_calls:
-                assistant_msg["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                    }
-                    for tc in msg.tool_calls
-                ]
-            messages.append(assistant_msg)
-
-            if choice.finish_reason == "tool_calls" and msg.tool_calls:
-                for tc in msg.tool_calls:
-                    tool_args = json.loads(tc.function.arguments)
-                    result = _dispatch(tc.function.name, tool_args)
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": json.dumps(result, ensure_ascii=False, default=str),
-                        }
-                    )
-            else:
-                return {"message": msg.content or ""}
-
-        return {"message": "처리 시간이 초과되었습니다. 다시 시도해주세요."}
-    except Exception as exc:
-        print(f"[chat] Gemini error: {exc}")
-        exc_str = str(exc)
-        if "429" in exc_str or "quota" in exc_str.lower():
-            return {"message": "Gemini API 요청 한도에 도달했습니다. 잠시 후 다시 시도해주세요.", "error": True}
-        if "401" in exc_str or "invalid" in exc_str.lower():
-            return {"message": "GEMINI_API_KEY가 유효하지 않습니다. .env 파일을 확인해주세요.", "error": True}
-        return {"message": f"AI 처리 중 오류가 발생했습니다: {exc}", "error": True}
-
+app.include_router(
+    create_ai_chat_router(
+        analyze_cell_reports=_analyze_cell_reports,
+        analyze_cell_report_by_date=_analyze_cell_report_by_date,
+        analyze_member_prayer_trend=_analyze_member_prayer_trend,
+    )
+)
 
 if FRONTEND_DIST_DIR.exists():
     assets_dir = FRONTEND_DIST_DIR / "assets"

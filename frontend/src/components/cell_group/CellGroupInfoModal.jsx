@@ -25,6 +25,11 @@ export default function CellGroupInfoModal() {
   const [error, setError] = useState("");
   const [selectedMember, setSelectedMember] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const currentCellGroup = localStorage.getItem("milal_cell_group") || "";
+  const cellLeader = members.find((member) => member.title === "순장");
+  const cellGroupDisplay = currentCellGroup
+    ? `${currentCellGroup}${cellLeader?.name ? `(${cellLeader.name} 순장)` : ""}`
+    : "";
 
   useEffect(() => {
     fetchCellGroupMembers();
@@ -59,9 +64,16 @@ export default function CellGroupInfoModal() {
       <Card>
         <CardContent sx={{ p: 3 }}>
           <Stack direction="row" spacing={2} sx={{ justifyContent: "space-between", alignItems: "center", mb: 2.5 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: "#313b5e", fontSize: "16px" }}>
-              {t("cellGroupTitle")}
-            </Typography>
+            <Stack spacing={0.3}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: "#313b5e", fontSize: "16px" }}>
+                {t("cellGroupTitle")}
+              </Typography>
+              {cellGroupDisplay && (
+                <Typography variant="body2" sx={{ color: "#5d7186", fontWeight: 500 }}>
+                  {cellGroupDisplay}
+                </Typography>
+              )}
+            </Stack>
           </Stack>
 
           {error && (
@@ -136,6 +148,8 @@ export default function CellGroupInfoModal() {
                           variant="outlined"
                           onClick={() => handleEditMember(member)}
                           sx={{
+                            color: "#2f68f9",
+                            borderColor: "#2f68f9",
                             textTransform: "none",
                             fontSize: "12px",
                           }}
