@@ -19,6 +19,8 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
 import Alert from "@mui/material/Alert";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
 
@@ -40,7 +42,9 @@ export default function CellReportPanel() {
   const [listLoading, setListLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
   const [detail, setDetail] = useState(null);
+  const currentCellGroup = localStorage.getItem("milal_cell_group") || "";
 
   const [meetingDate, setMeetingDate] = useState(todayDate());
   const [meetingAt, setMeetingAt] = useState("");
@@ -85,6 +89,8 @@ export default function CellReportPanel() {
           draftMembers = {};
         }
       }
+
+      console.log("Draft members loaded:", data);
 
       setMembers(
         data.map((m) => ({
@@ -183,8 +189,131 @@ export default function CellReportPanel() {
     }
   };
 
-  const attendedCount = useMemo(() => members.filter((m) => m.attended).length, [members]);
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
 
+  const buildPdfMarkup = (report) => {
+    const attendedCount = report.entries.filter((entry) => entry.attended).length;
+    const rows = report.entries
+      .map(
+        (entry) => `
+          <tr>
+            <td>${entry.attended ? "O" : "-"}</td>
+            <td>${escapeHtml(entry.member_name)}</td>
+            <td>${escapeHtml(entry.prayer || "-")}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    return `
+      <div style="font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; color:#1e3258; width:760px; background:#ffffff; padding:28px 30px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #dce6fb; padding-bottom:14px;">
+          <div>
+            <div style="font-size:28px; font-weight:800; letter-spacing:0.2px;">${escapeHtml(t("cellReportTitle"))}</div>
+            <div style="font-size:13px; color:#4a5f86; margin-top:6px;">${escapeHtml(report.cell_group || "")}</div>
+          </div>
+          <div style="font-size:12px; color:#4a5f86; text-align:right; line-height:1.6;">
+            <div>${escapeHtml(t("cellReportDate"))}: ${escapeHtml(report.meeting_date || "-")}</div>
+            <div>${escapeHtml(t("cellReportTime"))}: ${escapeHtml(report.meeting_time || "-")}</div>
+            <div>${escapeHtml(t("cellReportPlace"))}: ${escapeHtml(report.meeting_place || "-")}</div>
+          </div>
+        </div>
+
+        <div style="margin-top:14px; background:#f4f8ff; border:1px solid #dbe7ff; border-radius:10px; padding:10px 12px; font-size:13px; color:#355083;">
+          ${escapeHtml(t("cellReportAttendanceCount")).replace("{attended}", String(attendedCount)).replace("{total}", String(report.entries.length))}
+        </div>
+
+        <table style="width:100%; margin-top:14px; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="background:#edf2fa;">
+              <th style="text-align:left; border:1px solid #d5deec; padding:9px 10px; width:70px;">${escapeHtml(t("cellReportAttended"))}</th>
+              <th style="text-align:left; border:1px solid #d5deec; padding:9px 10px; width:160px;">${escapeHtml(t("name"))}</th>
+              <th style="text-align:left; border:1px solid #d5deec; padding:9px 10px;">${escapeHtml(t("cellReportMemberPrayer"))}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+
+        <div style="margin-top:16px;">
+          <div style="font-size:13px; font-weight:700; color:#1e3258; margin-bottom:8px;">${escapeHtml(t("cellReportOverallPrayerSection"))}</div>
+          <div style="border:1px solid #d5deec; border-radius:10px; background:#fcfdff; min-height:120px; padding:12px 13px; font-size:13px; color:#2f3e5f; line-height:1.7; white-space:pre-wrap;">${escapeHtml(report.overall_prayer || "-")}</div>
+        </div>
+      </div>
+    `;
+  };
+
+  const exportReportPdf = async (report) => {
+    const container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.left = "-10000px";
+    container.style.top = "0";
+    container.style.zIndex = "-1";
+    container.style.background = "#fff";
+    container.innerHTML = buildPdfMarkup(report);
+    document.body.appendChild(container);
+
+    try {
+      const canvas = await html2canvas(container.firstElementChild, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+      });
+
+      const pdf = new jsPDF("p", "pt", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      const imgWidth = pageWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/png");
+      const printableHeight = pageHeight - margin * 2;
+
+      let offset = 0;
+      while (offset < imgHeight) {
+        if (offset > 0) {
+          pdf.addPage();
+        }
+        pdf.addImage(imgData, "PNG", margin, margin - offset, imgWidth, imgHeight);
+        offset += printableHeight;
+      }
+
+      const datePart = report.meeting_date || "report";
+      pdf.save(`cell-report-${datePart}.pdf`);
+    } finally {
+      document.body.removeChild(container);
+    }
+  };
+
+  const downloadReport = async (reportId) => {
+    try {
+      setDownloadingId(reportId);
+      setError("");
+      const report = await api.getCellReportDetail(reportId);
+      report.cell_group = cellGroupDisplay;
+      await exportReportPdf(report);
+      setSuccess(t("cellReportDownloadSuccess"));
+    } catch (err) {
+      setError(err.message || t("cellReportDownloadFailed"));
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const attendedCount = useMemo(() => members.filter((m) => m.attended).length, [members]);
+  const cellLeader = useMemo(() => members.find((member) => member.title === "순장"), [members]);
+  const cellGroupDisplay = currentCellGroup
+    ? `${currentCellGroup}${cellLeader?.name ? `(${cellLeader.name} 순장)` : ""}`
+    : "";
+
+  console.log("Members state:", members, cellLeader, cellGroupDisplay);
   return (
     <Stack spacing={2}>
       {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
@@ -193,8 +322,13 @@ export default function CellReportPanel() {
       <Card sx={{ borderRadius: "14px" }}>
         <CardContent>
           <Stack direction="row" alignItems="center" sx={{ mb: 1.25, width: "100%" }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
+            <Stack direction="row" alignItems="center" spacing={1.25}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{t("cellReportListTitle")}</Typography>
+              {cellGroupDisplay && (
+                <Typography variant="body2" sx={{ color: "#5d7186", fontWeight: 500 }}>
+                  {cellGroupDisplay}
+                </Typography>
+              )}
             </Stack>
             <Button
               variant="contained"
@@ -227,7 +361,7 @@ export default function CellReportPanel() {
                     <TableCell sx={{ fontWeight: 700 }}>{t("cellReportTime")}</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>{t("cellReportPlace")}</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>{t("cellReportAttendanceSection")}</TableCell>
-                    <TableCell sx={{ width: 120 }} />
+                    <TableCell sx={{ width: 230 }} />
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -238,24 +372,45 @@ export default function CellReportPanel() {
                       <TableCell>{r.meeting_place || "-"}</TableCell>
                       <TableCell>{`${r.attendee_count}/${r.total_count}`}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => openDetail(r.id)}
-                          sx={{
-                            color: "#2f68f9",
-                            borderColor: "#2f68f9",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            textTransform: "none",
-                            "&:hover": {
-                              borderColor: "#1e50c7",
-                              bgcolor: "rgba(47,104,249,0.06)",
-                            },
-                          }}
-                        >
-                          {t("cellReportDetailView")}
-                        </Button>
+                        <Stack direction="row" spacing={0.8} justifyContent="flex-end">
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => openDetail(r.id)}
+                            sx={{
+                              color: "#2f68f9",
+                              borderColor: "#2f68f9",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              textTransform: "none",
+                              "&:hover": {
+                                borderColor: "#1e50c7",
+                                bgcolor: "rgba(47,104,249,0.06)",
+                              },
+                            }}
+                          >
+                            {t("cellReportDetailView")}
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            disabled={downloadingId === r.id}
+                            onClick={() => downloadReport(r.id)}
+                            sx={{
+                              color: "#2f68f9",
+                              borderColor: "#2f68f9",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              textTransform: "none",
+                              "&:hover": {
+                                borderColor: "#1e50c7",
+                                bgcolor: "rgba(47,104,249,0.06)",
+                              },
+                            }}
+                          >
+                            {downloadingId === r.id ? t("cellReportDownloading") : t("cellReportDownload")}
+                          </Button>
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   ))}
