@@ -33,8 +33,12 @@ const FLOOR_PLANS = DEFAULT_FLOOR_PLANS;
 /** Map room ID → floor number (built from database) */
 const ROOM_FLOOR = {};
 
-function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelectable, roomLocations = {}, rooms = [] }) {
+function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelectable, roomLocations = {}, visibleRoomIds }) {
   const { viewBox, building, rooms: defaultRooms, corridors } = floorData;
+  const labelLineHeight = isSelectable ? 18 : 14;
+  const labelOffset = isSelectable ? 9 : 7;
+  const labelFontSize = isSelectable ? 13.5 : 8.5;
+  const activeLabelFontSize = isSelectable ? 15 : 9.5;
   
   // Merge custom room locations with default rooms
   const displayRooms = defaultRooms.map(room => {
@@ -49,7 +53,7 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
       };
     }
     return room;
-  });
+  }).filter((room) => !visibleRoomIds || visibleRoomIds.has(room.id));
 
   return (
     <svg
@@ -124,14 +128,20 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
               <text
                 key={i}
                 x={room.x + room.width / 2}
-                y={room.y + room.height / 2 - ((arr.length - 1) * 7) + i * 14}
+                y={room.y + room.height / 2 - ((arr.length - 1) * labelOffset) + i * labelLineHeight}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize={isActive ? 9.5 : 8.5}
-                fontWeight={isActive ? "700" : "500"}
-                fill={isActive ? "#1565c0" : "#5d7186"}
+                fontSize={isActive ? activeLabelFontSize : labelFontSize}
+                fontWeight={isSelectable ? "700" : isActive ? "700" : "500"}
+                fill={isActive ? "#0f4aa1" : isSelectable ? "#31445a" : "#5d7186"}
                 fontFamily="inherit"
-                style={{ pointerEvents: "none" }}
+                style={{
+                  pointerEvents: "none",
+                  paintOrder: "stroke",
+                  stroke: "rgba(255,255,255,0.95)",
+                  strokeWidth: isSelectable ? 2.5 : 1.5,
+                  strokeLinejoin: "round",
+                }}
               >
                 {line}
               </text>
@@ -175,7 +185,7 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
   );
 }
 
-export default function FloorPlanTooltip({ roomId, roomName, children, mode = "hover", onSelectRoom, floor }) {
+export default function FloorPlanTooltip({ roomId, roomName, children, mode = "hover", onSelectRoom, floor, visibleRoomIds }) {
   const boxRef = useRef(null);
   const [show, setShow] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -250,6 +260,7 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
   const floorData = floorNum ? dynamicFloorPlans[floorNum] : null;
 
   const isSelectMode = mode === "select";
+  const selectableRoomIds = visibleRoomIds ? new Set(visibleRoomIds) : null;
 
   // Load room locations from API
   useEffect(() => {
@@ -342,6 +353,7 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
             onSelectRoom={handleSelectRoom}
             isSelectable={true}
             roomLocations={roomLocations}
+            visibleRoomIds={selectableRoomIds}
           />
         </div>
       ) : (

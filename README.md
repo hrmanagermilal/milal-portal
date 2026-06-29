@@ -93,3 +93,15 @@ docker compose up --build -d
 ```bash
 docker compose down
 ```
+
+## Laravel PHP Dev Container
+
+If you want to run the API manually in WSL and only use Docker for the Laravel PHP app under `frontend/template/velok`, start just `db` and `velok`:
+
+```bash
+docker compose up --build -d db velok
+```
+
+Open `http://localhost:8080`.
+
+This service bind-mounts `frontend/template/velok` into the container, so changes to PHP and Blade files are reflected immediately without rebuilding the image. Composer dependencies are kept in the named volume `velok_vendor`.

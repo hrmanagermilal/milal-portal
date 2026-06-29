@@ -11,6 +11,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { dateToLocalISOString } from "../../utils/datetime";
 import FloorPlanTooltip from "./FloorPlanTooltip";
@@ -84,12 +85,24 @@ export default function NewReservationModal({
   isCardMode = false,
 }) {
   const { t } = useLanguage();
+  const hasSelectedTimeRange =
+    typeof form.start_time === "string" &&
+    typeof form.end_time === "string" &&
+    form.start_time &&
+    form.end_time &&
+    form.end_time > form.start_time;
+  const [availableRooms, setAvailableRooms] = useState(rooms);
+  const availableRoomIds = new Set(availableRooms.map((room) => room.id));
   
   // Get unique floors from rooms
   const floors = Array.from(new Set(rooms.map(r => r.floor ?? 1))).sort();
   const selectedFloor = form.floor || "all";
-  const floorRooms = selectedFloor === "all" ? [] : rooms.filter(r => (r.floor ?? 1) === Number(selectedFloor));
+  const floorRooms = selectedFloor === "all" ? [] : availableRooms.filter(r => (r.floor ?? 1) === Number(selectedFloor));
   const [showRoomSelector, setShowRoomSelector] = useState(false);
+
+  useEffect(() => {
+    setAvailableRooms(rooms);
+  }, [rooms]);
 
   // form.start_time and form.end_time are already in EST (from user input)
   const startTimeEST = form.start_time; // Already EST
@@ -109,6 +122,52 @@ export default function NewReservationModal({
       }
     }
   }, [open, selectedRoom, rooms, setForm]);
+
+  useEffect(() => {
+    if (!form.room_id) {
+      return;
+    }
+
+    if (!availableRoomIds.has(Number(form.room_id))) {
+      setForm((prev) => ({
+        ...prev,
+        room_id: "",
+      }));
+    }
+  }, [availableRoomIds, form.room_id, setForm]);
+
+  useEffect(() => {
+    if (!open && !isCardMode) {
+      return;
+    }
+
+    if (!hasSelectedTimeRange) {
+      setAvailableRooms(rooms);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAvailableRooms() {
+      try {
+        const data = await api.getAvailableRooms(form.start_time, form.end_time);
+        if (!cancelled) {
+          setAvailableRooms(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error("[NewReservationModal] Failed to load available rooms:", err);
+        if (!cancelled) {
+          setAvailableRooms([]);
+        }
+      }
+    }
+
+    loadAvailableRooms();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.end_time, form.start_time, hasSelectedTimeRange, isCardMode, open, rooms]);
 
   // Set user info when modal opens
   useEffect(() => {
@@ -215,60 +274,7 @@ export default function NewReservationModal({
   // Common form JSX content
   const formFields = (
     <Stack spacing={2}>
-      {/* Floor Selection */}
-      <TextField 
-        select 
-        label={t("filterFloor")} 
-        fullWidth 
-        required 
-        value={selectedFloor}
-        onChange={handleFloorChange}
-      >
-        <MenuItem value="all" disabled>{t("selectFloor")}</MenuItem>
-        {floors.map((floor) => (
-          <MenuItem key={floor} value={String(floor)}>
-            {floor === 1 ? t("floor1Label") : t("floor2Label")}
-          </MenuItem>
-        ))}
-      </TextField>
-
-      {/* Room Selection with Map Button */}
-      <Stack direction="row" spacing={1} alignItems="flex-end">
-        <TextField 
-          select 
-          label={t("fieldRoom")} 
-          fullWidth 
-          required 
-          disabled={selectedFloor === "all"}
-          {...field("room_id")}
-        >
-          <MenuItem value="" disabled>{t("selectRoom")}</MenuItem>
-          {floorRooms.map((room) => (
-            <MenuItem key={room.id} value={String(room.id)}>
-              {room.name} ({t("capacity")} {room.capacity})
-            </MenuItem>
-          ))}
-        </TextField>
-        <Button
-          variant="outlined"
-          onClick={() => setShowRoomSelector(true)}
-          disabled={selectedFloor === "all"}
-          sx={{
-            flexShrink: 0,
-            minWidth: 120,
-            fontSize: "12px",
-            fontWeight: 600,
-            color: selectedFloor === "all" ? "#a0aab4" : "#1976d2",
-            borderColor: selectedFloor === "all" ? "#d8dfe7" : "#1976d2",
-            "&:hover": {
-              bgcolor: selectedFloor === "all" ? "transparent" : "rgba(25,118,210,0.08)"
-            }
-          }}
-        >
-          맵으로 선택
-        </Button>
-      </Stack>
-
+ 
       <TextField
         label={t("fieldStartTime")} type="datetime-local" fullWidth required
         InputLabelProps={{ shrink: true }}
@@ -298,6 +304,65 @@ export default function NewReservationModal({
           }}
         />
       </Box>
+
+           {/* Floor Selection */}
+      <TextField 
+        select 
+        label={t("filterFloor")} 
+        fullWidth 
+        required 
+        value={selectedFloor}
+        onChange={handleFloorChange}
+      >
+        <MenuItem value="all" disabled>{t("selectFloor")}</MenuItem>
+        {floors.map((floor) => (
+          <MenuItem key={floor} value={String(floor)}>
+            {floor === 1 ? t("floor1Label") : t("floor2Label")}
+          </MenuItem>
+        ))}
+      </TextField>
+
+      {/* Room Selection with Map Button */}
+      <Stack direction="row" spacing={1} alignItems="flex-end">
+        <TextField 
+          select 
+          label={t("fieldRoom")} 
+          fullWidth 
+          required 
+          disabled={selectedFloor === "all"}
+          {...field("room_id")}
+        >
+          <MenuItem value="" disabled>{t("selectRoom")}</MenuItem>
+          {floorRooms.length === 0 && (
+            <MenuItem value="__no_available_room__" disabled>
+              {t("noAvailableRooms")}
+            </MenuItem>
+          )}
+          {floorRooms.map((room) => (
+            <MenuItem key={room.id} value={String(room.id)}>
+              {room.name} ({t("capacity")} {room.capacity})
+            </MenuItem>
+          ))}
+        </TextField>
+        <Button
+          variant="outlined"
+          onClick={() => setShowRoomSelector(true)}
+          disabled={selectedFloor === "all" || floorRooms.length === 0}
+          sx={{
+            flexShrink: 0,
+            minWidth: 120,
+            fontSize: "12px",
+            fontWeight: 600,
+            color: selectedFloor === "all" || floorRooms.length === 0 ? "#a0aab4" : "#1976d2",
+            borderColor: selectedFloor === "all" || floorRooms.length === 0 ? "#d8dfe7" : "#1976d2",
+            "&:hover": {
+              bgcolor: selectedFloor === "all" || floorRooms.length === 0 ? "transparent" : "rgba(25,118,210,0.08)"
+            }
+          }}
+        >
+          맵으로 선택
+        </Button>
+      </Stack>
 
       <TextField label={t("purpose")} fullWidth required multiline rows={2} {...field("purpose")} />
 
@@ -417,6 +482,7 @@ export default function NewReservationModal({
             roomId={form.room_id || 0}
             roomName=""
             onSelectRoom={handleSelectRoomFromMap}
+            visibleRoomIds={floorRooms.map((room) => room.id)}
           />
         )}
       </DialogContent>

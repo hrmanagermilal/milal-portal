@@ -300,6 +300,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
         open={modalOpen}
         onClose={handleModalClose}
         rooms={rooms}
+        reservations={localReservations}
         form={form}
         setForm={setForm}
         onSubmit={handleFormSubmit}

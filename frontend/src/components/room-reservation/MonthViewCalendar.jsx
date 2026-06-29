@@ -245,6 +245,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
         open={modalOpen}
         onClose={handleModalClose}
         rooms={rooms}
+        reservations={localReservations}
         form={form}
         setForm={setForm}
         onSubmit={handleFormSubmit}

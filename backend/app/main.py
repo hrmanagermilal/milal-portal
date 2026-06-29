@@ -84,6 +84,35 @@ def validate_reservation_times(start_time: datetime, end_time: datetime) -> None
         raise HTTPException(status_code=400, detail="end_time must be after start_time")
 
 
+def get_available_rooms_query(start_time: datetime, end_time: datetime):
+    reserved_room_ids = (
+        select(Reservation.room_id)
+        .where(
+            and_(
+                Reservation.status.in_(
+                    [
+                        ReservationStatus.pending,
+                        ReservationStatus.approved,
+                        ReservationStatus.changed,
+                    ]
+                ),
+                Reservation.start_time < end_time,
+                Reservation.end_time > start_time,
+            )
+        )
+        .distinct()
+    )
+
+    return (
+        select(Room)
+        .where(
+            Room.is_active.is_(True),
+            Room.id.not_in(reserved_room_ids),
+        )
+        .order_by(Room.id)
+    )
+
+
 @app.on_event("startup")
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
@@ -118,6 +147,17 @@ def health() -> dict[str, str]:
 @app.get("/api/rooms", response_model=list[RoomOut])
 def get_rooms(db: Session = Depends(get_db)) -> list[Room]:
     rooms = db.scalars(select(Room).where(Room.is_active.is_(True)).order_by(Room.id)).all()
+    return list(rooms)
+
+
+@app.get("/api/rooms/available", response_model=list[RoomOut])
+def get_available_rooms(
+    start_time: datetime = Query(...),
+    end_time: datetime = Query(...),
+    db: Session = Depends(get_db),
+) -> list[Room]:
+    validate_reservation_times(start_time, end_time)
+    rooms = db.scalars(get_available_rooms_query(start_time, end_time)).all()
     return list(rooms)
 
 
