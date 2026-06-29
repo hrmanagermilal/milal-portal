@@ -149,6 +149,7 @@ export const translations = {
     repeatTypeMonthly: "Monthly",
     repeatCount: "Repeat Count",
     repeatCountHint: "💡 %d reservations will be created %s and all auto-approved.",
+    noAvailableRooms: "No available rooms for the selected time range.",
 
     // AdminReservationEditModal
     adminEditTitle: "Edit Reservation",
@@ -447,6 +448,7 @@ export const translations = {
     repeatTypeMonthly: "매달",
     repeatCount: "반복 횟수",
     repeatCountHint: "💡 %d개의 예약이 %s 생성되며, 모두 자동승인됩니다.",
+    noAvailableRooms: "사용 가능한 장소가 없습니다.",
 
     // AdminReservationEditModal
     adminEditTitle: "예약 수정",

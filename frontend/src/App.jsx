@@ -310,6 +310,7 @@ export default function App() {
           {!loading && tab === "request" && (
             <ReservationRequestForm
               rooms={rooms}
+              reservations={reservations}
               form={form}
               setForm={setForm}
               onSubmit={handleCreateReservation}

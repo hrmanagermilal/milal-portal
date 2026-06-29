@@ -296,6 +296,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
         open={modalOpen}
         onClose={closeModal}
         rooms={rooms}
+        reservations={localReservations}
         form={form}
         setForm={setForm}
         onSubmit={(formData) => { 
