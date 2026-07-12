@@ -4,15 +4,19 @@ import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
+import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import Collapse from "@mui/material/Collapse";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
+import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
+import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
+import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -78,7 +82,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   const [mode, setMode] = useState("week");
   const [anchorDate, setAnchorDate] = useState(new Date());
   const [selectedFloor, setSelectedFloor] = useState("all");
-  const [selectedRoom, setSelectedRoom] = useState("all");
+  const [selectedRooms, setSelectedRooms] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [showList, setShowList] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -121,17 +125,22 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
     return rooms.filter((r) => String(r.floor) === selectedFloor);
   }, [rooms, selectedFloor]);
 
+  const calendarRooms = useMemo(() => {
+    if (selectedRooms.length === 0) return floorFilteredRooms;
+    return floorFilteredRooms.filter(r => selectedRooms.includes(String(r.id)));
+  }, [floorFilteredRooms, selectedRooms]);
+
   const filteredReservations = useMemo(() => {
     return localReservations.filter((item) => {
       // Always exclude rejected reservations from calendar display
       if (item.status === "rejected") return false;
       
       if (selectedFloor !== "all" && !floorFilteredRooms.some((r) => r.id === item.room_id)) return false;
-      if (selectedRoom !== "all" && String(item.room_id) !== selectedRoom) return false;
+      if (selectedRooms.length > 0 && !selectedRooms.includes(String(item.room_id))) return false;
       if (selectedStatus !== "all" && item.status !== selectedStatus) return false;
       return true;
     });
-  }, [localReservations, selectedFloor, floorFilteredRooms, selectedRoom, selectedStatus]);
+  }, [localReservations, selectedFloor, floorFilteredRooms, selectedRooms, selectedStatus]);
 
   const visibleRange = useMemo(() => {
     if (mode === "day") {
@@ -177,6 +186,20 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
     }
   }
 
+  function handleRoomChange(e) {
+    const value = e.target.value;
+    // "all"이 선택되었고 현재 모두 선택되지 않은 경우 → 전체 선택
+    if (value.includes("all")) {
+      if (selectedRooms.length === floorFilteredRooms.length) {
+        setSelectedRooms([]);
+      } else {
+        setSelectedRooms(floorFilteredRooms.map(r => String(r.id)));
+      }
+    } else {
+      setSelectedRooms(value);
+    }
+  }
+
   return (
     <Card>
       <CardContent sx={{ p: { xs: 1.5, md: 2 } }}>
@@ -196,22 +219,47 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
               sx={{ flex: 1, "& .MuiTextField-root": { flex: { xs: "1 1 calc(50% - 8px)", md: "0 0 auto" } } }}
             >
               <TextField select size="small" label={t("filterFloor")} value={selectedFloor}
-                onChange={(e) => { setSelectedFloor(e.target.value); setSelectedRoom("all"); }}
+                onChange={(e) => { setSelectedFloor(e.target.value); setSelectedRooms([]); }}
                 sx={{ minWidth: { xs: 0, md: 120 } }}
               >
                 <MenuItem value="all">{t("filterAllFloors")}</MenuItem>
                 <MenuItem value="1">{t("filterFloor1")}</MenuItem>
                 <MenuItem value="2">{t("filterFloor2")}</MenuItem>
               </TextField>
-              <TextField select size="small" label={t("filterRoom")} value={selectedRoom}
-                onChange={(e) => setSelectedRoom(e.target.value)}
-                sx={{ minWidth: { xs: 0, md: 140 } }}
-              >
-                <MenuItem value="all">{t("filterAllRooms")}</MenuItem>
-                {floorFilteredRooms.map((room) => (
-                  <MenuItem key={room.id} value={String(room.id)}>{room.name}</MenuItem>
-                ))}
-              </TextField>
+              <FormControl size="small" sx={{ minWidth: { xs: 0, md: 140 } }}>
+                <InputLabel>{t("filterRoom")}</InputLabel>
+                <Select
+                  multiple
+                  label={t("filterRoom")}
+                  value={selectedRooms}
+                  onChange={handleRoomChange}
+                  renderValue={(selected) =>
+                    selected.length === 0 
+                      ? t("filterAllRooms") 
+                      : selected.length === floorFilteredRooms.length
+                      ? t("selectAll")
+                      : `${selected.length}개 선택`
+                  }
+                >
+                  <MenuItem value="all">
+                    <Checkbox
+                      checked={selectedRooms.length === floorFilteredRooms.length}
+                      indeterminate={selectedRooms.length > 0 && selectedRooms.length < floorFilteredRooms.length}
+                      size="small"
+                    />
+                    {t("selectAll")}
+                  </MenuItem>
+                  {floorFilteredRooms.map((room) => (
+                    <MenuItem key={room.id} value={String(room.id)}>
+                      <Checkbox
+                        checked={selectedRooms.includes(String(room.id))}
+                        size="small"
+                      />
+                      {room.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField select size="small" label={t("filterStatus")} value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
                 sx={{ minWidth: { xs: 0, md: 130 } }}
@@ -256,7 +304,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
         {mode === "day" && (
           <DayViewCalendar
             date={anchorDate}
-            rooms={floorFilteredRooms}
+            rooms={calendarRooms}
             reservations={filteredReservations}
             onNavigate={handleNavigate}
             onSubmitReservation={onCreateReservation}
@@ -265,7 +313,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
         {mode === "week" && (
           <WeekScheduleCalendar
             date={anchorDate}
-            rooms={floorFilteredRooms}
+            rooms={calendarRooms}
             reservations={filteredReservations}
             onNavigate={(directionOrDate) => {
               if (typeof directionOrDate === "number") {
@@ -280,7 +328,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
         {mode === "month" && (
           <MonthViewCalendar
             date={anchorDate}
-            rooms={rooms}
+            rooms={calendarRooms}
             reservations={filteredReservations}
             onNavigate={(directionOrDate) => {
               if (typeof directionOrDate === "number") {
