@@ -8,6 +8,24 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
 
+# ── Enums ──────────────────────────────────────────────────────────────────
+class MembershipCategory(str, enum.Enum):
+    youth = "youth"
+    adult = "adult"
+
+
+class RuleType(str, enum.Enum):
+    day_of_week = "day_of_week"
+    specific_date = "specific_date"
+    membership_category = "membership_category"
+
+
+class AttendanceType(str, enum.Enum):
+    present = "present"
+    absent = "absent"
+    long_absence = "long_absence"
+
+
 # ── Member (church directory) ──────────────────────────────────────────────
 class Member(Base):
     __tablename__ = "members"
@@ -33,10 +51,11 @@ class Member(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id:            Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    member_id:     Mapped[int] = mapped_column(ForeignKey("members.id"), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at:    Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    id:                   Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    member_id:            Mapped[int] = mapped_column(ForeignKey("members.id"), unique=True, nullable=False)
+    password_hash:        Mapped[str] = mapped_column(String(255), nullable=False)
+    membership_category:  Mapped[MembershipCategory] = mapped_column(Enum(MembershipCategory), default=MembershipCategory.youth, nullable=False)
+    created_at:           Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     member: Mapped["Member"] = relationship(back_populates="user")
 
@@ -82,6 +101,7 @@ class CellReport(Base):
     meeting_time: Mapped[str] = mapped_column(String(20), default="")
     meeting_place: Mapped[str] = mapped_column(String(255), default="")
     overall_prayer: Mapped[str] = mapped_column(Text, default="")
+    leader_comment: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -103,7 +123,9 @@ class CellReportMemberEntry(Base):
     report_id: Mapped[int] = mapped_column(ForeignKey("cell_reports.id"), nullable=False)
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
     attended: Mapped[bool] = mapped_column(Boolean, default=False)
+    attendance_type: Mapped[AttendanceType] = mapped_column(Enum(AttendanceType), default=AttendanceType.absent)
     prayer: Mapped[str] = mapped_column(Text, default="")
+    remarks: Mapped[str] = mapped_column(Text, default="")
 
     report: Mapped["CellReport"] = relationship(back_populates="entries")
     member: Mapped["Member"] = relationship(back_populates="cell_report_entries")
@@ -129,6 +151,7 @@ class Room(Base):
 
     reservations: Mapped[list["Reservation"]] = relationship(back_populates="room")
     location: Mapped[Optional["RoomLocation"]] = relationship(back_populates="room", uselist=False)
+    rules: Mapped[list["ReservationRule"]] = relationship(back_populates="room", cascade="all, delete-orphan")
 
 
 class RoomLocation(Base):
@@ -187,6 +210,30 @@ class Reservation(Base):
 
     room: Mapped[Room] = relationship(back_populates="reservations")
 
+
+class ReservationRule(Base):
+    __tablename__ = "reservation_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), nullable=False)
+    rule_type: Mapped[RuleType] = mapped_column(Enum(RuleType), nullable=False)
+    
+    # For day_of_week rule: 0=Sunday, 1=Monday, ..., 6=Saturday
+    day_of_week: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    
+    # For specific_date rule
+    specific_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    
+    # For membership_category rule
+    membership_category: Mapped[Optional[MembershipCategory]] = mapped_column(Enum(MembershipCategory), nullable=True)
+    
+    # Whether the rule allows (True) or denies (False) access
+    is_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    room: Mapped[Room] = relationship(back_populates="rules")
 
 
 class ReservationStatus(str, enum.Enum):

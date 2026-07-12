@@ -217,6 +217,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
   const handleModalClose = () => {
     setModalOpen(false);
     setForm({
+      floor: "",
       room_id: "",
       requester_name: "",
       phone: "",
@@ -226,6 +227,9 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
       purpose: "",
       attendees: "1",
       notes: "",
+      permission: "member",
+      repeat_type: "none",
+      repeat_count: 1,
     });
   };
 

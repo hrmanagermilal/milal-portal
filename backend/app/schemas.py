@@ -31,6 +31,32 @@ class RoomUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class ReservationRuleCreate(BaseModel):
+    rule_type: Literal["day_of_week", "specific_date", "membership_category"]
+    day_of_week: int | None = Field(default=None, ge=0, le=6)  # 0=Sunday, 6=Saturday
+    specific_date: date | None = None
+    membership_category: Literal["youth", "adult"] | None = None
+    is_allowed: bool = True
+
+
+class ReservationRuleOut(BaseModel):
+    id: int
+    room_id: int
+    rule_type: str
+    day_of_week: int | None
+    specific_date: date | None
+    membership_category: str | None
+    is_allowed: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReservationRuleUpdate(BaseModel):
+    is_allowed: bool | None = None
+
+
 class ReservationCreate(BaseModel):
     room_id: int
     requester_name: str = Field(min_length=2, max_length=100)
@@ -158,7 +184,9 @@ class ChatRequest(BaseModel):
 class CellReportMemberEntryCreate(BaseModel):
     member_id: int
     attended: bool = False
+    attendance_type: str = "absent"  # "present", "absent", "long_absence"
     prayer: str = ""
+    remarks: str = ""
 
 
 class CellReportCreate(BaseModel):
@@ -166,6 +194,7 @@ class CellReportCreate(BaseModel):
     meeting_time: str = ""
     meeting_place: str = ""
     overall_prayer: str = ""
+    leader_comment: str = ""
     members: list[CellReportMemberEntryCreate] = []
 
 
@@ -175,6 +204,7 @@ class CellReportListItem(BaseModel):
     meeting_time: str
     meeting_place: str
     overall_prayer: str
+    leader_comment: str
     attendee_count: int
     total_count: int
     prayer_recorded_count: int
@@ -187,7 +217,9 @@ class CellReportMemberEntryOut(BaseModel):
     member_name: str
     member_title: str
     attended: bool
+    attendance_type: str
     prayer: str
+    remarks: str
 
 
 class CellReportDetailOut(BaseModel):
@@ -198,6 +230,7 @@ class CellReportDetailOut(BaseModel):
     meeting_time: str
     meeting_place: str
     overall_prayer: str
+    leader_comment: str
     entries: list[CellReportMemberEntryOut]
     created_at: datetime
     updated_at: datetime

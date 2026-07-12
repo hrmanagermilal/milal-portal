@@ -135,9 +135,9 @@ export default function LoginModal({ open, onLogin }) {
     try {
       const res = await api.loginWithPassword({ user_id: loginUserId.trim(), password: loginPw });
       console.log('login check:', res);
-      // Store the access token in localStorage
+      // Store the access token in sessionStorage (not localStorage for security)
       if (res.access_token) {
-        localStorage.setItem("milal_token", res.access_token);
+        sessionStorage.setItem("milal_token", res.access_token);
       }
       // Pass full user info to parent (App.jsx)
       onLogin(res.name, res.permission, res.title, res.cell_group, {

@@ -384,30 +384,29 @@ export default function NewReservationModal({
               size="small"
               fullWidth
               value={form.repeat_type || "none"}
-              onChange={(e) => setForm((prev) => ({ ...prev, repeat_type: e.target.value }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, repeat_type: e.target.value, repeat_count: 1 }))}
             >
               <MenuItem value="none">반복 없음</MenuItem>
               <MenuItem value="weekly">매주</MenuItem>
               <MenuItem value="monthly">매달</MenuItem>
             </TextField>
 
-            {form.repeat_type !== "none" && (
-              <TextField
-                label="반복 횟수"
-                type="number"
-                size="small"
-                fullWidth
-                inputProps={{ min: 1, max: 52 }}
-                value={form.repeat_count || 1}
-                onChange={(e) => setForm((prev) => ({ ...prev, repeat_count: Math.max(1, parseInt(e.target.value) || 1) }))}
-              />
-            )}
-
-            {form.repeat_type !== "none" && form.repeat_count > 1 && (
-              <Typography variant="caption" sx={{ color: "#666", fontSize: "12px", fontStyle: "italic" }}>
-                💡 {form.repeat_count}개의 예약이 {form.repeat_type === "weekly" ? "매주" : "매달"} 생성되며, 모두 자동승인됩니다.
-              </Typography>
-            )}
+            {form.repeat_type === "weekly" || form.repeat_type === "monthly" ? (
+              <>
+                <TextField
+                  label="반복 횟수"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  inputProps={{ min: 1, max: 52 }}
+                  value={form.repeat_count || 1}
+                  onChange={(e) => setForm((prev) => ({ ...prev, repeat_count: Math.max(1, parseInt(e.target.value) || 1) }))}
+                />
+                <Typography variant="caption" sx={{ color: "#666", fontSize: "12px", fontStyle: "italic" }}>
+                  💡 {form.repeat_count}개의 예약이 {form.repeat_type === "weekly" ? "매주" : "매달"} 생성되며, 모두 자동승인됩니다.
+                </Typography>
+              </>
+            ) : null}
           </Stack>
         </Box>
       )}

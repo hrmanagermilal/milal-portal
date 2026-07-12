@@ -19,9 +19,11 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import MapIcon from "@mui/icons-material/Map";
+import RuleIcon from "@mui/icons-material/Rule";
 import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
 import RoomMapEditor from "./RoomMapEditor";
+import ReservationRuleModal from "./ReservationRuleModal";
 
 function buildEditMap(rooms) {
   const map = {};
@@ -48,6 +50,8 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
   const [success, setSuccess] = useState("");
   const [mapEditorOpen, setMapEditorOpen] = useState(false);
   const [selectedRoomForMap, setSelectedRoomForMap] = useState(null);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false);
+  const [selectedRoomForRule, setSelectedRoomForRule] = useState(null);
 
   const [newRoom, setNewRoom] = useState({
     name: "",
@@ -107,6 +111,7 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
     setSuccess("");
     try {
       const payload = editMap[roomId];
+      console.log("Updating room", roomId, payload);
       await api.adminUpdateRoom(roomId, {
         name: payload.name,
         capacity: Number(payload.capacity),
@@ -126,6 +131,7 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
     setError("");
     setSuccess("");
     try {
+      console.log("Deactivating room", roomId);
       await api.adminDeleteRoom(roomId);
       setSuccess(`Room #${roomId} deactivated`);
       await loadRooms();
@@ -162,7 +168,7 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
             label="층"
             size="small"
             value={newRoom.floor}
-            onChange={(e) => setNewRoom((prev) => ({ ...prev, floor: e.target.value }))}
+            onChange={(e) => setNewRoom((prev) => ({ ...prev, floor: Number(e.target.value) }))}
             sx={{ width: 100 }}
           >
             <MenuItem value={1}>1층</MenuItem>
@@ -174,7 +180,7 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
             size="small"
             inputProps={{ min: 1 }}
             value={newRoom.capacity}
-            onChange={(e) => setNewRoom((prev) => ({ ...prev, capacity: e.target.value }))}
+            onChange={(e) => setNewRoom((prev) => ({ ...prev, capacity: Number(e.target.value) }))}
             sx={{ width: 100 }}
           />
           <TextField
@@ -202,7 +208,7 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
           <Table size="small">
             <TableHead sx={{ bgcolor: "#eef2f7" }}>
               <TableRow>
-                {["No", "장소명", "층", "정원", "장소 정보", "지도", "상태", "동작"].map((h) => (
+                {["No", "장소명", "층", "정원", "장소 정보", "지도", "규칙", "상태", "동작"].map((h) => (
                   <TableCell key={h} sx={{ color: "#313b5e", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</TableCell>
                 ))}
               </TableRow>
@@ -242,7 +248,7 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
                       <TextField
                         select
                         size="small"
-                        value={edit.floor ?? 1}
+                        value={Number(edit.floor ?? 1)}
                         onChange={(e) => {
                           const floor = Number(e.target.value);
                           setEditMap((prev) => ({ ...prev, [room.id]: { ...(prev[room.id] || edit), floor } }));
@@ -260,7 +266,7 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
                         inputProps={{ min: 1 }}
                         value={edit.capacity}
                         onChange={(e) =>
-                          setEditMap((prev) => ({ ...prev, [room.id]: { ...edit, capacity: e.target.value } }))
+                          setEditMap((prev) => ({ ...prev, [room.id]: { ...edit, capacity: Number(e.target.value) } }))
                         }
                         sx={{ width: 80 }}
                       />
@@ -287,6 +293,20 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
                         sx={{ whiteSpace: "nowrap" }}
                       >
                         {t("map") || "Map"}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<RuleIcon />}
+                        onClick={() => {
+                          setSelectedRoomForRule(room);
+                          setRuleModalOpen(true);
+                        }}
+                        sx={{ whiteSpace: "nowrap" }}
+                      >
+                        규칙
                       </Button>
                     </TableCell>
                     <TableCell>
@@ -347,6 +367,13 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
             setSuccess("Room location saved successfully");
             loadRooms();
           }}
+        />
+
+        {/* Reservation Rule Modal */}
+        <ReservationRuleModal
+          open={ruleModalOpen}
+          roomId={selectedRoomForRule?.id}
+          onClose={() => setRuleModalOpen(false)}
         />
       </CardContent>
     </Card>

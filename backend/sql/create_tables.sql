@@ -5,6 +5,7 @@
 -- Drop existing tables (order matters due to foreign key)
 DROP TABLE IF EXISTS cell_report_member_entries;
 DROP TABLE IF EXISTS cell_reports;
+DROP TABLE IF EXISTS reservation_rules;
 DROP TABLE IF EXISTS reservations;
 DROP TABLE IF EXISTS room_locations;
 DROP TABLE IF EXISTS otp_codes;
@@ -33,10 +34,11 @@ CREATE TABLE members (
 -- Table: users  (accounts linked to members)
 -- ============================================================
 CREATE TABLE users (
-    id            INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    member_id     INT          NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id                    INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    member_id             INT          NOT NULL UNIQUE,
+    password_hash         VARCHAR(255) NOT NULL,
+    membership_category   ENUM('youth','adult') NOT NULL DEFAULT 'adult',
+    created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_user_member FOREIGN KEY (member_id) REFERENCES members(id)
 );
 
@@ -96,6 +98,22 @@ CREATE TABLE room_locations (
 );
 
 -- ============================================================
+-- Table: reservation_rules
+-- ============================================================
+CREATE TABLE reservation_rules (
+    id                    INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    room_id               INT          NOT NULL,
+    rule_type             ENUM('day_of_week','specific_date','membership_category') NOT NULL,
+    day_of_week           INT,                     -- 0=Sunday, 1=Monday, ..., 6=Saturday
+    specific_date         DATE,
+    membership_category   ENUM('youth','adult'),
+    is_allowed            TINYINT(1)   NOT NULL DEFAULT 1,
+    created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_rule_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ============================================================
 -- Table: reservations
 -- ============================================================
 CREATE TABLE reservations (
@@ -131,6 +149,7 @@ CREATE TABLE cell_reports (
     meeting_time     VARCHAR(20)  NOT NULL DEFAULT '',
     meeting_place    VARCHAR(255) NOT NULL DEFAULT '',
     overall_prayer   TEXT         NOT NULL,
+    leader_comment   TEXT         NOT NULL DEFAULT '',
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_cell_report_leader FOREIGN KEY (leader_member_id) REFERENCES members(id)
@@ -140,11 +159,13 @@ CREATE TABLE cell_reports (
 -- Table: cell_report_member_entries
 -- ============================================================
 CREATE TABLE cell_report_member_entries (
-    id         INT         NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    report_id  INT         NOT NULL,
-    member_id  INT         NOT NULL,
-    attended   TINYINT(1)  NOT NULL DEFAULT 0,
-    prayer     TEXT        NOT NULL,
+    id               INT         NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    report_id        INT         NOT NULL,
+    member_id        INT         NOT NULL,
+    attended         TINYINT(1)  NOT NULL DEFAULT 0,
+    attendance_type  ENUM('present', 'absent', 'long_absence') NOT NULL DEFAULT 'absent',
+    prayer           TEXT        NOT NULL,
+    remarks          TEXT        NOT NULL DEFAULT '',
     CONSTRAINT fk_cell_report_entry_report FOREIGN KEY (report_id) REFERENCES cell_reports(id),
     CONSTRAINT fk_cell_report_entry_member FOREIGN KEY (member_id) REFERENCES members(id)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

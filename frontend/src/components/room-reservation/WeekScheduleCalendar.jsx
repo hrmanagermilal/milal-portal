@@ -65,7 +65,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [form, setForm] = useState({
-    room_id: "", requester_name: "", phone: "", email: "",
+    floor: "", room_id: "", requester_name: "", phone: "", email: "",
     start_time: "", end_time: "", purpose: "", attendees: "1", notes: "",
     permission: "member",
     repeat_type: "none", repeat_count: 1,

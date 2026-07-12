@@ -100,14 +100,14 @@ export const api = {
   adminGetRooms: () =>
     request("/api/admin/rooms", {
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
     }),
   adminCreateRoom: (payload) =>
     request("/api/admin/rooms", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
       body: payload,
     }),
@@ -115,7 +115,7 @@ export const api = {
     request(`/api/admin/rooms/${id}`, {
       method: "PATCH",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
       body: payload,
     }),
@@ -123,14 +123,14 @@ export const api = {
     request(`/api/admin/rooms/${id}`, {
       method: "DELETE",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
     }),
   adminSaveRoomLocation: (roomId, payload) =>
     request(`/api/admin/rooms/${roomId}/location`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
       body: payload,
     }),
@@ -138,33 +138,70 @@ export const api = {
     request(`/api/admin/rooms/${roomId}/location`, {
       method: "GET",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
     }),
   adminGetAllRoomLocations: () =>
     request("/api/admin/rooms/locations/all", {
       method: "GET",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
     }),
   adminDeleteRoomLocation: (roomId) =>
     request(`/api/admin/rooms/${roomId}/location`, {
       method: "DELETE",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
     }),
+  
+  // ── Room Reservation Rules ────────────────────────────────────────────
+  adminGetRoomRules: (roomId) =>
+    request(`/api/admin/rooms/${roomId}/rules`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
+      },
+    }),
+  
+  adminCreateRoomRule: (roomId, payload) =>
+    request(`/api/admin/rooms/${roomId}/rules`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
+      },
+      body: payload,
+    }),
+  
+  adminUpdateRoomRule: (roomId, ruleId, payload) =>
+    request(`/api/admin/rooms/${roomId}/rules/${ruleId}`, {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
+      },
+      body: payload,
+    }),
+  
+  adminDeleteRoomRule: (roomId, ruleId) =>
+    request(`/api/admin/rooms/${roomId}/rules/${ruleId}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
+      },
+    }),
+
   createReservation: (payload) =>
     request("/api/reservations", {
       method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: payload,
     }),
   adminUpdateReservation: (id, payload) =>
     request(`/api/admin/reservations/${id}`, {
       method: "PATCH",
       headers: {
-        "Authorization": `Bearer ${localStorage.getItem("milal_token")}`,
+        "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}`,
       },
       body: payload,
     }),
@@ -190,85 +227,85 @@ export const api = {
 
   getMyAccountInfo: () =>
     request("/api/auth/me", {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   updateMyAccountInfo: (payload) =>
     request("/api/auth/me", {
       method: "PATCH",
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: payload,
     }),
 
   getCellGroupMembers: () =>
     request("/api/auth/cell-group-members", {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   createCellReport: (payload) =>
     request("/api/cell-reports", {
       method: "POST",
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: payload,
     }),
 
   getCellReports: () =>
     request("/api/cell-reports", {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   getCellReportDetail: (reportId) =>
     request(`/api/cell-reports/${reportId}`, {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   getCellReportDateAnalysis: (meetingDate) =>
     request(`/api/cell-reports/date-analysis?meeting_date=${encodeURIComponent(meetingDate)}`, {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   getMember: (memberId) =>
     request(`/api/auth/member/${memberId}`, {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   updateMember: (memberId, payload) =>
     request(`/api/auth/member/${memberId}`, {
       method: "PATCH",
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: payload,
     }),
 
   // ── Admin User Management ─────────────────────────────────────────────
   adminGetUsers: (skip = 0, limit = 20) =>
     request(`/api/auth/admin/users?skip=${skip}&limit=${limit}`, {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
   adminGetUserCount: () =>
     request("/api/auth/admin/users/total", {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
   adminGetUserDetail: (userId) =>
     request(`/api/auth/admin/users/${userId}`, {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
   adminUpdateUserPermission: (userId, payload) =>
     request(`/api/auth/admin/users/${userId}/admin`, {
       method: "PATCH",
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: payload,
     }),
   adminResetUserPassword: (userId) =>
     request(`/api/auth/admin/users/${userId}/reset-password`, {
       method: "POST",
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
     
   // ── Change Password ────────────────────────────────────────────────────
   changePassword: (currentPassword, newPassword) =>
     request("/api/auth/change-password", {
       method: "POST",
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: { current_password: currentPassword, new_password: newPassword },
     }),
 
@@ -276,24 +313,24 @@ export const api = {
   adminSaveRoomLocation: (roomId, coordinates) =>
     request(`/api/admin/rooms/${roomId}/location`, {
       method: "POST",
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: coordinates,
     }),
 
   adminGetRoomLocation: (roomId) =>
     request(`/api/admin/rooms/${roomId}/location`, {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   adminGetAllRoomLocations: () =>
     request("/api/admin/rooms/locations/all", {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   adminDeleteRoomLocation: (roomId) =>
     request(`/api/admin/rooms/${roomId}/location`, {
       method: "DELETE",
-      headers: { "Authorization": `Bearer ${localStorage.getItem("milal_token")}` },
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
   // ── AI Chat ────────────────────────────────────────────────────────────

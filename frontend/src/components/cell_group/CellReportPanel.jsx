@@ -57,6 +57,7 @@ export default function CellReportPanel() {
   const [meetingAt, setMeetingAt] = useState("");
   const [meetingPlace, setMeetingPlace] = useState("");
   const [overallPrayer, setOverallPrayer] = useState("");
+  const [leaderComment, setLeaderComment] = useState("");
 
   useEffect(() => {
     const draftRaw = localStorage.getItem(DRAFT_KEY);
@@ -67,6 +68,7 @@ export default function CellReportPanel() {
         setMeetingAt(draft.meetingAt || "");
         setMeetingPlace(draft.meetingPlace || "");
         setOverallPrayer(draft.overallPrayer || "");
+        setLeaderComment(draft.leaderComment || "");
       } catch {
         // ignore invalid draft
       }
@@ -105,7 +107,9 @@ export default function CellReportPanel() {
           name: m.name,
           title: m.title,
           attended: draftMembers[m.id]?.attended ?? false,
+          attendanceType: draftMembers[m.id]?.attendanceType ?? "absent",
           prayer: draftMembers[m.id]?.prayer ?? "",
+          remarks: draftMembers[m.id]?.remarks ?? "",
         }))
       );
     } catch (err) {
@@ -121,8 +125,9 @@ export default function CellReportPanel() {
       meetingAt,
       meetingPlace,
       overallPrayer,
+      leaderComment,
       members: members.reduce((acc, m) => {
-        acc[m.id] = { attended: m.attended, prayer: m.prayer };
+        acc[m.id] = { attended: m.attended, attendanceType: m.attendanceType, prayer: m.prayer, remarks: m.remarks };
         return acc;
       }, {}),
     };
@@ -136,7 +141,8 @@ export default function CellReportPanel() {
     setMeetingAt("");
     setMeetingPlace("");
     setOverallPrayer("");
-    setMembers((prev) => prev.map((m) => ({ ...m, attended: false, prayer: "" })));
+    setLeaderComment("");
+    setMembers((prev) => prev.map((m) => ({ ...m, attended: false, attendanceType: "absent", prayer: "", remarks: "" })));
     setSuccess(t("cellReportCleared"));
   };
 
@@ -163,10 +169,13 @@ export default function CellReportPanel() {
         meeting_time: meetingAt,
         meeting_place: meetingPlace,
         overall_prayer: overallPrayer,
+        leader_comment: leaderComment,
         members: members.map((m) => ({
           member_id: m.id,
           attended: m.attended,
+          attendance_type: m.attendanceType,
           prayer: m.prayer,
+          remarks: m.remarks,
         })),
       };
 
@@ -567,36 +576,63 @@ export default function CellReportPanel() {
                 {loading ? (
                   <Box sx={{ py: 3, display: "flex", justifyContent: "center" }}><CircularProgress size={24} /></Box>
                 ) : (
-                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: "10px" }}>
+                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: "10px", overflowX: "auto" }}>
                     <Table size="small">
                       <TableHead>
                         <TableRow sx={{ bgcolor: "#f8fafc" }}>
-                          <TableCell sx={{ width: 100, fontWeight: 700 }}>{t("cellReportAttended")}</TableCell>
-                          <TableCell sx={{ width: 180, fontWeight: 700 }}>{t("name")}</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>{t("cellReportMemberPrayer")}</TableCell>
+                          <TableCell sx={{ fontWeight: 700, minWidth: 100 }}>{t("name")}</TableCell>
+                          <TableCell sx={{ fontWeight: 700, minWidth: 120 }}>출석 상태</TableCell>
+                          <TableCell sx={{ fontWeight: 700, minWidth: 200 }}>{t("cellReportMemberPrayer")}</TableCell>
+                          <TableCell sx={{ fontWeight: 700, minWidth: 150 }}>참고사항</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {members.map((m) => (
                           <TableRow key={m.id}>
-                            <TableCell>
-                              <Checkbox
-                                checked={m.attended}
+                            <TableCell sx={{ minWidth: 100 }}>{m.name}</TableCell>
+                            <TableCell sx={{ minWidth: 120 }}>
+                              <select
+                                value={m.attendanceType}
                                 onChange={(e) =>
-                                  setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, attended: e.target.checked } : x)))
+                                  setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, attendanceType: e.target.value } : x)))
                                 }
-                              />
+                                style={{
+                                  padding: "6px 8px",
+                                  borderRadius: "4px",
+                                  border: "1px solid #ddd",
+                                  fontSize: "13px",
+                                  width: "100%",
+                                }}
+                              >
+                                <option value="present">출석</option>
+                                <option value="absent">결석</option>
+                                <option value="long_absence">장기결석</option>
+                              </select>
                             </TableCell>
-                            <TableCell>{m.name}</TableCell>
-                            <TableCell>
+                            <TableCell sx={{ minWidth: 200 }}>
                               <TextField
                                 value={m.prayer}
                                 onChange={(e) =>
                                   setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, prayer: e.target.value } : x)))
                                 }
-                                placeholder={t("cellReportMemberPrayerPlaceholder")}
+                                placeholder="기도제목"
                                 fullWidth
                                 size="small"
+                                multiline
+                                maxRows={2}
+                              />
+                            </TableCell>
+                            <TableCell sx={{ minWidth: 150 }}>
+                              <TextField
+                                value={m.remarks}
+                                onChange={(e) =>
+                                  setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, remarks: e.target.value } : x)))
+                                }
+                                placeholder="참고사항"
+                                fullWidth
+                                size="small"
+                                multiline
+                                maxRows={2}
                               />
                             </TableCell>
                           </TableRow>
@@ -618,6 +654,20 @@ export default function CellReportPanel() {
                   value={overallPrayer}
                   onChange={(e) => setOverallPrayer(e.target.value)}
                   placeholder={t("cellReportOverallPrayerPlaceholder")}
+                />
+              </CardContent>
+            </Card>
+
+            <Card sx={{ borderRadius: "14px" }}>
+              <CardContent>
+                <Typography variant="body2" sx={{ fontWeight: 700, mb: 1.25 }}>순장 코멘트</Typography>
+                <TextField
+                  multiline
+                  minRows={4}
+                  fullWidth
+                  value={leaderComment}
+                  onChange={(e) => setLeaderComment(e.target.value)}
+                  placeholder="순장 의견/코멘트를 입력하세요"
                 />
               </CardContent>
             </Card>
@@ -670,21 +720,27 @@ export default function CellReportPanel() {
                 <TextField label={t("cellReportPlace")} value={detail.meeting_place || ""} fullWidth InputProps={{ readOnly: true }} />
               </Stack>
 
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: "10px" }}>
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: "10px", overflowX: "auto" }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow sx={{ bgcolor: "#f8fafc" }}>
-                      <TableCell sx={{ width: 90, fontWeight: 700 }}>{t("cellReportAttended")}</TableCell>
-                      <TableCell sx={{ width: 180, fontWeight: 700 }}>{t("name")}</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>{t("cellReportMemberPrayer")}</TableCell>
+                      <TableCell sx={{ fontWeight: 700, minWidth: 100 }}>{t("name")}</TableCell>
+                      <TableCell sx={{ fontWeight: 700, minWidth: 120 }}>출석 상태</TableCell>
+                      <TableCell sx={{ fontWeight: 700, minWidth: 200 }}>{t("cellReportMemberPrayer")}</TableCell>
+                      <TableCell sx={{ fontWeight: 700, minWidth: 150 }}>참고사항</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {detail.entries.map((entry) => (
                       <TableRow key={`${detail.id}-${entry.member_id}`}>
-                        <TableCell>{entry.attended ? "O" : "-"}</TableCell>
-                        <TableCell>{entry.member_name}</TableCell>
-                        <TableCell>{entry.prayer || "-"}</TableCell>
+                        <TableCell sx={{ minWidth: 100 }}>{entry.member_name}</TableCell>
+                        <TableCell sx={{ minWidth: 120 }}>
+                          {entry.attendance_type === "present" && "출석"}
+                          {entry.attendance_type === "absent" && "결석"}
+                          {entry.attendance_type === "long_absence" && "장기결석"}
+                        </TableCell>
+                        <TableCell sx={{ minWidth: 200 }}>{entry.prayer || "-"}</TableCell>
+                        <TableCell sx={{ minWidth: 150 }}>{entry.remarks || "-"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -697,6 +753,15 @@ export default function CellReportPanel() {
                 fullWidth
                 multiline
                 minRows={4}
+                InputProps={{ readOnly: true }}
+              />
+
+              <TextField
+                label="순장 코멘트"
+                value={detail.leader_comment || ""}
+                fullWidth
+                multiline
+                minRows={3}
                 InputProps={{ readOnly: true }}
               />
 

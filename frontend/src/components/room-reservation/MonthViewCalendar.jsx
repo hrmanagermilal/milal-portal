@@ -134,6 +134,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
     setModalOpen(false);
     setSelectedRoomId(null);
     setForm({
+      floor: "",
       room_id: "",
       requester_name: "",
       phone: "",
@@ -143,6 +144,9 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
       purpose: "",
       attendees: "1",
       notes: "",
+      permission: "member",
+      repeat_type: "none",
+      repeat_count: 1,
     });
   };
 

@@ -63,6 +63,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [selectedDateTime, setSelectedDateTime] = useState(null);
   const [form, setForm] = useState({
+    floor: "",
     room_id: "",
     requester_name: "",
     phone: "",
@@ -132,6 +133,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
   const handleModalClose = () => {
     setModalOpen(false);
     setForm({
+      floor: "",
       room_id: "",
       requester_name: "",
       phone: "",
@@ -141,6 +143,9 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
       purpose: "",
       attendees: "1",
       notes: "",
+      permission: "member",
+      repeat_type: "none",
+      repeat_count: 1,
     });
   };
 
