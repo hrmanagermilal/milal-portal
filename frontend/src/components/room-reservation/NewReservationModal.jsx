@@ -13,7 +13,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
-import { dateToLocalISOString } from "../../utils/datetime";
+import { dateToLocalISOString, isPastTime } from "../../utils/datetime";
 import FloorPlanTooltip from "./FloorPlanTooltip";
 
 // Default end = start + 1 hour, clamped to 23:30 of same day
@@ -256,7 +256,8 @@ export default function NewReservationModal({
     form.end_time > form.start_time &&
     form.end_time.slice(0, 10) === form.start_time.slice(0, 10) &&
     form.purpose.trim() &&
-    Number(form.attendees) >= 1;
+    Number(form.attendees) >= 1 &&
+    !isPastTime(form.start_time);
 
   console.log("[NewReservationModal] isValid:", isValid, "form:", form);
   console.log("[NewReservationModal] currentUser:", currentUser);

@@ -17,6 +17,7 @@ import {
   endOfDay,
   endOfMonth,
   formatDateTime,
+  isPastDate,
   startOfDay,
   startOfMonth,
   startOfWeek,
@@ -207,6 +208,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
         ))}
         {days.map((day) => {
           const inCurrentMonth = day.getMonth() === date.getMonth();
+          const isClickable = inCurrentMonth && !isPastDate(day);
           const dayStart = startOfDay(day);
           const dayEnd = endOfDay(day);
           const dayItems = sortByStartTime(
@@ -216,9 +218,9 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
           return (
             <div 
               key={day.toISOString()} 
-              className={`month-cell ${inCurrentMonth ? "" : "dim"}`}
-              onClick={() => inCurrentMonth && handleCellClick(day)}
-              style={{ cursor: inCurrentMonth ? "pointer" : "default" }}
+              className={`month-cell ${isClickable ? "" : "dim"}`}
+              onClick={() => isClickable && handleCellClick(day)}
+              style={{ cursor: isClickable ? "pointer" : "default" }}
             >
               <div className="month-date">{day.getDate()}</div>
               <div className="month-events">
