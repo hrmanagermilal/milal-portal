@@ -34,8 +34,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 class FindMemberRequest(BaseModel):
     name: str
-    phone: str | None = None
-    email: str | None = None
 
 class SendOtpRequest(BaseModel):
     member_id: int
@@ -159,19 +157,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 @router.post("/find-member")
 def find_member(body: FindMemberRequest, db: Session = Depends(get_db)):
-    """Find a member by name + phone OR name + email."""
-    if not body.phone and not body.email:
-        raise HTTPException(400, "Provide phone or email")
+    """Find a member by name only. Email is retrieved from members table."""
+    if not body.name.strip():
+        raise HTTPException(400, "Please provide a name")
 
     stmt = select(Member).where(Member.name == body.name.strip())
-    if body.phone:
-        stmt = stmt.where(Member.phone == body.phone.strip())
-    else:
-        stmt = stmt.where(Member.email == body.email.strip().lower())
-
     member = db.execute(stmt).scalar_one_or_none()
     if not member:
-        raise HTTPException(404, "Member not found. Please check your name and contact info.")
+        raise HTTPException(404, "Member not found. Please check your name.")
 
     # Check if account already exists
     user = db.execute(select(User).where(User.member_id == member.id)).scalar_one_or_none()
