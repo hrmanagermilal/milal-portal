@@ -83,6 +83,7 @@ export const translations = {
     filterFloor2: "2nd Floor",
     filterRoom: "Room",
     filterAllRooms: "All Rooms",
+    selectAll: "Select All",
     filterStatus: "Status",
     filterAllStatus: "All Status",
 
@@ -382,6 +383,7 @@ export const translations = {
     filterFloor2: "2층",
     filterRoom: "장소",
     filterAllRooms: "전체 장소",
+    selectAll: "전체선택",
     filterStatus: "상태",
     filterAllStatus: "전체 상태",
 

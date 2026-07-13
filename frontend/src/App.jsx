@@ -6,6 +6,7 @@ import BottomNavigationAction from "@mui/material/BottomNavigationAction";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
+import Snackbar from "@mui/material/Snackbar";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
@@ -76,16 +77,16 @@ export default function App() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [userName, setUserName] = useState(() => localStorage.getItem("milal_user") || "");
-  const [userPermission, setUserPermission] = useState(() => localStorage.getItem("milal_permission") || "member");
-  const [userTitle, setUserTitle] = useState(() => localStorage.getItem("milal_title") || "");
-  const [userCellGroup, setUserCellGroup] = useState(() => localStorage.getItem("milal_cell_group") || "");
+  const [userName, setUserName] = useState(() => sessionStorage.getItem("milal_user") || "");
+  const [userPermission, setUserPermission] = useState(() => sessionStorage.getItem("milal_permission") || "member");
+  const [userTitle, setUserTitle] = useState(() => sessionStorage.getItem("milal_title") || "");
+  const [userCellGroup, setUserCellGroup] = useState(() => sessionStorage.getItem("milal_cell_group") || "");
 
   function handleLogin(name, permission, title, cellGroup, fullUserInfo) {
-    localStorage.setItem("milal_user", name);
-    localStorage.setItem("milal_permission", permission);
-    localStorage.setItem("milal_title", title || "");
-    localStorage.setItem("milal_cell_group", cellGroup || "");
+    sessionStorage.setItem("milal_user", name);
+    sessionStorage.setItem("milal_permission", permission);
+    sessionStorage.setItem("milal_title", title || "");
+    sessionStorage.setItem("milal_cell_group", cellGroup || "");
     setUserName(name);
     setUserPermission(permission);
     setUserTitle(title || "");
@@ -100,10 +101,10 @@ export default function App() {
   }
 
   function handleLogout() {
-    localStorage.removeItem("milal_user");
-    localStorage.removeItem("milal_permission");
-    localStorage.removeItem("milal_title");
-    localStorage.removeItem("milal_cell_group");
+    sessionStorage.removeItem("milal_user");
+    sessionStorage.removeItem("milal_permission");
+    sessionStorage.removeItem("milal_title");
+    sessionStorage.removeItem("milal_cell_group");
     setUserName("");
     setUserPermission("member");
     setUserTitle("");
@@ -181,8 +182,9 @@ export default function App() {
     try {
       const requestObj = {
         ...formData,
-        room_id: Number(formData.room_id),
-        attendees: Number(formData.attendees),
+        room_id: Number(formData.room_id) || 0,
+        attendees: Number(formData.attendees) || 1,
+        repeat_count: Number(formData.repeat_count) || 1,
         start_time: localISOStringToUTCISO(formData.start_time),
         end_time: localISOStringToUTCISO(formData.end_time),
       };
@@ -301,8 +303,28 @@ export default function App() {
               <Typography variant="body2">Loading...</Typography>
             </Box>
           )}
-          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>{error}</Alert>}
-          {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess("")}>{success}</Alert>}
+
+          <Snackbar
+            open={!!error}
+            autoHideDuration={6000}
+            onClose={() => setError("")}
+            anchorOrigin={{ vertical: "top", horizontal: "center" }}
+          >
+            <Alert onClose={() => setError("")} severity="error" sx={{ width: "100%" }}>
+              {error}
+            </Alert>
+          </Snackbar>
+
+          <Snackbar
+            open={!!success}
+            autoHideDuration={6000}
+            onClose={() => setSuccess("")}
+            anchorOrigin={{ vertical: "top", horizontal: "center" }}
+          >
+            <Alert onClose={() => setSuccess("")} severity="success" sx={{ width: "100%" }}>
+              {success}
+            </Alert>
+          </Snackbar>
 
           {!loading && tab === "timeline" && (
             <ReservationTimeline rooms={rooms} reservations={reservations} onCreateReservation={handleCreateReservation} guideText={t("timelineGuideText")} />

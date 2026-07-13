@@ -7,8 +7,8 @@ import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import {
   addDays,
-  endOfWeek,
-  startOfWeek,
+  endOfWeek,  isPastDate,
+  isPastTime,  startOfWeek,
   toDateInputValue,
   toHourText,
 } from "../../utils/datetime";
@@ -61,7 +61,7 @@ function TimeAxis() {
   );
 }
 
-function EventBars({ items, windowStart, windowEnd, onCellClick, roomId }) {
+function EventBars({ items, windowStart, windowEnd, onCellClick, roomId, isPast }) {
   const placements = items
     .map((item) => ({ item, placement: calcEventPlacement(item, windowStart, windowEnd) }))
     .filter((entry) => entry.placement !== null);
@@ -69,6 +69,11 @@ function EventBars({ items, windowStart, windowEnd, onCellClick, roomId }) {
   const dynamicHeight = Math.max(58, placements.length * 24 + 10);
 
   const handleCellClick = (e) => {
+    // Don't allow clicks on past dates
+    if (isPast) {
+      return;
+    }
+    
     // Only handle click if not on a ReservedItem
     if (e.target.closest('.time-block')) {
       return;
@@ -99,7 +104,7 @@ function EventBars({ items, windowStart, windowEnd, onCellClick, roomId }) {
   return (
     <div 
       className="event-track" 
-      style={{ minHeight: `${dynamicHeight}px`, cursor: "pointer", position: "relative" }}
+      style={{ minHeight: `${dynamicHeight}px`, cursor: isPast ? "default" : "pointer", position: "relative", opacity: isPast ? 0.5 : 1 }}
       onClick={handleCellClick}
     >
       {placements.map(({ item, placement }) => (
@@ -217,6 +222,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
   const handleModalClose = () => {
     setModalOpen(false);
     setForm({
+      floor: "",
       room_id: "",
       requester_name: "",
       phone: "",
@@ -226,6 +232,9 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
       purpose: "",
       attendees: "1",
       notes: "",
+      permission: "member",
+      repeat_type: "none",
+      repeat_count: 1,
     });
   };
 
@@ -362,7 +371,8 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
                     key={`${room.id}-${day.toISOString()}`} 
                     className="calendar-grid-cell"
                     style={{
-                      backgroundColor: isToday(day) ? "#eef2ff" : "transparent",
+                      backgroundColor: isPastDate(day) ? "#f0f0f0" : isToday(day) ? "#eef2ff" : "transparent",
+                      opacity: isPastDate(day) ? 0.5 : 1,
                     }}
                   >
                     <EventBars 
@@ -371,6 +381,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
                       windowEnd={dayEnd}
                       onCellClick={handleCellClick}
                       roomId={room.id}
+                      isPast={isPastDate(day)}
                     />
                   </div>
                 );

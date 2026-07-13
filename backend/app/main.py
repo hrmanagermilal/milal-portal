@@ -21,6 +21,7 @@ from .models import (
     Member,
     OtpCode,
     Reservation,
+    ReservationRule,
     ReservationStatus,
     Room,
     RoomLocation,
@@ -33,6 +34,9 @@ from .schemas import (
     CellReportListItem,
     ReservationCreate,
     ReservationOut,
+    ReservationRuleCreate,
+    ReservationRuleOut,
+    ReservationRuleUpdate,
     RoomCreate,
     RoomOut,
     RoomUpdate,
@@ -187,6 +191,7 @@ def create_room_admin(
         name=payload.name,
         capacity=payload.capacity,
         description=payload.description,
+        floor=payload.floor,
         is_active=payload.is_active,
     )
     db.add(room)
@@ -218,6 +223,8 @@ def update_room_admin(
         room.capacity = payload.capacity
     if payload.description is not None:
         room.description = payload.description
+    if payload.floor is not None:
+        room.floor = payload.floor
     if payload.is_active is not None:
         room.is_active = payload.is_active
 
@@ -241,6 +248,89 @@ def deactivate_room_admin(
     room.is_active = False
     db.commit()
     return {"message": "room deactivated"}
+
+
+# ── Reservation Rule Endpoints ─────────────────────────────────────────────
+
+@app.get("/api/admin/rooms/{room_id}/rules", response_model=list[ReservationRuleOut])
+def get_room_rules(
+    room_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> list[ReservationRule]:
+    get_current_user(token, db)  # Verify JWT token
+
+    rules = db.scalars(
+        select(ReservationRule).where(ReservationRule.room_id == room_id)
+    ).all()
+    return rules
+
+
+@app.post("/api/admin/rooms/{room_id}/rules", response_model=ReservationRuleOut)
+def create_room_rule(
+    room_id: int,
+    payload: ReservationRuleCreate,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> ReservationRule:
+    get_current_user(token, db)  # Verify JWT token
+
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="room not found")
+
+    rule = ReservationRule(
+        room_id=room_id,
+        rule_type=payload.rule_type,
+        day_of_week=payload.day_of_week,
+        specific_date=payload.specific_date,
+        membership_category=payload.membership_category,
+        is_allowed=payload.is_allowed,
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+@app.patch("/api/admin/rooms/{room_id}/rules/{rule_id}", response_model=ReservationRuleOut)
+def update_room_rule(
+    room_id: int,
+    rule_id: int,
+    payload: ReservationRuleUpdate,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> ReservationRule:
+    get_current_user(token, db)  # Verify JWT token
+
+    rule = db.get(ReservationRule, rule_id)
+    if not rule or rule.room_id != room_id:
+        raise HTTPException(status_code=404, detail="rule not found")
+
+    if payload.is_allowed is not None:
+        rule.is_allowed = payload.is_allowed
+
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+@app.delete("/api/admin/rooms/{room_id}/rules/{rule_id}")
+def delete_room_rule(
+    room_id: int,
+    rule_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    get_current_user(token, db)  # Verify JWT token
+
+    rule = db.get(ReservationRule, rule_id)
+    if not rule or rule.room_id != room_id:
+        raise HTTPException(status_code=404, detail="rule not found")
+
+    db.delete(rule)
+    db.commit()
+    return {"message": "rule deleted"}
 
 
 # ── Room Location Endpoints ────────────────────────────────────────────────
@@ -340,17 +430,77 @@ def delete_room_location(
     return {"message": "room location deleted"}
 
 
+# ── Reservation Rule Validation ────────────────────────────────────────────
+
+def can_reserve_room(room_id: int, start_time: datetime, membership_category: str, db: Session) -> tuple[bool, str]:
+    """
+    Check if user can reserve the room based on rules.
+    모든 규칙을 검사하고, 하나라도 거부하는 규칙이 있으면 예약 거부
+    
+    Returns: (can_reserve: bool, error_message: str)
+    """
+    day_of_week = start_time.weekday()
+    # day_of_week is already in Python format (0=Monday, 1=Tuesday, ..., 6=Sunday)
+    # which matches the database storage format, so no conversion needed
+    print(f"[can_reserve_room] room_id={room_id}, start_time={start_time}, day_of_week={day_of_week}, membership={membership_category}")
+    
+    # 1. Check all specific date rules - if ANY is blocked (is_allowed=0), deny reservation
+    specific_date_rules = db.query(ReservationRule).filter(
+        ReservationRule.room_id == room_id,
+        ReservationRule.rule_type == "specific_date",
+        ReservationRule.specific_date == start_time.date(),
+    ).all()
+    print(f"[can_reserve_room] specific_date_rules: {len(specific_date_rules)} rules found")
+    for rule in specific_date_rules:
+        if not rule.is_allowed:
+            return False, f"이 날짜({start_time.date()})는 예약이 불가능합니다."
+    
+    # 2. Check all day_of_week rules with specific membership_category - if ANY is blocked, deny
+    day_membership_rules = db.query(ReservationRule).filter(
+        ReservationRule.room_id == room_id,
+        ReservationRule.rule_type == "day_of_week",
+        ReservationRule.day_of_week == day_of_week,
+        ReservationRule.membership_category == membership_category,
+    ).all()
+    print(f"[can_reserve_room] day_membership_rules: {len(day_membership_rules)} rules found")
+    for rule in day_membership_rules:
+        if not rule.is_allowed:
+            category_name = "청년부" if membership_category == "youth" else "장년부"
+            return False, f"{category_name}는 이 요일에 예약할 수 없습니다."
+    
+    # 3. Check all day_of_week rules with no specific membership (applies to all) - if ANY is blocked, deny
+    day_general_rules = db.query(ReservationRule).filter(
+        ReservationRule.room_id == room_id,
+        ReservationRule.rule_type == "day_of_week",
+        ReservationRule.day_of_week == day_of_week,
+        ReservationRule.membership_category.is_(None),
+    ).all()
+    print(f"[can_reserve_room] day_general_rules: {len(day_general_rules)} rules found")
+    for rule in day_general_rules:
+        if not rule.is_allowed:
+            return False, f"이 요일에는 예약이 불가능합니다."
+    
+    return True, ""
+
+
 @app.post("/api/reservations", response_model=dict)
 def create_reservation(
     payload: ReservationCreate,
     db: Session = Depends(get_db),
-    token: str | None = None,
+    authorization: str | None = Header(None),
 ) -> dict:
     """
     Create reservation(s). 
     - Regular users: create pending reservation
     - Admin users: create auto-approved reservation(s) with optional repeat
     """
+    # Extract token from Authorization header
+    token = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            token = parts[1]
+    
     validate_reservation_times(payload.start_time, payload.end_time)
 
     room = db.get(Room, payload.room_id)
@@ -360,6 +510,35 @@ def create_reservation(
     # Check if requester is admin
     is_admin = payload.permission == "admin"
 
+    # For all users (admin and non-admin), check reservation rules
+    try:
+        current_user = get_current_user(token, db) if token else None
+        membership_category = "adult"  # default
+        
+        print(f"[create_reservation] is_admin={is_admin}, token: {token}, current_user: {current_user}")
+        
+        if current_user:
+            user = db.scalar(select(User).where(User.member_id == current_user.id))
+            if user:
+                membership_category = user.membership_category.value if user.membership_category else "adult"
+            print(f"[create_reservation] user: {user}, membership_category: {membership_category}")
+        else:
+            print(f"[create_reservation] No current_user, using default membership_category: {membership_category}")
+        
+        # Check if user can reserve (applies to all users including admin)
+        can_reserve, error_msg = can_reserve_room(payload.room_id, payload.start_time, membership_category, db)
+        print(f"[create_reservation] can_reserve: {can_reserve}, error_msg: {error_msg}")
+        if not can_reserve:
+            raise HTTPException(status_code=403, detail=error_msg)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Log the error and re-raise to see what's happening
+        print(f"[create_reservation] ERROR in rule checking: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
+    
     # print out payload for debugging
     print("Creating reservation with payload:", payload.dict())
 
@@ -384,6 +563,12 @@ def create_reservation(
         else:
             current_start = payload.start_time
             current_end = payload.end_time
+
+        # For repeat reservations, also check rules for each instance
+        can_reserve, error_msg = can_reserve_room(payload.room_id, current_start, membership_category, db)
+        print(f"[create_reservation] repeat #{i+1} can_reserve: {can_reserve}, error_msg: {error_msg}")
+        if not can_reserve:
+            raise HTTPException(status_code=403, detail=f"repeat #{i+1}: {error_msg}")
 
         # Check for conflicts
         overlapping = db.scalar(
@@ -961,6 +1146,7 @@ def create_cell_report(
         meeting_time=payload.meeting_time,
         meeting_place=payload.meeting_place,
         overall_prayer=payload.overall_prayer,
+        leader_comment=payload.leader_comment,
     )
     db.add(report)
     db.flush()
@@ -971,7 +1157,9 @@ def create_cell_report(
                 report_id=report.id,
                 member_id=entry.member_id,
                 attended=entry.attended,
+                attendance_type=entry.attendance_type,
                 prayer=entry.prayer,
+                remarks=entry.remarks,
             )
         )
 
@@ -996,13 +1184,16 @@ def create_cell_report(
         meeting_time=saved.meeting_time,
         meeting_place=saved.meeting_place,
         overall_prayer=saved.overall_prayer,
+        leader_comment=saved.leader_comment,
         entries=[
             {
                 "member_id": e.member_id,
                 "member_name": e.member.name if e.member else "",
                 "member_title": e.member.title if e.member else "",
                 "attended": e.attended,
+                "attendance_type": e.attendance_type.value if e.attendance_type else "absent",
                 "prayer": e.prayer,
+                "remarks": e.remarks,
             }
             for e in saved.entries
         ],
@@ -1034,6 +1225,7 @@ def list_cell_reports(
             meeting_time=r.meeting_time,
             meeting_place=r.meeting_place,
             overall_prayer=r.overall_prayer,
+            leader_comment=r.leader_comment,
             attendee_count=sum(1 for e in r.entries if e.attended),
             total_count=len(r.entries),
             prayer_recorded_count=sum(1 for e in r.entries if (e.prayer or "").strip()),
@@ -1072,13 +1264,16 @@ def get_cell_report_detail(
         meeting_time=report.meeting_time,
         meeting_place=report.meeting_place,
         overall_prayer=report.overall_prayer,
+        leader_comment=report.leader_comment,
         entries=[
             {
                 "member_id": e.member_id,
                 "member_name": e.member.name if e.member else "",
                 "member_title": e.member.title if e.member else "",
                 "attended": e.attended,
+                "attendance_type": e.attendance_type.value if e.attendance_type else "absent",
                 "prayer": e.prayer,
+                "remarks": e.remarks,
             }
             for e in report.entries
         ],

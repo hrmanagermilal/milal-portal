@@ -97,3 +97,27 @@ export function localISOStringToUTCISO(localTimeStr) {
   // Convert to UTC ISO string
   return localDate.toISOString();
 }
+
+// Check if a given date is in the past (before today)
+export function isPastDate(date) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  return checkDate < today;
+}
+
+// Check if a given local time string (e.g., "2026-06-15T15:00") is in the past
+export function isPastTime(localTimeStr) {
+  if (!localTimeStr || typeof localTimeStr !== 'string') return false;
+  
+  const [datePart, timePart] = localTimeStr.split('T');
+  if (!datePart || !timePart) return false;
+  
+  const [year, month, day] = datePart.split('-');
+  const [hours, minutes] = timePart.split(':');
+  
+  const checkDateTime = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+  const now = new Date();
+  
+  return checkDateTime < now;
+}

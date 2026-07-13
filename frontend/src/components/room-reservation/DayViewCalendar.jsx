@@ -10,8 +10,7 @@ import {
   addDays,
   toDateInputValue,
   toHourText,
-  dateToLocalISOString,
-} from "../../utils/datetime";
+  dateToLocalISOString,  isPastTime,} from "../../utils/datetime";
 import { useLanguage } from "../../i18n/LanguageContext";
 import DataMart from "../../common/DataMart";
 import { api } from "../../api";
@@ -63,6 +62,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [selectedDateTime, setSelectedDateTime] = useState(null);
   const [form, setForm] = useState({
+    floor: "",
     room_id: "",
     requester_name: "",
     phone: "",
@@ -132,6 +132,7 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
   const handleModalClose = () => {
     setModalOpen(false);
     setForm({
+      floor: "",
       room_id: "",
       requester_name: "",
       phone: "",
@@ -141,6 +142,9 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
       purpose: "",
       attendees: "1",
       notes: "",
+      permission: "member",
+      repeat_type: "none",
+      repeat_count: 1,
     });
   };
 
@@ -261,19 +265,24 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
                   const cellEnd = new Date(date);
                   cellStart.setHours(hour, 0, 0, 0);
                   cellEnd.setHours(hour + 1, 0, 0, 0);
+                  
+                  const cellStartISO = dateToLocalISOString(cellStart);
+                  const isClickable = !isPastTime(cellStartISO);
 
                   return (
                     <Box
                       key={`${room.id}-${hour}`}
                       sx={{
                         borderRight: "1px solid #dde2ee",
-                        cursor: "pointer",
+                        cursor: isClickable ? "pointer" : "default",
                         transition: "all 0.2s ease",
+                        opacity: isClickable ? 1 : 0.5,
+                        bgcolor: isClickable ? "transparent" : "#f5f5f5",
                         "&:hover": {
-                          bgcolor: "rgba(25, 118, 210, 0.05)",
+                          bgcolor: isClickable ? "rgba(25, 118, 210, 0.05)" : "#f5f5f5",
                         },
                       }}
-                      onClick={() => handleCellClick(room.id, cellStart, cellEnd)}
+                      onClick={() => isClickable && handleCellClick(room.id, cellStart, cellEnd)}
                     />
                   );
                 })}

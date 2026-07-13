@@ -6,7 +6,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import { statusLabel } from "../../constants";
-import { addDays, formatDateTime, startOfWeek, toDateInputValue } from "../../utils/datetime";
+import { addDays, formatDateTime, isPastDate, startOfWeek, toDateInputValue } from "../../utils/datetime";
 import DataMart from "../../common/DataMart";
 import { api } from "../../api";
 import EventPublisher from "../../event/EventPublisher";
@@ -65,7 +65,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [form, setForm] = useState({
-    room_id: "", requester_name: "", phone: "", email: "",
+    floor: "", room_id: "", requester_name: "", phone: "", email: "",
     start_time: "", end_time: "", purpose: "", attendees: "1", notes: "",
     permission: "member",
     repeat_type: "none", repeat_count: 1,
@@ -232,19 +232,21 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
             {/* Day cells */}
             {weekDays.map((day) => {
               const isToday = isSameDay(day, today);
+              const isPast = isPastDate(day);
               const events  = getEventsForRoomDay(localReservations, room.id, day);
 
               return (
                 <Box
                   key={day.toISOString()}
-                  onClick={() => openModal(room.id, day, HOUR_START)}
+                  onClick={() => !isPast && openModal(room.id, day, HOUR_START)}
                   sx={{
                     flex: 1, minWidth: 160, height: ROW_H,
-                    position: "relative", cursor: "pointer",
+                    position: "relative", cursor: isPast ? "default" : "pointer",
                     borderRight: "1px solid #eef2f7",
                     "&:last-child": { borderRight: "none" },
-                    bgcolor: isToday ? "rgba(25,118,210,0.03)" : "white",
-                    "&:hover": { bgcolor: isToday ? "rgba(25,118,210,0.07)" : "#f8f9fa" },
+                    bgcolor: isPast ? "#f0f0f0" : isToday ? "rgba(25,118,210,0.03)" : "white",
+                    opacity: isPast ? 0.5 : 1,
+                    "&:hover": { bgcolor: isPast ? "#f0f0f0" : isToday ? "rgba(25,118,210,0.07)" : "#f8f9fa" },
                     transition: "background 0.15s",
                   }}
                 >

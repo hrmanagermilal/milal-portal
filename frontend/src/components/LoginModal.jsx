@@ -9,9 +9,6 @@ import Divider from "@mui/material/Divider";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import RadioGroup from "@mui/material/RadioGroup";
-import Radio from "@mui/material/Radio";
 import { useLanguage } from "../i18n/LanguageContext";
 import { api } from "../api";
 
@@ -35,11 +32,7 @@ export default function LoginModal({ open, onLogin }) {
 
   const [quickName, setQuickName]     = useState("");
   const [findName, setFindName]       = useState("");
-  const [findPhone, setFindPhone]     = useState("");
-  const [findEmail, setFindEmail]     = useState("");
-  const [contactMode, setContactMode] = useState("email");
   const [foundMember, setFoundMember] = useState(null);
-  const [contactType, setContactType] = useState("email");
   const [otpCode, setOtpCode]         = useState("");
   const [userId, setUserId]           = useState("");
   const [userIdError, setUserIdError] = useState("");
@@ -50,7 +43,7 @@ export default function LoginModal({ open, onLogin }) {
 
   function reset() {
     setStep(STEPS.ENTRY); setError(""); setDevCode("");
-    setQuickName(""); setFindName(""); setFindPhone(""); setFindEmail("");
+    setQuickName(""); setFindName("");
     setFoundMember(null); setOtpCode(""); setUserId(""); setUserIdError("");
     setPassword(""); setConfirm(""); setLoginUserId(""); setLoginPw("");
   }
@@ -58,20 +51,12 @@ export default function LoginModal({ open, onLogin }) {
   async function handleFindMember(e) {
     e.preventDefault();
     setError(""); setFoundMember(null);
-    const contact = contactMode === "phone" ? findPhone : findEmail;
-    if (!findName.trim() || !contact.trim()) { setError(t("authContactRequired")); return; }
+    if (!findName.trim()) { setError(t("authContactRequired")); return; }
     setLoading(true);
     try {
       const payload = { name: findName.trim() };
-      if (contactMode === "phone") {
-        payload.phone = findPhone.trim().replace(/[^0-9]/g, "");        
-      }
-      else {
-        payload.email = findEmail.trim();
-      }
       const member = await api.findMember(payload);
       setFoundMember(member);
-      setContactType(contactMode);
     } catch (err) {
       setError(err.message || t("authMemberNotFound"));
     } finally { setLoading(false); }
@@ -80,7 +65,7 @@ export default function LoginModal({ open, onLogin }) {
   async function handleSendOtp() {
     setError(""); setLoading(true);
     try {
-      const res = await api.sendOtp({ member_id: foundMember.member_id, contact_type: contactType });
+      const res = await api.sendOtp({ member_id: foundMember.member_id, contact_type: "email" });
       setDevCode(res.dev_code || "");
       setStep(STEPS.OTP_SENT);
     } catch (err) {
@@ -135,9 +120,9 @@ export default function LoginModal({ open, onLogin }) {
     try {
       const res = await api.loginWithPassword({ user_id: loginUserId.trim(), password: loginPw });
       console.log('login check:', res);
-      // Store the access token in localStorage
+      // Store the access token in sessionStorage (not localStorage for security)
       if (res.access_token) {
-        localStorage.setItem("milal_token", res.access_token);
+        sessionStorage.setItem("milal_token", res.access_token);
       }
       // Pass full user info to parent (App.jsx)
       onLogin(res.name, res.permission, res.title, res.cell_group, {
@@ -214,38 +199,8 @@ export default function LoginModal({ open, onLogin }) {
               <BackBtn to={STEPS.ENTRY} />
               <Box component="form" onSubmit={handleFindMember}>
                 <Stack spacing={2}>
-                  <TextField label={t("authYourName")} fullWidth size="small" required
+                  <TextField label={t("authYourName")} fullWidth size="small" required autoFocus
                     value={findName} onChange={(e) => { setFindName(e.target.value); setFoundMember(null); }} />
-                  <Box>
-                    <Typography variant="body2" sx={{ fontSize: "12px", color: "#666", mb: 0.8 }}>
-                      {t("authSendOtpTo")}
-                    </Typography>
-                    <RadioGroup
-                      row
-                      value={contactMode}
-                      onChange={(e) => { setContactMode(e.target.value); setFoundMember(null); setError(""); }}
-                      sx={{ gap: 2 }}
-                    >
-                      <FormControlLabel
-                        value="phone"
-                        control={<Radio size="small" />}
-                        label={t("authPhone")}
-                        sx={{ m: 0 }}
-                      />
-                      <FormControlLabel
-                        value="email"
-                        control={<Radio size="small" />}
-                        label={t("authEmail")}
-                        sx={{ m: 0 }}
-                      />
-                    </RadioGroup>
-                  </Box>
-                  {contactMode === "phone"
-                    ? <TextField label={t("authPhone")} fullWidth size="small" placeholder="010-0000-0000"
-                        value={findPhone} onChange={(e) => { setFindPhone(e.target.value); setFoundMember(null); }} />
-                    : <TextField label={t("authEmail")} type="email" fullWidth size="small"
-                        value={findEmail} onChange={(e) => { setFindEmail(e.target.value); setFoundMember(null); }} />
-                  }
                   {error && <Alert severity="error" sx={{ py: 0.5 }}>{error}</Alert>}
                   {foundMember && !error && foundMember.has_account && (
                     <Box sx={{ bgcolor: "#fff3e0", border: "1px solid #ffe0b2", borderRadius: "8px", p: 1.5 }}>
@@ -272,7 +227,7 @@ export default function LoginModal({ open, onLogin }) {
                         ✓ {foundMember.name}
                       </Typography>
                       <Typography variant="caption" sx={{ color: "#5d7186" }}>
-                        {t("authSendOtpTo")} {contactType === "phone" ? foundMember.phone_masked : foundMember.email_masked}
+                        {t("authSendOtpTo")} {foundMember.email_masked}
                       </Typography>
                       <Button variant="contained" fullWidth size="small" disabled={loading}
                         onClick={handleSendOtp}
@@ -303,7 +258,7 @@ export default function LoginModal({ open, onLogin }) {
                 <Stack spacing={2}>
                   <Typography variant="body2" sx={{ color: "#5d7186", fontSize: "13px" }}>
                     {t("authCodeSentTo")} <strong>
-                      {contactType === "phone" ? foundMember?.phone_masked : foundMember?.email_masked}
+                      {foundMember?.email_masked}
                     </strong>
                   </Typography>
                   <TextField label={t("authCode")} fullWidth size="small" required
