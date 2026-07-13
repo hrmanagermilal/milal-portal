@@ -89,7 +89,7 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
           y={building.y}
           width={building.width}
           height={building.height}
-          href={`/image/floor${floorNum || 1}.png`}
+          href={`/image/floor-${floorNum || 1}.png`}
           preserveAspectRatio="xMidYMid slice"
         />
 

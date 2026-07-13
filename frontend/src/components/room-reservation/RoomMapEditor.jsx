@@ -209,7 +209,7 @@ export default function RoomMapEditor({ open, room, onClose, onSave }) {
               y={building.y}
               width={building.width}
               height={building.height}
-              href={`/image/floor${room?.floor || 1}.png`}
+              href={`/image/floor-${room?.floor || 1}.png`}
               preserveAspectRatio="xMidYMid slice"
             />
 
