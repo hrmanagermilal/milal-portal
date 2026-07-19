@@ -42,9 +42,12 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
 
   const [newRule, setNewRule] = useState({
     rule_type: "day_of_week",
-    day_of_week: null,
-    target: "all", // "all", "youth", "adult"
+    day_of_week: "",
     specific_date: "",
+    target: "all", // all | youth | adult
+    applies_all_day: true,
+    start_time: "",
+    end_time: "",
     is_allowed: true,
   });
 
@@ -71,7 +74,7 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
     setError("");
     setSuccess("");
 
-    if (newRule.rule_type === "day_of_week" && newRule.day_of_week === null) {
+    if (newRule.rule_type === "day_of_week" && newRule.day_of_week === "") {
       setError("요일을 선택해주세요");
       return;
     }
@@ -79,30 +82,49 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
       setError("날짜를 선택해주세요");
       return;
     }
+    if (!newRule.applies_all_day) {
+      if (!newRule.start_time || !newRule.end_time) {
+        setError("시간대 규칙은 시작 시간과 종료 시간을 모두 입력해주세요");
+        return;
+      }
+      if (newRule.end_time <= newRule.start_time) {
+        setError("종료 시간은 시작 시간보다 늦어야 합니다");
+        return;
+      }
+    }
 
     try {
       const payload = {
         rule_type: newRule.rule_type,
+        applies_all_day: newRule.applies_all_day,
         is_allowed: newRule.is_allowed,
       };
 
       if (newRule.rule_type === "day_of_week") {
-        payload.day_of_week = newRule.day_of_week;
-        // target이 "all"이면 membership_category는 null로
-        if (newRule.target !== "all") {
-          payload.membership_category = newRule.target;
-        }
+        payload.day_of_week = Number(newRule.day_of_week);
       } else if (newRule.rule_type === "specific_date") {
         payload.specific_date = newRule.specific_date;
+      }
+
+      if (newRule.target !== "all") {
+        payload.membership_category = newRule.target;
+      }
+
+      if (!newRule.applies_all_day) {
+        payload.start_time = newRule.start_time;
+        payload.end_time = newRule.end_time;
       }
 
       await api.adminCreateRoomRule(roomId, payload);
       setSuccess("규칙이 추가되었습니다");
       setNewRule({
         rule_type: "day_of_week",
-        day_of_week: null,
-        target: "all",
+        day_of_week: "",
         specific_date: "",
+        target: "all",
+        applies_all_day: true,
+        start_time: "",
+        end_time: "",
         is_allowed: true,
       });
       await loadRules();
@@ -125,31 +147,22 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
     }
   }
 
-  async function handleToggleRule(ruleId, currentIsAllowed) {
-    setError("");
-    setSuccess("");
-    try {
-      await api.adminUpdateRoomRule(roomId, ruleId, { is_allowed: !currentIsAllowed });
-      setSuccess("규칙이 업데이트되었습니다");
-      await loadRules();
-    } catch (err) {
-      setError(err.message || "Failed to update rule");
-    }
-  }
-
   const getRuleDescription = (rule) => {
+    const status = rule.is_allowed ? "허용" : "금지";
+    const target = rule.membership_category
+      ? rule.membership_category === "youth"
+        ? "청년부"
+        : "장년부"
+      : "모두";
+    const scope = rule.applies_all_day || (!rule.start_time && !rule.end_time)
+      ? "종일"
+      : `${String(rule.start_time).slice(0, 5)}~${String(rule.end_time).slice(0, 5)}`;
+
     if (rule.rule_type === "day_of_week") {
       const dayName = DAYS_OF_WEEK.find((d) => d.value === rule.day_of_week)?.label;
-      const target = rule.membership_category
-        ? rule.membership_category === "youth"
-          ? "청년부"
-          : "장년부"
-        : "모두";
-      const status = rule.is_allowed ? "✅ 예약 가능" : "❌ 예약 불가";
-      return `${dayName} - ${target} ${status}`;
+      return `요일(${dayName || "미지정"}) / 대상(${target}) / ${scope} / ${status}`;
     } else if (rule.rule_type === "specific_date") {
-      const status = rule.is_allowed ? "✅ 예약 가능" : "❌ 예약 불가";
-      return `${rule.specific_date} - ${status}`;
+      return `날짜(${rule.specific_date}) / 대상(${target}) / ${scope} / ${status}`;
     }
     return "";
   };
@@ -174,9 +187,9 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
               setNewRule((prev) => ({
                 ...prev,
                 rule_type: e.target.value,
-                day_of_week: null,
-                target: "all",
+                day_of_week: "",
                 specific_date: "",
+                target: "all",
               }))
             }
             fullWidth
@@ -196,7 +209,7 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
             <TextField
               select
               label="요일 선택"
-              value={newRule.day_of_week ?? ""}
+              value={newRule.day_of_week}
               onChange={(e) => setNewRule((prev) => ({ ...prev, day_of_week: e.target.value }))}
               fullWidth
               size="small"
@@ -210,16 +223,16 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
 
             <TextField
               select
-              label="대상 선택"
+              label="대상"
               value={newRule.target}
               onChange={(e) => setNewRule((prev) => ({ ...prev, target: e.target.value }))}
               fullWidth
               size="small"
-              helperText="'모두'를 선택하면 모든 소속에 적용됩니다"
+              helperText="모두/청년/장년 중 적용 대상을 선택하세요"
             >
-              <MenuItem value="all">모두 (모든 소속)</MenuItem>
-              <MenuItem value="youth">청년부만</MenuItem>
-              <MenuItem value="adult">장년부만</MenuItem>
+              <MenuItem value="all">모두</MenuItem>
+              <MenuItem value="youth">청년부</MenuItem>
+              <MenuItem value="adult">장년부</MenuItem>
             </TextField>
 
             <TextField
@@ -254,6 +267,20 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
 
             <TextField
               select
+              label="대상"
+              value={newRule.target}
+              onChange={(e) => setNewRule((prev) => ({ ...prev, target: e.target.value }))}
+              fullWidth
+              size="small"
+              helperText="모두/청년/장년 중 적용 대상을 선택하세요"
+            >
+              <MenuItem value="all">모두</MenuItem>
+              <MenuItem value="youth">청년부</MenuItem>
+              <MenuItem value="adult">장년부</MenuItem>
+            </TextField>
+
+            <TextField
+              select
               label="허용 여부"
               value={newRule.is_allowed ? "allowed" : "denied"}
               onChange={(e) => setNewRule((prev) => ({ ...prev, is_allowed: e.target.value === "allowed" }))}
@@ -266,6 +293,53 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
           </Stack>
         )}
 
+        <Stack spacing={2} sx={{ mb: 4, p: 2, bgcolor: "#f5f5f5", borderRadius: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            시간 범위 설정
+          </Typography>
+          <TextField
+            select
+            label="적용 범위"
+            value={newRule.applies_all_day ? "all_day" : "time_range"}
+            onChange={(e) =>
+              setNewRule((prev) => ({
+                ...prev,
+                applies_all_day: e.target.value === "all_day",
+                start_time: e.target.value === "all_day" ? "" : prev.start_time,
+                end_time: e.target.value === "all_day" ? "" : prev.end_time,
+              }))
+            }
+            fullWidth
+            size="small"
+          >
+            <MenuItem value="all_day">종일</MenuItem>
+            <MenuItem value="time_range">특정 시간대</MenuItem>
+          </TextField>
+
+          {!newRule.applies_all_day && (
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField
+                type="time"
+                label="시작 시간"
+                value={newRule.start_time}
+                onChange={(e) => setNewRule((prev) => ({ ...prev, start_time: e.target.value }))}
+                fullWidth
+                size="small"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                type="time"
+                label="종료 시간"
+                value={newRule.end_time}
+                onChange={(e) => setNewRule((prev) => ({ ...prev, end_time: e.target.value }))}
+                fullWidth
+                size="small"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Stack>
+          )}
+        </Stack>
+
         <Button variant="contained" onClick={handleAddRule} fullWidth sx={{ mb: 3, bgcolor: "#2f68f9" }}>
           규칙 추가
         </Button>
@@ -277,36 +351,47 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
         {loading ? (
           <CircularProgress />
         ) : (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "hidden" }}>
+            <Table size="small" sx={{ tableLayout: "fixed", width: "100%" }}>
               <TableHead sx={{ bgcolor: "#eef2f7" }}>
                 <TableRow>
                   <TableCell sx={{ color: "#313b5e", fontWeight: 700 }}>규칙 설명</TableCell>
-                  <TableCell sx={{ color: "#313b5e", fontWeight: 700 }} align="center">
-                    동작
-                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {rules.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={2} align="center" sx={{ py: 3, color: "#999" }}>
+                    <TableCell align="center" sx={{ py: 3, color: "#999" }}>
                       설정된 규칙이 없습니다
                     </TableCell>
                   </TableRow>
                 ) : (
                   rules.map((rule) => (
                     <TableRow key={rule.id} hover>
-                      <TableCell>{getRuleDescription(rule)}</TableCell>
-                      <TableCell align="center">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDeleteRule(rule.id)}
-                          title="삭제"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
+                      <TableCell sx={{ width: "100%" }}>
+                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, flexWrap: "wrap" }}>
+                          <Typography
+                            variant="body2"
+                            component="span"
+                            sx={{
+                              color: "#313b5e",
+                              whiteSpace: "normal",
+                              wordBreak: "break-word",
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {getRuleDescription(rule)}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteRule(rule.id)}
+                            title="삭제"
+                            sx={{ flexShrink: 0, p: 0.25 }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))
@@ -322,13 +407,13 @@ export default function ReservationRuleModal({ open, roomId, onClose }) {
             📝 예시
           </Typography>
           <Typography variant="caption" component="div" sx={{ mt: 1 }}>
-            • 일요일에는 청년부가 예약할 수 있다 → 요일(일요일) + 대상(청년부) + 허용
+            • 월요일 청년부 종일 예약 금지 → 요일(월요일) + 대상(청년부) + 종일 + 금지
           </Typography>
           <Typography variant="caption" component="div">
-            • 일요일에는 청년부가 예약할 수 없다 → 요일(일요일) + 대상(청년부) + 거부
+            • 특정 날짜 장년부 오전만 예약 허용 → 날짜 + 대상(장년부) + 09:00~12:00 + 허용
           </Typography>
           <Typography variant="caption" component="div">
-            • 월요일에는 모두가 예약할 수 없다 → 요일(월요일) + 대상(모두) + 거부
+            • 특정 날짜 전체 대상 18:00~20:00 예약 금지 → 날짜 + 대상(모두) + 시간대 + 금지
           </Typography>
         </Box>
       </DialogContent>

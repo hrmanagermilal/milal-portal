@@ -31,6 +31,7 @@ import { useTheme } from "@mui/material/styles";
 import { calendarModes } from "../../constants";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { api } from "../../api";
+import DataMart from "../../common/DataMart";
 import EventPublisher from "../../event/EventPublisher";
 import { EventDef } from "../../event/EventDef";
 import {
@@ -87,6 +88,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   const [showList, setShowList] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [localReservations, setLocalReservations] = useState(reservations || []);
+  const [reservationRules, setReservationRules] = useState([]);
 
   // 5-second polling for reservations
   useEffect(() => {
@@ -119,6 +121,34 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
     EventPublisher.addEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
     return () => EventPublisher.removeEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRules = async () => {
+      try {
+        const data = await api.getRoomRules();
+        if (!cancelled) {
+          setReservationRules(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error("Failed to load room rules:", err);
+        if (!cancelled) {
+          setReservationRules([]);
+        }
+      }
+    };
+
+    loadRules();
+    const interval = setInterval(loadRules, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const currentUser = DataMart.getCurrentUser();
 
   const floorFilteredRooms = useMemo(() => {
     if (selectedFloor === "all") return rooms;
@@ -306,6 +336,8 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
             date={anchorDate}
             rooms={calendarRooms}
             reservations={filteredReservations}
+            reservationRules={reservationRules}
+            currentUser={currentUser}
             onNavigate={handleNavigate}
             onSubmitReservation={onCreateReservation}
           />
@@ -315,6 +347,8 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
             date={anchorDate}
             rooms={calendarRooms}
             reservations={filteredReservations}
+            reservationRules={reservationRules}
+            currentUser={currentUser}
             onNavigate={(directionOrDate) => {
               if (typeof directionOrDate === "number") {
                 handleNavigate(directionOrDate);
@@ -330,6 +364,8 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
             date={anchorDate}
             rooms={calendarRooms}
             reservations={filteredReservations}
+            reservationRules={reservationRules}
+            currentUser={currentUser}
             onNavigate={(directionOrDate) => {
               if (typeof directionOrDate === "number") {
                 handleNavigate(directionOrDate);

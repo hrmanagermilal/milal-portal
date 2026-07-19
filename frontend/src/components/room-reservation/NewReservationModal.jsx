@@ -3,6 +3,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -14,6 +15,23 @@ import Typography from "@mui/material/Typography";
 import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { dateToLocalISOString, isPastTime } from "../../utils/datetime";
+import { evaluateRuleForSlot, groupRulesByRoom } from "../../utils/reservationRules";
+
+// Calculate max date (3 months from today)
+function getMaxReservationDate() {
+  const now = new Date();
+  const maxDate = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
+  return dateToLocalISOString(maxDate).slice(0, 16);
+}
+
+// Check if date is more than 3 months in the future
+function isTooFarFuture(dateTimeStr) {
+  if (!dateTimeStr) return false;
+  const selectedDate = new Date(dateTimeStr + 'Z');
+  const now = new Date();
+  const maxDate = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
+  return selectedDate > maxDate;
+}
 import FloorPlanTooltip from "./FloorPlanTooltip";
 
 // Default end = start + 1 hour, clamped to 23:30 of same day
@@ -82,6 +100,7 @@ export default function NewReservationModal({
   selectedRoom,
   selectedDateTime,
   currentUser,
+  reservationRules = [],
   isCardMode = false,
 }) {
   const { t } = useLanguage();
@@ -93,6 +112,7 @@ export default function NewReservationModal({
     form.end_time > form.start_time;
   const [availableRooms, setAvailableRooms] = useState(rooms);
   const availableRoomIds = new Set(availableRooms.map((room) => room.id));
+  const rulesByRoom = groupRulesByRoom(reservationRules);
   
   // Get unique floors from rooms
   const floors = Array.from(new Set(rooms.map(r => r.floor ?? 1))).sort();
@@ -257,14 +277,28 @@ export default function NewReservationModal({
     form.end_time.slice(0, 10) === form.start_time.slice(0, 10) &&
     form.purpose.trim() &&
     Number(form.attendees) >= 1 &&
-    !isPastTime(form.start_time);
+    !isPastTime(form.start_time) &&
+    !isTooFarFuture(form.start_time);
+
+  const roomIdNumber = Number(form.room_id);
+  const hasRuleCheckInputs = Boolean(roomIdNumber && form.start_time && form.end_time);
+  const ruleCheckResult = hasRuleCheckInputs
+    ? evaluateRuleForSlot({
+        rulesByRoom,
+        roomId: roomIdNumber,
+        startDate: new Date(form.start_time),
+        endDate: new Date(form.end_time),
+        currentUser,
+      })
+    : { allowed: true, reason: "" };
+  const blockedByRule = !ruleCheckResult.allowed;
 
   console.log("[NewReservationModal] isValid:", isValid, "form:", form);
   console.log("[NewReservationModal] currentUser:", currentUser);
 
   function handleSubmit(e) {
     e.preventDefault();
-    if (isValid) {
+    if (isValid && !blockedByRule) {
       onSubmit(form); // Pass form object, not event
     }
     if (!isCardMode) {
@@ -281,7 +315,14 @@ export default function NewReservationModal({
         InputLabelProps={{ shrink: true }}
         value={startTimeEST}
         onChange={handleStartTimeChange}
+        inputProps={{ max: getMaxReservationDate() }}
       />
+
+      {blockedByRule && (
+        <Alert severity="warning">
+          {ruleCheckResult.reason || "선택한 시간은 예약 규칙에 의해 허용되지 않습니다."}
+        </Alert>
+      )}
 
       <Box>
         <Typography variant="caption" sx={{ color: "#5d7186", display: "block", mb: 0.75, fontSize: "12px", fontWeight: 500 }}>
@@ -450,7 +491,7 @@ export default function NewReservationModal({
               color: "#a0aab4"
             }
           }}
-          disabled={!isValid}
+          disabled={!isValid || blockedByRule}
         >
           {t("submitRequest")}
         </Button>
@@ -459,35 +500,21 @@ export default function NewReservationModal({
   );
 
   // Room Selector Dialog (shared)
-  const roomSelectorDialog = (
-    <Dialog
+  const roomSelectorDialog = selectedFloor !== "all" ? (
+    <FloorPlanTooltip
+      mode="select"
       open={showRoomSelector}
       onClose={() => setShowRoomSelector(false)}
-      fullWidth
-      maxWidth="sm"
-    >
-      <DialogTitle sx={{ pb: 1, pr: 1, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #eef2f7" }}>
-        <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e", fontSize: "15px" }}>
-          {selectedFloor === "all" ? t("selectFloor") : `${Number(selectedFloor) === 1 ? t("floor1Label") : t("floor2Label")} - ${t("selectRoom")}`}
-        </Typography>
-        <IconButton size="small" onClick={() => setShowRoomSelector(false)} sx={{ color: "#5d7186" }}>
-          ✕
-        </IconButton>
-      </DialogTitle>
-      <DialogContent sx={{ pt: 2 }}>
-        {selectedFloor !== "all" && (
-          <FloorPlanTooltip
-            mode="select"
-            floor={Number(selectedFloor)}
-            roomId={form.room_id || 0}
-            roomName=""
-            onSelectRoom={handleSelectRoomFromMap}
-            visibleRoomIds={floorRooms.map((room) => room.id)}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  );
+      floor={Number(selectedFloor)}
+      roomId={form.room_id || 0}
+      roomName={selectedFloor === "all" ? t("selectFloor") : `${Number(selectedFloor) === 1 ? t("floor1Label") : t("floor2Label")} - ${t("selectRoom")}`}
+      onSelectRoom={(roomId) => {
+        handleSelectRoomFromMap(roomId);
+        setShowRoomSelector(false);
+      }}
+      visibleRoomIds={floorRooms.map((room) => room.id)}
+    />
+  ) : null;
 
   // Card mode: return form content only
   if (isCardMode) {

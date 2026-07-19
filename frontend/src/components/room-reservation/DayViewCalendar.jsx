@@ -18,6 +18,7 @@ import EventPublisher from "../../event/EventPublisher";
 import { EventDef } from "../../event/EventDef";
 import NewReservationModal from "./NewReservationModal";
 import ReservedItem from "./ReservedItem";
+import { evaluateRuleForSlot, groupRulesByRoom } from "../../utils/reservationRules";
 
 const HOUR_START = 6;
 const HOUR_END = 22;  // 06:00 ~ 21:00 (마지막 셀은 21시)
@@ -52,9 +53,18 @@ function getEventsForRoomDay(reservations, roomId, day) {
 
 
 
-export default function DayViewCalendar({ date, rooms, reservations, onNavigate, onSubmitReservation }) {
+export default function DayViewCalendar({
+  date,
+  rooms,
+  reservations,
+  reservationRules = [],
+  currentUser,
+  onNavigate,
+  onSubmitReservation,
+}) {
   const { t } = useLanguage();
   const { start: dayStart, end: dayEnd } = buildWindowForDay(date);
+  const rulesByRoom = groupRulesByRoom(reservationRules);
   
   const [localReservations, setLocalReservations] = useState(reservations || []);
 
@@ -267,19 +277,27 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
                   cellEnd.setHours(hour + 1, 0, 0, 0);
                   
                   const cellStartISO = dateToLocalISOString(cellStart);
-                  const isClickable = !isPastTime(cellStartISO);
+                  const ruleResult = evaluateRuleForSlot({
+                    rulesByRoom,
+                    roomId: room.id,
+                    startDate: cellStart,
+                    endDate: cellEnd,
+                    currentUser,
+                  });
+                  const isClickable = !isPastTime(cellStartISO) && ruleResult.allowed;
 
                   return (
                     <Box
                       key={`${room.id}-${hour}`}
+                      title={ruleResult.allowed ? "" : ruleResult.reason}
                       sx={{
                         borderRight: "1px solid #dde2ee",
                         cursor: isClickable ? "pointer" : "default",
                         transition: "all 0.2s ease",
-                        opacity: isClickable ? 1 : 0.5,
-                        bgcolor: isClickable ? "transparent" : "#f5f5f5",
+                        opacity: isClickable ? 1 : 0.45,
+                        bgcolor: isClickable ? "transparent" : "#f7e9ea",
                         "&:hover": {
-                          bgcolor: isClickable ? "rgba(25, 118, 210, 0.05)" : "#f5f5f5",
+                          bgcolor: isClickable ? "rgba(25, 118, 210, 0.05)" : "#f7e9ea",
                         },
                       }}
                       onClick={() => isClickable && handleCellClick(room.id, cellStart, cellEnd)}
@@ -310,12 +328,13 @@ export default function DayViewCalendar({ date, rooms, reservations, onNavigate,
         onClose={handleModalClose}
         rooms={rooms}
         reservations={localReservations}
+        reservationRules={reservationRules}
         form={form}
         setForm={setForm}
         onSubmit={handleFormSubmit}
         selectedRoom={selectedRoomId}
         selectedDateTime={selectedDateTime}
-        currentUser={DataMart.getCurrentUser()}
+        currentUser={currentUser || DataMart.getCurrentUser()}
       />
     </Box>
   );

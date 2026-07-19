@@ -1,8 +1,8 @@
 import enum
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -17,7 +17,6 @@ class MembershipCategory(str, enum.Enum):
 class RuleType(str, enum.Enum):
     day_of_week = "day_of_week"
     specific_date = "specific_date"
-    membership_category = "membership_category"
 
 
 class AttendanceType(str, enum.Enum):
@@ -223,9 +222,14 @@ class ReservationRule(Base):
     
     # For specific_date rule
     specific_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    
-    # For membership_category rule
+
+    # Optional target: null=all, otherwise youth/adult only
     membership_category: Mapped[Optional[MembershipCategory]] = mapped_column(Enum(MembershipCategory), nullable=True)
+
+    # Time scope: all day or specific time range
+    applies_all_day: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    start_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
+    end_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
     
     # Whether the rule allows (True) or denies (False) access
     is_allowed: Mapped[bool] = mapped_column(Boolean, default=True)

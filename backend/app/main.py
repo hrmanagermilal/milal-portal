@@ -1,5 +1,5 @@
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 import re
 
@@ -135,6 +135,21 @@ def startup() -> None:
             conn.commit()
         except Exception:
             pass  # Column already exists
+
+    # Migrate: add reservation_rules time-scope columns if they don't exist yet
+    with engine.connect() as conn:
+        migration_sql = [
+            "ALTER TABLE reservation_rules ADD COLUMN applies_all_day BOOLEAN NOT NULL DEFAULT 1",
+            "ALTER TABLE reservation_rules ADD COLUMN start_time TIME NULL",
+            "ALTER TABLE reservation_rules ADD COLUMN end_time TIME NULL",
+            "ALTER TABLE reservation_rules ADD COLUMN membership_category VARCHAR(20) NULL",
+        ]
+        for sql in migration_sql:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
     
     db = next(get_db())
     try:
@@ -152,6 +167,12 @@ def health() -> dict[str, str]:
 def get_rooms(db: Session = Depends(get_db)) -> list[Room]:
     rooms = db.scalars(select(Room).where(Room.is_active.is_(True)).order_by(Room.id)).all()
     return list(rooms)
+
+
+@app.get("/api/rooms/rules", response_model=list[ReservationRuleOut])
+def get_public_room_rules(db: Session = Depends(get_db)) -> list[ReservationRule]:
+    """Public read-only rule list for client-side calendar disabling."""
+    return db.scalars(select(ReservationRule).order_by(ReservationRule.room_id, ReservationRule.id)).all()
 
 
 @app.get("/api/rooms/available", response_model=list[RoomOut])
@@ -285,6 +306,9 @@ def create_room_rule(
         day_of_week=payload.day_of_week,
         specific_date=payload.specific_date,
         membership_category=payload.membership_category,
+        applies_all_day=payload.applies_all_day,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
         is_allowed=payload.is_allowed,
     )
     db.add(rule)
@@ -432,54 +456,87 @@ def delete_room_location(
 
 # ── Reservation Rule Validation ────────────────────────────────────────────
 
-def can_reserve_room(room_id: int, start_time: datetime, membership_category: str, db: Session) -> tuple[bool, str]:
+def _matches_rule_selector(rule: ReservationRule, target_start: datetime) -> bool:
+    if rule.rule_type.value == "specific_date":
+        return bool(rule.specific_date and rule.specific_date == target_start.date())
+    if rule.rule_type.value == "day_of_week":
+        return rule.day_of_week is not None and rule.day_of_week == target_start.weekday()
+    return False
+
+
+def _time_ranges_overlap(start_a: time, end_a: time, start_b: time, end_b: time) -> bool:
+    return start_a < end_b and end_a > start_b
+
+
+def _matches_rule_time_scope(rule: ReservationRule, reservation_start: datetime, reservation_end: datetime) -> bool:
+    if rule.applies_all_day:
+        return True
+
+    if not rule.start_time or not rule.end_time:
+        return False
+
+    reservation_start_time = reservation_start.time()
+    reservation_end_time = reservation_end.time()
+    return _time_ranges_overlap(
+        reservation_start_time,
+        reservation_end_time,
+        rule.start_time,
+        rule.end_time,
+    )
+
+
+def _matches_rule_target(rule: ReservationRule, membership_category: str) -> bool:
+    if rule.membership_category is None:
+        return True
+    return rule.membership_category.value == membership_category
+
+
+def can_reserve_room(
+    room_id: int,
+    start_time: datetime,
+    end_time: datetime,
+    membership_category: str,
+    db: Session,
+) -> tuple[bool, str]:
     """
     Check if user can reserve the room based on rules.
-    모든 규칙을 검사하고, 하나라도 거부하는 규칙이 있으면 예약 거부
+    규칙 매칭 결과: 금지 우선, 금지 없고 허용이 있으면 허용, 매칭 규칙이 없으면 기본 허용.
     
     Returns: (can_reserve: bool, error_message: str)
     """
-    day_of_week = start_time.weekday()
-    # day_of_week is already in Python format (0=Monday, 1=Tuesday, ..., 6=Sunday)
-    # which matches the database storage format, so no conversion needed
-    print(f"[can_reserve_room] room_id={room_id}, start_time={start_time}, day_of_week={day_of_week}, membership={membership_category}")
-    
-    # 1. Check all specific date rules - if ANY is blocked (is_allowed=0), deny reservation
-    specific_date_rules = db.query(ReservationRule).filter(
-        ReservationRule.room_id == room_id,
-        ReservationRule.rule_type == "specific_date",
-        ReservationRule.specific_date == start_time.date(),
-    ).all()
-    print(f"[can_reserve_room] specific_date_rules: {len(specific_date_rules)} rules found")
-    for rule in specific_date_rules:
-        if not rule.is_allowed:
-            return False, f"이 날짜({start_time.date()})는 예약이 불가능합니다."
-    
-    # 2. Check all day_of_week rules with specific membership_category - if ANY is blocked, deny
-    day_membership_rules = db.query(ReservationRule).filter(
-        ReservationRule.room_id == room_id,
-        ReservationRule.rule_type == "day_of_week",
-        ReservationRule.day_of_week == day_of_week,
-        ReservationRule.membership_category == membership_category,
-    ).all()
-    print(f"[can_reserve_room] day_membership_rules: {len(day_membership_rules)} rules found")
-    for rule in day_membership_rules:
-        if not rule.is_allowed:
-            category_name = "청년부" if membership_category == "youth" else "장년부"
-            return False, f"{category_name}는 이 요일에 예약할 수 없습니다."
-    
-    # 3. Check all day_of_week rules with no specific membership (applies to all) - if ANY is blocked, deny
-    day_general_rules = db.query(ReservationRule).filter(
-        ReservationRule.room_id == room_id,
-        ReservationRule.rule_type == "day_of_week",
-        ReservationRule.day_of_week == day_of_week,
-        ReservationRule.membership_category.is_(None),
-    ).all()
-    print(f"[can_reserve_room] day_general_rules: {len(day_general_rules)} rules found")
-    for rule in day_general_rules:
-        if not rule.is_allowed:
-            return False, f"이 요일에는 예약이 불가능합니다."
-    
+    print(
+        f"[can_reserve_room] room_id={room_id}, start={start_time}, end={end_time}, "
+        f"membership_category={membership_category}"
+    )
+
+    all_rules = db.query(ReservationRule).filter(ReservationRule.room_id == room_id).all()
+    matched_rules = [
+        rule for rule in all_rules
+        if _matches_rule_selector(rule, start_time)
+        and _matches_rule_time_scope(rule, start_time, end_time)
+        and _matches_rule_target(rule, membership_category)
+    ]
+
+    if not matched_rules:
+        return True, ""
+
+    denied_rules = [rule for rule in matched_rules if not rule.is_allowed]
+    if denied_rules:
+        blocked_rule = denied_rules[0]
+        target_label = (
+            blocked_rule.specific_date.isoformat() if blocked_rule.rule_type.value == "specific_date" else "해당 요일"
+        )
+        if blocked_rule.applies_all_day:
+            return False, f"{target_label}은(는) 종일 예약이 금지되어 있습니다."
+        return False, (
+            f"{target_label} {blocked_rule.start_time.strftime('%H:%M')}~"
+            f"{blocked_rule.end_time.strftime('%H:%M')} 시간대는 예약이 금지되어 있습니다."
+        )
+
+    allowed_rules = [rule for rule in matched_rules if rule.is_allowed]
+    if allowed_rules:
+        return True, ""
+
     return True, ""
 
 
@@ -514,9 +571,9 @@ def create_reservation(
     try:
         current_user = get_current_user(token, db) if token else None
         membership_category = "adult"  # default
-        
+
         print(f"[create_reservation] is_admin={is_admin}, token: {token}, current_user: {current_user}")
-        
+
         if current_user:
             user = db.scalar(select(User).where(User.member_id == current_user.id))
             if user:
@@ -526,7 +583,13 @@ def create_reservation(
             print(f"[create_reservation] No current_user, using default membership_category: {membership_category}")
         
         # Check if user can reserve (applies to all users including admin)
-        can_reserve, error_msg = can_reserve_room(payload.room_id, payload.start_time, membership_category, db)
+        can_reserve, error_msg = can_reserve_room(
+            payload.room_id,
+            payload.start_time,
+            payload.end_time,
+            membership_category,
+            db,
+        )
         print(f"[create_reservation] can_reserve: {can_reserve}, error_msg: {error_msg}")
         if not can_reserve:
             raise HTTPException(status_code=403, detail=error_msg)
@@ -565,7 +628,13 @@ def create_reservation(
             current_end = payload.end_time
 
         # For repeat reservations, also check rules for each instance
-        can_reserve, error_msg = can_reserve_room(payload.room_id, current_start, membership_category, db)
+        can_reserve, error_msg = can_reserve_room(
+            payload.room_id,
+            current_start,
+            current_end,
+            membership_category,
+            db,
+        )
         print(f"[create_reservation] repeat #{i+1} can_reserve: {can_reserve}, error_msg: {error_msg}")
         if not can_reserve:
             raise HTTPException(status_code=403, detail=f"repeat #{i+1}: {error_msg}")

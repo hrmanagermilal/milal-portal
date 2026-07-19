@@ -103,10 +103,13 @@ CREATE TABLE room_locations (
 CREATE TABLE reservation_rules (
     id                    INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
     room_id               INT          NOT NULL,
-    rule_type             ENUM('day_of_week','specific_date','membership_category') NOT NULL,
-    day_of_week           INT,                     -- 0=Sunday, 1=Monday, ..., 6=Saturday
+    rule_type             ENUM('day_of_week','specific_date') NOT NULL,
+    day_of_week           INT,                     -- 0=Monday, 1=Tuesday, ..., 6=Sunday
     specific_date         DATE,
-    membership_category   ENUM('youth','adult'),
+    membership_category   ENUM('youth','adult'),  -- NULL means applies to all targets
+    applies_all_day       TINYINT(1)   NOT NULL DEFAULT 1,
+    start_time            TIME,
+    end_time              TIME,
     is_allowed            TINYINT(1)   NOT NULL DEFAULT 1,
     created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
