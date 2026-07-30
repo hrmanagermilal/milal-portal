@@ -2,14 +2,33 @@ function pad(num) {
   return String(num).padStart(2, "0");
 }
 
+const DISPLAY_TIME_ZONE = "America/Toronto";
+
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: DISPLAY_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const HOUR_MINUTE_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: DISPLAY_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
 export function formatDateTime(value) {
   if (!value) return "-";
-  return new Date(value).toLocaleString();
+  return DATE_TIME_FORMATTER.format(new Date(value));
 }
 
 export function toHourText(value) {
   const date = new Date(value);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return HOUR_MINUTE_FORMATTER.format(date);
 }
 
 export function toDateInputValue(date) {
@@ -19,6 +38,12 @@ export function toDateInputValue(date) {
 export function addDays(date, days) {
   const copy = new Date(date);
   copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+export function addMonths(date, months) {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() + months);
   return copy;
 }
 
@@ -120,4 +145,32 @@ export function isPastTime(localTimeStr) {
   const now = new Date();
   
   return checkDateTime < now;
+}
+
+export function getReservationMaxDateTime(monthsAhead = 1) {
+  const now = new Date();
+  return addMonths(now, monthsAhead);
+}
+
+export function isTooFarFuture(value, monthsAhead = 1) {
+  if (!value) return false;
+
+  const cutoff = getReservationMaxDateTime(monthsAhead);
+  const checkDate = value instanceof Date
+    ? value
+    : (() => {
+        if (typeof value !== "string") return null;
+        const [datePart, timePart] = value.split("T");
+        if (!datePart || !timePart) return null;
+        const [year, month, day] = datePart.split("-");
+        const [hours, minutes] = timePart.split(":");
+        return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hours), parseInt(minutes));
+      })();
+
+  if (!checkDate) return false;
+  return checkDate > cutoff;
+}
+
+export function getReservationMaxDateInputValue(monthsAhead = 1) {
+  return dateToLocalISOString(getReservationMaxDateTime(monthsAhead)).slice(0, 16);
 }

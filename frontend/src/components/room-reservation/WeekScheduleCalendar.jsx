@@ -6,7 +6,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import { statusLabel } from "../../constants";
-import { addDays, formatDateTime, isPastDate, startOfWeek, toDateInputValue } from "../../utils/datetime";
+import { addDays, dateToLocalISOString, formatDateTime, isPastDate, isTooFarFuture, startOfWeek, toDateInputValue } from "../../utils/datetime";
 import DataMart from "../../common/DataMart";
 import { api } from "../../api";
 import EventPublisher from "../../event/EventPublisher";
@@ -73,14 +73,20 @@ function buildDaySlotStates({ roomId, day, rulesByRoom, currentUser }) {
     });
 
     const isPastSlot = slotEnd <= now;
-    const allowed = !isPastSlot && ruleResult.allowed;
+    const isFutureBlockedSlot = isTooFarFuture(slotStart);
+    const allowed = !isPastSlot && !isFutureBlockedSlot && ruleResult.allowed;
 
     return {
       hour,
       isPastSlot,
+      isFutureBlockedSlot,
       isRuleBlocked: !ruleResult.allowed,
       allowed,
-      reason: isPastSlot ? "지난 시간은 예약할 수 없습니다." : (ruleResult.reason || ""),
+      reason: isPastSlot
+        ? "지난 시간은 예약할 수 없습니다."
+        : isFutureBlockedSlot
+          ? "현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다."
+          : (ruleResult.reason || ""),
     };
   });
 }
@@ -88,15 +94,22 @@ function buildDaySlotStates({ roomId, day, rulesByRoom, currentUser }) {
 function summarizeSlotStates(slotStates) {
   const firstAllowed = slotStates.find((s) => s.allowed);
   const blockedByRuleCount = slotStates.filter((s) => s.isRuleBlocked).length;
+  const blockedByFutureCount = slotStates.filter((s) => s.isFutureBlockedSlot).length;
   const isFullyBlockedByRule = blockedByRuleCount >= slotStates.length;
+  const isFullyBlockedByFuture = blockedByFutureCount >= slotStates.length;
   const hasPartialBlock = blockedByRuleCount > 0 && !isFullyBlockedByRule;
+  const hasPartialFutureBlock = blockedByFutureCount > 0 && !isFullyBlockedByFuture;
   const firstBlocked = slotStates.find((s) => s.isRuleBlocked);
+  const firstFutureBlocked = slotStates.find((s) => s.isFutureBlockedSlot);
 
   return {
     firstAllowedHour: firstAllowed ? firstAllowed.hour : null,
     isFullyBlockedByRule,
+    isFullyBlockedByFuture,
     hasPartialBlock,
+    hasPartialFutureBlock,
     firstBlockedReason: firstBlocked ? firstBlocked.reason : "",
+    firstFutureBlockedReason: firstFutureBlocked ? firstFutureBlocked.reason : "",
   };
 }
 
@@ -166,8 +179,8 @@ export default function WeekScheduleCalendar({
     setForm((prev) => ({
       ...prev,
       room_id: String(roomId),
-      start_time: start.toISOString().slice(0, 16),
-      end_time:   end.toISOString().slice(0, 16),
+      start_time: dateToLocalISOString(start),
+      end_time: dateToLocalISOString(end),
     }));
     setModalOpen(true);
   }
@@ -297,11 +310,16 @@ export default function WeekScheduleCalendar({
               });
               const dayAvailability = summarizeSlotStates(slotStates);
               const isBlockedByRule = dayAvailability.isFullyBlockedByRule;
+              const isBlockedByFuture = dayAvailability.isFullyBlockedByFuture;
               const isSelectable = !isPast && dayAvailability.firstAllowedHour !== null;
-              const cellTitle = isBlockedByRule
+              const cellTitle = isBlockedByFuture
+                ? (dayAvailability.firstFutureBlockedReason || "현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다.")
+                : isBlockedByRule
                 ? (dayAvailability.firstBlockedReason || "이 날짜는 규칙상 예약 가능한 시간이 없습니다.")
+                : dayAvailability.hasPartialFutureBlock
+                  ? "일부 시간대는 1개월 제한으로 예약할 수 없습니다. 허용된 시간 칸만 클릭 가능합니다."
                 : dayAvailability.hasPartialBlock
-                  ? "일부 시간대는 예약이 제한됩니다. 허용된 시간 칸만 클릭 가능합니다."
+                  ? "일부 시간대는 규칙으로 예약이 제한됩니다. 허용된 시간 칸만 클릭 가능합니다."
                   : "";
 
               return (
@@ -332,9 +350,11 @@ export default function WeekScheduleCalendar({
                     "&:last-child": { borderRight: "none" },
                     bgcolor: isPast
                       ? "#f0f0f0"
+                      : isBlockedByFuture
+                        ? "#f0f0f0"
                       : isBlockedByRule
                         ? "#f7e9ea"
-                        : dayAvailability.hasPartialBlock
+                        : dayAvailability.hasPartialBlock || dayAvailability.hasPartialFutureBlock
                           ? "#fff8e1"
                         : isToday
                           ? "rgba(25,118,210,0.03)"
@@ -342,7 +362,7 @@ export default function WeekScheduleCalendar({
                     opacity: isSelectable ? 1 : 0.5,
                     "&:hover": {
                       bgcolor: isSelectable
-                        ? (dayAvailability.hasPartialBlock ? "#fff3cd" : isToday ? "rgba(25,118,210,0.07)" : "#f8f9fa")
+                        ? (dayAvailability.hasPartialBlock || dayAvailability.hasPartialFutureBlock ? "#fff3cd" : isToday ? "rgba(25,118,210,0.07)" : "#f8f9fa")
                         : (isBlockedByRule ? "#f7e9ea" : "#f0f0f0"),
                     },
                     transition: "background 0.15s",
@@ -359,6 +379,8 @@ export default function WeekScheduleCalendar({
                           height: "100%",
                           bgcolor: slot.isPastSlot
                             ? "#f0f0f0"
+                            : slot.isFutureBlockedSlot
+                              ? "#f0f0f0"
                             : slot.isRuleBlocked
                               ? "#f7e9ea"
                               : "transparent",

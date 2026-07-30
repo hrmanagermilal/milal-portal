@@ -25,7 +25,7 @@ export default function CellGroupInfoModal() {
   const [error, setError] = useState("");
   const [selectedMember, setSelectedMember] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const currentCellGroup = localStorage.getItem("milal_cell_group") || "";
+  const currentCellGroup = sessionStorage.getItem("milal_cell_group") || "";
   const cellLeader = members.find((member) => member.title === "순장");
   const cellGroupDisplay = currentCellGroup
     ? `${currentCellGroup}${cellLeader?.name ? `(${cellLeader.name} 순장)` : ""}`

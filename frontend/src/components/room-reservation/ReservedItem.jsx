@@ -30,19 +30,22 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
     leftPercent = placement.left;
     widthPercent = placement.width;
   } else {
-    // Calculate from hour range (for day view)
-    // startHour/endHour = 6~22 (total 16 hours)
-    // item.start_time = when reservation starts (e.g., 10:00)
-    // item.end_time = when reservation ends (e.g., 12:00)
+    // Calculate from hour range with minute precision (for day view)
+    const gridStartMins = startHour * 60;
+    const gridEndMins = endHour * 60;
+    const totalMins = hourRange * 60;
 
-    const itemStartHour = new Date(item.start_time).getHours();
-    const itemEndHour = new Date(item.end_time).getHours();
-    
-    // Calculate position from left (as percentage of total hour range)
-    leftPercent = ((itemStartHour - startHour) / hourRange) * 100;
-    
-    // Calculate width (as percentage of total hour range)
-    widthPercent = ((itemEndHour - itemStartHour) / hourRange) * 100;
+    const startDate = new Date(item.start_time);
+    const endDate = new Date(item.end_time);
+    const itemStartMins = startDate.getHours() * 60 + startDate.getMinutes();
+    const itemEndMins = endDate.getHours() * 60 + endDate.getMinutes();
+
+    const clampedStart = Math.max(itemStartMins, gridStartMins);
+    const clampedEnd = Math.min(itemEndMins, gridEndMins);
+    const durationMins = Math.max(clampedEnd - clampedStart, 15);
+
+    leftPercent = ((clampedStart - gridStartMins) / totalMins) * 100;
+    widthPercent = (durationMins / totalMins) * 100;
   }
 
   const statusColor = STATUS_COLORS[item.status] || { bg: "#eee", border: "#999", text: "#333" };
@@ -53,6 +56,7 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
         onClick={() => setDetailOpen(true)}
         sx={{
           position: placement ? "static" : "absolute",
+          top: !placement ? 0 : undefined,
           left: !placement ? `${leftPercent}%` : undefined,
           width: `${widthPercent}%`,
           height: placement ? "100%" : "100%",

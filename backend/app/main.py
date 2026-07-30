@@ -1,20 +1,24 @@
 import os
-from datetime import date, datetime, time, timedelta
+import asyncio
+import contextlib
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 import re
+from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 # Load environment variables from .env file
 load_dotenv()
 
-from .database import Base, engine, get_db
+from .database import Base, SessionLocal, engine, get_db
 from .models import (
     CellReport,
     CellReportMemberEntry,
@@ -61,6 +65,176 @@ app.include_router(auth_router)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST_DIR = Path(os.getenv("FRONTEND_DIST_DIR", PROJECT_ROOT / "frontend" / "dist"))
+REMINDER_LEAD_MINUTES = 15
+REMINDER_POLL_SECONDS = 60
+reminder_task: asyncio.Task | None = None
+EASTERN_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
+
+
+def _as_utc_naive(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _as_utc_aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _to_google_calendar_utc(dt: datetime | None) -> str:
+    dt_utc = _as_utc_aware(dt)
+    if dt_utc is None:
+        return ""
+    return dt_utc.strftime("%Y%m%dT%H%M%SZ")
+
+
+def _build_google_calendar_link(
+    title: str,
+    start_time: datetime | None,
+    end_time: datetime | None,
+    room_name: str,
+    details: str,
+) -> str:
+    start_utc = _to_google_calendar_utc(start_time)
+    end_utc = _to_google_calendar_utc(end_time)
+    if not start_utc or not end_utc:
+        return ""
+
+    params = {
+        "action": "TEMPLATE",
+        "text": title,
+        "dates": f"{start_utc}/{end_utc}",
+        "details": details,
+        "location": room_name,
+        "ctz": os.getenv("APP_TIMEZONE", "America/Toronto"),
+    }
+    return "https://calendar.google.com/calendar/render?" + urlencode(params)
+
+
+def _format_eastern_time(dt: datetime | None) -> str:
+    if not dt:
+        return "N/A"
+
+    if dt.tzinfo is None:
+        dt_utc = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt_utc = dt.astimezone(timezone.utc)
+
+    dt_et = dt_utc.astimezone(EASTERN_TZ)
+    return dt_et.strftime("%Y-%m-%d %H:%M %Z")
+
+
+def _build_reminder_email(
+    reservation: Reservation,
+    room_name: str,
+    reminder_kind: str,
+) -> tuple[str, str]:
+    if reminder_kind == "start":
+        title = "시작 15분 전"
+        detail = "예약 시작 15분 전입니다."
+    else:
+        title = "종료 15분 전"
+        detail = "예약 종료 15분 전입니다."
+
+    subject = f"[밀알교회] 예약 {title} 안내 - {room_name}"
+    calendar_link = _build_google_calendar_link(
+        f"{room_name} 예약",
+        reservation.start_time,
+        reservation.end_time,
+        room_name,
+        f"예약 ID #{reservation.id} / 신청자 {reservation.requester_name}",
+    )
+    body = f"""안녕하세요,
+
+{detail}
+
+【 예약 정보 】
+- 예약 ID: #{reservation.id}
+- 장소: {room_name}
+- 신청자: {reservation.requester_name}
+- 시작 시간(ET): {_format_eastern_time(reservation.start_time)}
+- 종료 시간(ET): {_format_eastern_time(reservation.end_time)}
+- 목적: {reservation.purpose or 'N/A'}
+
+Google Calendar에 추가:
+{calendar_link}
+
+감사합니다.
+밀알교회 포털팀"""
+    return subject, body
+
+
+def _send_due_reservation_reminders_once() -> None:
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        window_end = now + timedelta(minutes=REMINDER_LEAD_MINUTES)
+
+        stmt = (
+            select(Reservation)
+            .options(joinedload(Reservation.room))
+            .where(
+                Reservation.status.in_([
+                    ReservationStatus.approved,
+                    ReservationStatus.changed,
+                ]),
+                Reservation.email.is_not(None),
+                Reservation.email != "",
+                Reservation.end_time > now,
+                or_(
+                    and_(
+                        Reservation.start_reminder_sent.is_(False),
+                        Reservation.start_time > now,
+                        Reservation.start_time <= window_end,
+                    ),
+                    and_(
+                        Reservation.end_reminder_sent.is_(False),
+                        Reservation.end_time > now,
+                        Reservation.end_time <= window_end,
+                    ),
+                ),
+            )
+        )
+
+        reservations = db.scalars(stmt).all()
+        dirty = False
+
+        for item in reservations:
+            start_time = _as_utc_naive(item.start_time)
+            end_time = _as_utc_naive(item.end_time)
+            room_name = item.room.name if item.room else "N/A"
+
+            if (not item.start_reminder_sent) and now < start_time <= window_end:
+                subject, body = _build_reminder_email(item, room_name, "start")
+                if _send_email(item.email, subject, body):
+                    item.start_reminder_sent = True
+                    item.start_reminder_sent_at = datetime.utcnow()
+                    dirty = True
+
+            if (not item.end_reminder_sent) and now < end_time <= window_end:
+                subject, body = _build_reminder_email(item, room_name, "end")
+                if _send_email(item.email, subject, body):
+                    item.end_reminder_sent = True
+                    item.end_reminder_sent_at = datetime.utcnow()
+                    dirty = True
+
+        if dirty:
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        print(f"[reservation-reminder] worker error: {exc}")
+    finally:
+        db.close()
+
+
+async def _reservation_reminder_worker() -> None:
+    while True:
+        _send_due_reservation_reminders_once()
+        await asyncio.sleep(REMINDER_POLL_SECONDS)
 
 
 def seed_rooms(db: Session) -> None:
@@ -118,7 +292,7 @@ def get_available_rooms_query(start_time: datetime, end_time: datetime):
 
 
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
     Base.metadata.create_all(bind=engine)
     # Migrate: add floor column if it doesn't exist yet
     with engine.connect() as conn:
@@ -150,12 +324,40 @@ def startup() -> None:
                 conn.commit()
             except Exception:
                 pass  # Column already exists
+
+    # Migrate: add reservation reminder columns if they don't exist yet
+    with engine.connect() as conn:
+        reminder_migration_sql = [
+            "ALTER TABLE reservations ADD COLUMN start_reminder_sent BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE reservations ADD COLUMN start_reminder_sent_at DATETIME NULL",
+            "ALTER TABLE reservations ADD COLUMN end_reminder_sent BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE reservations ADD COLUMN end_reminder_sent_at DATETIME NULL",
+        ]
+        for sql in reminder_migration_sql:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
     
     db = next(get_db())
     try:
         seed_rooms(db)
     finally:
         db.close()
+
+    global reminder_task
+    reminder_task = asyncio.create_task(_reservation_reminder_worker())
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    global reminder_task
+    if reminder_task:
+        reminder_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reminder_task
+        reminder_task = None
 
 
 @app.get("/health")
@@ -700,20 +902,31 @@ def create_reservation(
     장소: {room.name}
     목적: {payload.purpose}
     참석인원: {payload.attendees}
-    예약 시간: {reservations[0].start_time} - {reservations[0].end_time}
+    예약 시간(ET): {_format_eastern_time(reservations[0].start_time)} - {_format_eastern_time(reservations[0].end_time)}
     메모: {payload.notes}
     """
+
+    calendar_link = _build_google_calendar_link(
+        f"{room.name} 예약",
+        reservations[0].start_time,
+        reservations[0].end_time,
+        room.name,
+        f"예약자: {payload.requester_name}\n예약 목적: {payload.purpose}",
+    )
     
     if payload.repeat_count > 1:
         repeat_type_kr = "매주" if payload.repeat_type == "weekly" else "매달"
         email_body += f"\n반복 예약: {repeat_type_kr} {payload.repeat_count}회\n"
         for idx, res in enumerate(reservations, 1):
-            email_body += f"  {idx}. {res.start_time} - {res.end_time}\n"
+            email_body += f"  {idx}. {_format_eastern_time(res.start_time)} - {_format_eastern_time(res.end_time)}\n"
     
     if is_admin:
         email_body += "\n[자동승인] 관리자 예약으로 자동승인되었습니다."
     else:
         email_body += "\n[대기중] 예약이 승인 대기 중입니다."
+
+    if calendar_link:
+        email_body += f"\n\nGoogle Calendar에 추가:\n{calendar_link}\n"
 
     _send_email(payload.email, email_subject, email_body)
 
@@ -754,15 +967,15 @@ def list_reservations(
             purpose=item.purpose,
             attendees=item.attendees,
             notes=item.notes,
-            start_time=item.start_time,
-            end_time=item.end_time,
+            start_time=_as_utc_aware(item.start_time),
+            end_time=_as_utc_aware(item.end_time),
             status=item.status.value,
             admin_comment=item.admin_comment,
             repeat_type=item.repeat_type,
             repeat_count=item.repeat_count,
             parent_reservation_id=item.parent_reservation_id,
-            created_at=item.created_at,
-            updated_at=item.updated_at,
+            created_at=_as_utc_aware(item.created_at),
+            updated_at=_as_utc_aware(item.updated_at),
         )
         for item in items
     ]
@@ -804,6 +1017,12 @@ def update_reservation_by_admin(
         validate_reservation_times(item.start_time, item.end_time)
         item.status = ReservationStatus.changed
 
+        # Re-arm reminders when reservation schedule is changed by admin.
+        item.start_reminder_sent = False
+        item.start_reminder_sent_at = None
+        item.end_reminder_sent = False
+        item.end_reminder_sent_at = None
+
     item.admin_comment = payload.admin_comment
     db.commit()
     db.refresh(item)
@@ -825,6 +1044,14 @@ def update_reservation_by_admin(
     status_en = status_text_en.get(action, "Processed")
     
     if item.email:
+        calendar_link = _build_google_calendar_link(
+            f"{item.room.name if item.room else '장소'} 예약",
+            item.start_time,
+            item.end_time,
+            item.room.name if item.room else "N/A",
+            f"예약 ID #{item.id} / 신청자 {item.requester_name}",
+        )
+
         # Korean email
         subject_ko = f"[밀알교회] 예약 {status_ko} - {item.room.name if item.room else 'N/A'}"
         body_ko = f"""안녕하세요,
@@ -835,10 +1062,13 @@ def update_reservation_by_admin(
 - 예약 ID: #{item.id}
 - 장소: {item.room.name if item.room else 'N/A'}
 - 신청자: {item.requester_name}
-- 시작 시간: {item.start_time.strftime('%Y-%m-%d %H:%M') if item.start_time else 'N/A'}
-- 종료 시간: {item.end_time.strftime('%Y-%m-%d %H:%M') if item.end_time else 'N/A'}
+- 시작 시간(ET): {_format_eastern_time(item.start_time)}
+- 종료 시간(ET): {_format_eastern_time(item.end_time)}
 - 목적: {item.purpose or 'N/A'}
 - 참석자 수: {item.attendees}
+
+Google Calendar에 추가:
+{calendar_link}
 
 【 처리 결과 】
 - 상태: {status_ko}
@@ -861,15 +1091,15 @@ def update_reservation_by_admin(
         purpose=item.purpose,
         attendees=item.attendees,
         notes=item.notes,
-        start_time=item.start_time,
-        end_time=item.end_time,
+        start_time=_as_utc_aware(item.start_time),
+        end_time=_as_utc_aware(item.end_time),
         status=item.status.value,
         admin_comment=item.admin_comment,
         repeat_type=item.repeat_type,
         repeat_count=item.repeat_count,
         parent_reservation_id=item.parent_reservation_id,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
+        created_at=_as_utc_aware(item.created_at),
+        updated_at=_as_utc_aware(item.updated_at),
     )
 
 

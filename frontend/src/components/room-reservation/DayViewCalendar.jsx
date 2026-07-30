@@ -10,7 +10,10 @@ import {
   addDays,
   toDateInputValue,
   toHourText,
-  dateToLocalISOString,  isPastTime,} from "../../utils/datetime";
+  dateToLocalISOString,
+  isPastTime,
+  isTooFarFuture,
+} from "../../utils/datetime";
 import { useLanguage } from "../../i18n/LanguageContext";
 import DataMart from "../../common/DataMart";
 import { api } from "../../api";
@@ -284,7 +287,7 @@ export default function DayViewCalendar({
                     endDate: cellEnd,
                     currentUser,
                   });
-                  const isClickable = !isPastTime(cellStartISO) && ruleResult.allowed;
+                  const isClickable = !isPastTime(cellStartISO) && !isTooFarFuture(cellStartISO) && ruleResult.allowed;
 
                   return (
                     <Box

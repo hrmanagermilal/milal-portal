@@ -51,7 +51,7 @@ export default function CellReportPanel() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
   const [detail, setDetail] = useState(null);
-  const currentCellGroup = localStorage.getItem("milal_cell_group") || "";
+  const currentCellGroup = sessionStorage.getItem("milal_cell_group") || "";
 
   const [meetingDate, setMeetingDate] = useState(todayDate());
   const [meetingAt, setMeetingAt] = useState("");

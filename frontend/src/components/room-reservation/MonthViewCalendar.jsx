@@ -14,10 +14,12 @@ import Typography from "@mui/material/Typography";
 import { statusLabel } from "../../constants";
 import {
   addDays,
+  dateToLocalISOString,
   endOfDay,
   endOfMonth,
   formatDateTime,
   isPastDate,
+  isTooFarFuture,
   startOfDay,
   startOfMonth,
   startOfWeek,
@@ -140,8 +142,8 @@ export default function MonthViewCalendar({
     setForm((prev) => ({
       ...prev,
       room_id: String(firstAllowed.roomId),
-      start_time: firstAllowed.start.toISOString().slice(0, 16),
-      end_time: firstAllowed.end.toISOString().slice(0, 16),
+      start_time: dateToLocalISOString(firstAllowed.start),
+      end_time: dateToLocalISOString(firstAllowed.end),
     }));
     
     setModalOpen(true);
@@ -233,7 +235,8 @@ export default function MonthViewCalendar({
             hourEnd: 22,
           });
           const blockedByRules = inCurrentMonth && !firstAllowed;
-          const isClickable = inCurrentMonth && !isPastDate(day) && !blockedByRules;
+          const blockedByFuture = inCurrentMonth && !!firstAllowed && isTooFarFuture(firstAllowed.start);
+          const isClickable = inCurrentMonth && !isPastDate(day) && !blockedByFuture && !blockedByRules;
           const dayStart = startOfDay(day);
           const dayEnd = endOfDay(day);
           const dayItems = sortByStartTime(
@@ -245,11 +248,11 @@ export default function MonthViewCalendar({
               key={day.toISOString()} 
               className={`month-cell ${isClickable ? "" : "dim"}`}
               onClick={() => isClickable && handleCellClick(day)}
-              title={blockedByRules ? "이 날짜는 규칙상 예약 가능한 시간이 없습니다." : ""}
+              title={blockedByRules ? "이 날짜는 규칙상 예약 가능한 시간이 없습니다." : blockedByFuture ? "현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다." : ""}
               style={{
                 cursor: isClickable ? "pointer" : "default",
-                backgroundColor: blockedByRules ? "#f7e9ea" : undefined,
-                opacity: blockedByRules ? 0.7 : undefined,
+                backgroundColor: blockedByRules || blockedByFuture ? "#f7e9ea" : undefined,
+                opacity: blockedByRules || blockedByFuture ? 0.7 : undefined,
               }}
             >
               <div className="month-date">{day.getDate()}</div>

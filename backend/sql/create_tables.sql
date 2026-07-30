@@ -135,6 +135,10 @@ CREATE TABLE reservations (
     repeat_type    VARCHAR(20)  NOT NULL DEFAULT 'none',  -- 'none', 'weekly', 'monthly'
     repeat_count   INT          NOT NULL DEFAULT 1,  -- number of times to repeat
     parent_reservation_id INT,  -- for grouping repeat instances
+    start_reminder_sent TINYINT(1) NOT NULL DEFAULT 0,
+    start_reminder_sent_at DATETIME NULL,
+    end_reminder_sent TINYINT(1) NOT NULL DEFAULT 0,
+    end_reminder_sent_at DATETIME NULL,
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_room FOREIGN KEY (room_id) REFERENCES rooms(id),

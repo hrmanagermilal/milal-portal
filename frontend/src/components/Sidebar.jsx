@@ -22,9 +22,9 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(true);
   const [cellMeetingOpen, setCellMeetingOpen] = useState(true);
-  const [permission, setPermission] = useState(localStorage.getItem("milal_permission") || "");
-  const [title, setTitle] = useState(localStorage.getItem("milal_title") || "");
-  const [cellGroup, setCellGroup] = useState(localStorage.getItem("milal_cell_group") || "");
+  const [permission, setPermission] = useState(sessionStorage.getItem("milal_permission") || "");
+  const [title, setTitle] = useState(sessionStorage.getItem("milal_title") || "");
+  const [cellGroup, setCellGroup] = useState(sessionStorage.getItem("milal_cell_group") || "");
   const [navItems, setNavItems] = useState([]);
 
   useEffect(() => {

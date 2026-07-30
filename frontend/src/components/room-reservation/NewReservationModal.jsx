@@ -14,24 +14,9 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
-import { dateToLocalISOString, isPastTime } from "../../utils/datetime";
+import { dateToLocalISOString, getReservationMaxDateInputValue, isPastTime, isTooFarFuture } from "../../utils/datetime";
 import { evaluateRuleForSlot, groupRulesByRoom } from "../../utils/reservationRules";
 
-// Calculate max date (3 months from today)
-function getMaxReservationDate() {
-  const now = new Date();
-  const maxDate = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
-  return dateToLocalISOString(maxDate).slice(0, 16);
-}
-
-// Check if date is more than 3 months in the future
-function isTooFarFuture(dateTimeStr) {
-  if (!dateTimeStr) return false;
-  const selectedDate = new Date(dateTimeStr + 'Z');
-  const now = new Date();
-  const maxDate = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
-  return selectedDate > maxDate;
-}
 import FloorPlanTooltip from "./FloorPlanTooltip";
 
 // Default end = start + 1 hour, clamped to 23:30 of same day
@@ -113,6 +98,7 @@ export default function NewReservationModal({
   const [availableRooms, setAvailableRooms] = useState(rooms);
   const availableRoomIds = new Set(availableRooms.map((room) => room.id));
   const rulesByRoom = groupRulesByRoom(reservationRules);
+  const reservationMaxDateTime = getReservationMaxDateInputValue(1);
   
   // Get unique floors from rooms
   const floors = Array.from(new Set(rooms.map(r => r.floor ?? 1))).sort();
@@ -315,8 +301,14 @@ export default function NewReservationModal({
         InputLabelProps={{ shrink: true }}
         value={startTimeEST}
         onChange={handleStartTimeChange}
-        inputProps={{ max: getMaxReservationDate() }}
+        inputProps={{ max: reservationMaxDateTime }}
       />
+
+      {isTooFarFuture(form.start_time) && (
+        <Alert severity="warning">
+          현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다.
+        </Alert>
+      )}
 
       {blockedByRule && (
         <Alert severity="warning">

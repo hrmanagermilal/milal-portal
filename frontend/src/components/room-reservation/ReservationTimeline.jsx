@@ -46,6 +46,7 @@ import {
   startOfMonth,
   startOfWeek,
   toDateInputValue,
+  toHourText,
 } from "../../utils/datetime";
 import DayViewCalendar from "./DayViewCalendar";
 import WeekScheduleCalendar from "./WeekScheduleCalendar";
@@ -438,9 +439,9 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                         </Typography>
                       </FloorPlanTooltip>
                       <Typography sx={{ fontSize: "11px", color: "#5d7186", mt: 0.3 }}>
-                        {new Date(item.start_time).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {formatDateTime(item.start_time)}
                         {" – "}
-                        {new Date(item.end_time).toLocaleString([], { hour: "2-digit", minute: "2-digit" })}
+                        {toHourText(item.end_time)}
                       </Typography>
                     </Box>
                     <Chip

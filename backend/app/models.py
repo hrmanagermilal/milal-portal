@@ -200,6 +200,12 @@ class Reservation(Base):
     repeat_count: Mapped[int] = mapped_column(Integer, default=1)  # number of times to repeat
     parent_reservation_id: Mapped[Optional[int]] = mapped_column(ForeignKey("reservations.id"), nullable=True)  # for grouping repeat instances
 
+    # 15-minute reminder delivery tracking
+    start_reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    start_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    end_reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    end_reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
