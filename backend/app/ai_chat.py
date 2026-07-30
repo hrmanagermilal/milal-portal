@@ -341,6 +341,7 @@ Important rules:
 - For example, if the user says "6pm tomorrow", pass "YYYY-MM-DDT18:00:00" as-is.
 - Always call check_availability before create_reservation.
 - check_availability must validate reservation rules first and explain allowed/blocked reasons to the user before attempting creation.
+- As soon as the user gives a desired date/time, immediately call check_availability and explain whether it is inside the 1-month window and whether any rule blocks it.
 - Reservations in the past are not allowed.
 - Reservations more than 1 month from now are not allowed.
 - For create_reservation, use the logged-in user's name/phone/email from the context. If the user is not logged in (no user info), inform them they must log in first.
@@ -390,6 +391,16 @@ Important rules:
 
         def _parse_dt(s: str) -> datetime:
             return datetime.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
+
+        def _parse_dt_safe(raw: str, field_name: str) -> tuple[datetime | None, str]:
+            try:
+                parsed = _parse_dt(raw)
+                return parsed, ""
+            except Exception:
+                return None, (
+                    f"{field_name} 형식이 올바르지 않습니다. "
+                    "YYYY-MM-DDTHH:MM(:SS) 형식으로 입력해주세요."
+                )
 
         def _now_local_naive() -> datetime:
             return datetime.now(app_tz).replace(tzinfo=None)
@@ -482,6 +493,10 @@ Important rules:
                 target_label = denied.specific_date.isoformat() if denied.rule_type.value == "specific_date" else "해당 요일"
                 if denied.applies_all_day:
                     return False, f"{target_label}은(는) 종일 예약이 금지되어 있습니다."
+
+                if not denied.start_time or not denied.end_time:
+                    return False, f"{target_label} 시간대는 예약이 금지되어 있습니다."
+
                 return False, (
                     f"{target_label} {denied.start_time.strftime('%H:%M')}~"
                     f"{denied.end_time.strftime('%H:%M')} 시간대는 예약이 금지되어 있습니다."
@@ -490,8 +505,27 @@ Important rules:
             return True, ""
 
         def _exec_check_availability(room_id: int, start_time: str, end_time: str) -> dict:
-            start = _parse_dt(start_time)
-            end = _parse_dt(end_time)
+            start, start_err = _parse_dt_safe(start_time, "start_time")
+            if start_err:
+                return {
+                    "available": False,
+                    "time_allowed": False,
+                    "time_error": start_err,
+                    "rule_allowed": True,
+                    "rule_error": "",
+                    "conflicts": [],
+                }
+
+            end, end_err = _parse_dt_safe(end_time, "end_time")
+            if end_err:
+                return {
+                    "available": False,
+                    "time_allowed": False,
+                    "time_error": end_err,
+                    "rule_allowed": True,
+                    "rule_error": "",
+                    "conflicts": [],
+                }
 
             time_allowed, time_error = _validate_time_window(start, end)
             if not time_allowed:
@@ -533,6 +567,7 @@ Important rules:
                 "time_error": "",
                 "rule_allowed": True,
                 "rule_error": "",
+                "analysis": "예약 가능 시간이며, 1개월 제한과 규칙 검사를 모두 통과했습니다." if len(conflicts) == 0 else "해당 시간대에 기존 예약이 있습니다.",
                 "conflicts": [
                     {
                         "requester_name": c.requester_name,
@@ -558,8 +593,13 @@ Important rules:
 
             phone = payload.user_phone or "000-0000-0000"
             email = payload.user_email or "noreply@milal.org"
-            start = _parse_dt(start_time)
-            end = _parse_dt(end_time)
+            start, start_err = _parse_dt_safe(start_time, "start_time")
+            if start_err:
+                return {"error": start_err}
+
+            end, end_err = _parse_dt_safe(end_time, "end_time")
+            if end_err:
+                return {"error": end_err}
 
             time_allowed, time_error = _validate_time_window(start, end)
             if not time_allowed:
@@ -823,27 +863,30 @@ Important rules:
             )
 
         def _dispatch(name: str, args: dict):
-            if name == "get_rooms":
-                return _exec_get_rooms()
-            if name == "get_reservations":
-                return _exec_get_reservations(**args)
-            if name == "check_availability":
-                return _exec_check_availability(**args)
-            if name == "create_reservation":
-                return _exec_create_reservation(**args)
-            if name == "get_cell_group_members":
-                return _exec_get_cell_group_members(**args)
-            if name == "update_cell_group_member":
-                return _exec_update_cell_group_member(**args)
-            if name == "create_cell_report":
-                return _exec_create_cell_report(**args)
-            if name == "get_cell_report_analysis":
-                return _exec_get_cell_report_analysis(**args)
-            if name == "get_cell_report_date_analysis":
-                return _exec_get_cell_report_date_analysis(**args)
-            if name == "get_member_prayer_trend":
-                return _exec_get_member_prayer_trend(**args)
-            return {"error": f"Unknown tool: {name}"}
+            try:
+                if name == "get_rooms":
+                    return _exec_get_rooms()
+                if name == "get_reservations":
+                    return _exec_get_reservations(**args)
+                if name == "check_availability":
+                    return _exec_check_availability(**args)
+                if name == "create_reservation":
+                    return _exec_create_reservation(**args)
+                if name == "get_cell_group_members":
+                    return _exec_get_cell_group_members(**args)
+                if name == "update_cell_group_member":
+                    return _exec_update_cell_group_member(**args)
+                if name == "create_cell_report":
+                    return _exec_create_cell_report(**args)
+                if name == "get_cell_report_analysis":
+                    return _exec_get_cell_report_analysis(**args)
+                if name == "get_cell_report_date_analysis":
+                    return _exec_get_cell_report_date_analysis(**args)
+                if name == "get_member_prayer_trend":
+                    return _exec_get_member_prayer_trend(**args)
+                return {"error": f"Unknown tool: {name}"}
+            except Exception as exc:
+                return {"error": f"도구 실행 중 오류: {type(exc).__name__}: {exc}"}
 
         model_name = os.getenv("OPENAI_MODEL", default_model)
         try:
