@@ -1,7 +1,8 @@
 import json
 import os
 import random
-from datetime import date, datetime
+from calendar import monthrange
+from datetime import date, datetime, timedelta
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -15,8 +16,10 @@ from .models import (
     CellReportMemberEntry,
     Member,
     Reservation,
+    ReservationRule,
     ReservationStatus,
     Room,
+    User,
 )
 from .schemas import ChatRequest
 
@@ -32,6 +35,7 @@ def create_ai_chat_router(
     analyze_member_prayer_trend: AnalyzeMemberPrayerTrendFn,
 ) -> APIRouter:
     router = APIRouter()
+    app_tz = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
 
     def _get_gemini_client() -> tuple[object | None, dict | None]:
         try:
@@ -336,6 +340,9 @@ Important rules:
 - The server stores times as-is without timezone conversion. Pass times EXACTLY as the user specifies them (do NOT add or subtract hours for UTC conversion).
 - For example, if the user says "6pm tomorrow", pass "YYYY-MM-DDT18:00:00" as-is.
 - Always call check_availability before create_reservation.
+- check_availability must validate reservation rules first and explain allowed/blocked reasons to the user before attempting creation.
+- Reservations in the past are not allowed.
+- Reservations more than 1 month from now are not allowed.
 - For create_reservation, use the logged-in user's name/phone/email from the context. If the user is not logged in (no user info), inform them they must log in first.
 - After creating a reservation, the status is 'pending' and requires admin approval.
 - For cell group tools (get_cell_group_members, update_cell_group_member): only available when user title is '순장'.
@@ -384,9 +391,130 @@ Important rules:
         def _parse_dt(s: str) -> datetime:
             return datetime.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
 
+        def _now_local_naive() -> datetime:
+            return datetime.now(app_tz).replace(tzinfo=None)
+
+        def _add_months(dt: datetime, months: int) -> datetime:
+            month_index = (dt.month - 1) + months
+            year = dt.year + month_index // 12
+            month = (month_index % 12) + 1
+            day = min(dt.day, monthrange(year, month)[1])
+            return dt.replace(year=year, month=month, day=day)
+
+        def _validate_time_window(start: datetime, end: datetime) -> tuple[bool, str]:
+            if end <= start:
+                return False, "종료 시간은 시작 시간 이후여야 합니다."
+
+            now_local = _now_local_naive()
+            if start < now_local:
+                return False, "과거 시간은 예약할 수 없습니다."
+
+            cutoff = _add_months(now_local, 1)
+            if start > cutoff:
+                return False, "현재 시각 기준 1개월 이후 일정은 예약할 수 없습니다."
+
+            return True, ""
+
+        def _resolve_membership_category() -> str:
+            default_category = "adult"
+            if not payload.user_name:
+                return default_category
+
+            stmt = select(Member).where(Member.name == payload.user_name)
+            if payload.user_cell_group:
+                stmt = stmt.where(Member.cell_group == payload.user_cell_group)
+            member = db.scalar(stmt.limit(1))
+            if not member:
+                return default_category
+
+            user = db.scalar(select(User).where(User.member_id == member.id).limit(1))
+            if user and user.membership_category:
+                return user.membership_category.value
+
+            return default_category
+
+        def _matches_rule_selector(rule: ReservationRule, target_start: datetime) -> bool:
+            if rule.rule_type.value == "specific_date":
+                return bool(rule.specific_date and rule.specific_date == target_start.date())
+            if rule.rule_type.value == "day_of_week":
+                return rule.day_of_week is not None and rule.day_of_week == target_start.weekday()
+            return False
+
+        def _time_ranges_overlap(start_a, end_a, start_b, end_b) -> bool:
+            return start_a < end_b and end_a > start_b
+
+        def _matches_rule_time_scope(rule: ReservationRule, reservation_start: datetime, reservation_end: datetime) -> bool:
+            if rule.applies_all_day:
+                return True
+
+            if not rule.start_time or not rule.end_time:
+                return False
+
+            return _time_ranges_overlap(
+                reservation_start.time(),
+                reservation_end.time(),
+                rule.start_time,
+                rule.end_time,
+            )
+
+        def _matches_rule_target(rule: ReservationRule, membership_category: str) -> bool:
+            if rule.membership_category is None:
+                return True
+            return rule.membership_category.value == membership_category
+
+        def _evaluate_reservation_rules(room_id: int, start: datetime, end: datetime) -> tuple[bool, str]:
+            membership_category = _resolve_membership_category()
+            rules = db.scalars(select(ReservationRule).where(ReservationRule.room_id == room_id)).all()
+
+            matched_rules = [
+                rule for rule in rules
+                if _matches_rule_selector(rule, start)
+                and _matches_rule_time_scope(rule, start, end)
+                and _matches_rule_target(rule, membership_category)
+            ]
+
+            if not matched_rules:
+                return True, ""
+
+            denied_rules = [rule for rule in matched_rules if not rule.is_allowed]
+            if denied_rules:
+                denied = denied_rules[0]
+                target_label = denied.specific_date.isoformat() if denied.rule_type.value == "specific_date" else "해당 요일"
+                if denied.applies_all_day:
+                    return False, f"{target_label}은(는) 종일 예약이 금지되어 있습니다."
+                return False, (
+                    f"{target_label} {denied.start_time.strftime('%H:%M')}~"
+                    f"{denied.end_time.strftime('%H:%M')} 시간대는 예약이 금지되어 있습니다."
+                )
+
+            return True, ""
+
         def _exec_check_availability(room_id: int, start_time: str, end_time: str) -> dict:
             start = _parse_dt(start_time)
             end = _parse_dt(end_time)
+
+            time_allowed, time_error = _validate_time_window(start, end)
+            if not time_allowed:
+                return {
+                    "available": False,
+                    "time_allowed": False,
+                    "time_error": time_error,
+                    "rule_allowed": True,
+                    "rule_error": "",
+                    "conflicts": [],
+                }
+
+            rule_allowed, rule_error = _evaluate_reservation_rules(room_id, start, end)
+            if not rule_allowed:
+                return {
+                    "available": False,
+                    "time_allowed": True,
+                    "time_error": "",
+                    "rule_allowed": False,
+                    "rule_error": rule_error,
+                    "conflicts": [],
+                }
+
             conflicts = db.scalars(
                 select(Reservation)
                 .options(joinedload(Reservation.room))
@@ -401,6 +529,10 @@ Important rules:
             ).all()
             return {
                 "available": len(conflicts) == 0,
+                "time_allowed": True,
+                "time_error": "",
+                "rule_allowed": True,
+                "rule_error": "",
                 "conflicts": [
                     {
                         "requester_name": c.requester_name,
@@ -429,12 +561,17 @@ Important rules:
             start = _parse_dt(start_time)
             end = _parse_dt(end_time)
 
-            if end <= start:
-                return {"error": "종료 시간은 시작 시간 이후여야 합니다."}
+            time_allowed, time_error = _validate_time_window(start, end)
+            if not time_allowed:
+                return {"error": time_error}
 
             room = db.get(Room, room_id)
             if not room or not room.is_active:
                 return {"error": f"Room ID {room_id}를 찾을 수 없습니다."}
+
+            rule_allowed, rule_error = _evaluate_reservation_rules(room_id, start, end)
+            if not rule_allowed:
+                return {"error": rule_error}
 
             conflict = db.scalar(
                 select(Reservation).where(
