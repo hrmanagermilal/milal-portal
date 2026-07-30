@@ -266,14 +266,14 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
           <Button 
             onClick={() => onNavigate(-1)}
             sx={{
-              color: "#1976d2",
+              color: "#3b522e",
               borderColor: "#d8dfe7",
               fontWeight: 600,
               fontSize: "13px",
               transition: "all 0.2s ease",
               "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
+                bgcolor: "rgba(59, 82, 46, 0.08)",
+                borderColor: "#3b522e",
               },
             }}
           >
@@ -282,14 +282,14 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
           <Button 
             onClick={() => onNavigate(0)}
             sx={{
-              color: "#1976d2",
+              color: "#3b522e",
               borderColor: "#d8dfe7",
               fontWeight: 600,
               fontSize: "13px",
               transition: "all 0.2s ease",
               "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
+                bgcolor: "rgba(59, 82, 46, 0.08)",
+                borderColor: "#3b522e",
               },
             }}
           >
@@ -298,14 +298,14 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
           <Button 
             onClick={() => onNavigate(1)}
             sx={{
-              color: "#1976d2",
+              color: "#3b522e",
               borderColor: "#d8dfe7",
               fontWeight: 600,
               fontSize: "13px",
               transition: "all 0.2s ease",
               "&:hover": {
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                borderColor: "#1976d2",
+                bgcolor: "rgba(59, 82, 46, 0.08)",
+                borderColor: "#3b522e",
               },
             }}
           >
@@ -358,7 +358,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
             <Fragment key={`week-room-${room.id}`}>
               <div 
                 className="calendar-grid-cell room-col room-name"
-                style={{ color: isAvailable ? "#1976d2" : "inherit" }}
+                style={{ color: isAvailable ? "#3b522e" : "inherit" }}
               >
                 <FloorPlanTooltip roomName={room.name}>
                   <span>{room.name}</span>

@@ -310,18 +310,18 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                   variant={mode === m ? "contained" : "outlined"}
                   onClick={() => setMode(m)}
                   sx={{
-                    bgcolor: mode === m ? "#1976d2" : "transparent",
-                    color: mode === m ? "white" : "#1976d2",
-                    borderColor: "#1976d2",
+                    bgcolor: mode === m ? "#3b522e" : "transparent",
+                    color: mode === m ? "white" : "#3b522e",
+                    borderColor: "#3b522e",
                     fontWeight: 600,
                     fontSize: "12px",
                     letterSpacing: "0.5px",
                     transition: "all 0.2s ease",
                     "&:hover": {
-                      bgcolor: mode === m ? "#1565c0" : "rgba(25, 118, 210, 0.08)",
-                      borderColor: "#1976d2",
+                      bgcolor: mode === m ? "#2f4325" : "rgba(59, 82, 46, 0.08)",
+                      borderColor: "#3b522e",
                     },
-                    boxShadow: mode === m ? "0 4px 12px rgba(25, 118, 210, 0.3)" : "none",
+                    boxShadow: mode === m ? "0 4px 12px rgba(59, 82, 46, 0.3)" : "none",
                   }}
                 >
                   {t(m)}
@@ -398,13 +398,13 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
               sx={{
                 fontSize: "12px",
                 fontWeight: 600,
-                color: "#1976d2",
+                color: "#3b522e",
                 borderColor: "#d8dfe7",
                 textTransform: "none",
                 minWidth: 0,
                 px: 1.5,
                 py: 0.4,
-                "&:hover": { borderColor: "#1976d2", bgcolor: "rgba(25,118,210,0.06)" },
+                "&:hover": { borderColor: "#3b522e", bgcolor: "rgba(59,82,46,0.06)" },
               }}
             >
               {showList ? t("detailListHide") : t("detailListShow")}
@@ -429,12 +429,12 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                       borderBottom: idx < visibleList.length - 1 ? "1px solid #eef2f7" : "none",
                       bgcolor: idx % 2 === 0 ? "white" : "#fafbfc",
                       cursor: "pointer",
-                      "&:active": { bgcolor: "rgba(25,118,210,0.06)" },
+                      "&:active": { bgcolor: "rgba(59,82,46,0.06)" },
                     }}
                   >
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
-                        <Typography sx={{ fontWeight: 600, fontSize: "13px", color: "#1976d2", lineHeight: 1.3 }}>
+                        <Typography sx={{ fontWeight: 600, fontSize: "13px", color: "#3b522e", lineHeight: 1.3 }}>
                           {item.room_name}
                         </Typography>
                       </FloorPlanTooltip>
@@ -510,7 +510,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
         >
           <DialogTitle sx={{ pb: 1, pr: 1, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #eef2f7" }}>
             <Stack direction="row" spacing={1.5} alignItems="center">
-              <Box sx={{ width: 4, height: 24, bgcolor: "#1976d2", borderRadius: "2px" }} />
+              <Box sx={{ width: 4, height: 24, bgcolor: "#3b522e", borderRadius: "2px" }} />
                 <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e", fontSize: "15px" }}>{t("reservationDetail")}</Typography>
             </Stack>
             <IconButton size="small" onClick={() => setSelectedItem(null)} sx={{ color: "#5d7186" }}>✕</IconButton>
@@ -522,7 +522,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                   <Box>
                     <Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", fontSize: "10px" }}>Room</Typography>
                     <FloorPlanTooltip roomId={selectedItem.room_id} roomName={selectedItem.room_name}>
-                      <Typography fontWeight={700} sx={{ color: "#1976d2", fontSize: "15px" }}>{selectedItem.room_name}</Typography>
+                      <Typography fontWeight={700} sx={{ color: "#3b522e", fontSize: "15px" }}>{selectedItem.room_name}</Typography>
                     </FloorPlanTooltip>
                   </Box>
                   <Chip

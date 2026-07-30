@@ -427,7 +427,7 @@ export default function CellReportPanel() {
                             <Typography
                               sx={{
                                 fontWeight: 700,
-                                color: "#1976d2",
+                                color: "#3b522e",
                                 fontSize: "13px",
                                 lineHeight: 1.4,
                                 whiteSpace: "nowrap",

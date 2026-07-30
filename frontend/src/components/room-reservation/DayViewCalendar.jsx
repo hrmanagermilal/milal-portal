@@ -190,13 +190,13 @@ export default function DayViewCalendar({
         <Stack direction="row" spacing={1} alignItems="center" sx={{ order: { xs: 1, md: 2 }, ml: { xs: 0, md: "auto" } }}>
           <ButtonGroup size="small" variant="outlined">
             <Button onClick={() => onNavigate(-1)}
-              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+              sx={{ color: "#3b522e", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", borderColor: "#3b522e" } }}
             >{t("prev")}</Button>
             <Button onClick={() => onNavigate(0)}
-              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+              sx={{ color: "#3b522e", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", borderColor: "#3b522e" } }}
             >{t("today")}</Button>
             <Button onClick={() => onNavigate(1)}
-              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+              sx={{ color: "#3b522e", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", borderColor: "#3b522e" } }}
             >{t("next")}</Button>
           </ButtonGroup>
           <TextField
@@ -244,7 +244,7 @@ export default function DayViewCalendar({
                   variant="body2"
                   sx={{
                     fontWeight: 600,
-                    color: isAvailable ? "#1976d2" : "inherit",
+                    color: isAvailable ? "#3b522e" : "inherit",
                     lineHeight: 1.3,
                     fontSize: "13px",
                     display: "flex",
@@ -300,7 +300,7 @@ export default function DayViewCalendar({
                         opacity: isClickable ? 1 : 0.45,
                         bgcolor: isClickable ? "transparent" : "#f7e9ea",
                         "&:hover": {
-                          bgcolor: isClickable ? "rgba(25, 118, 210, 0.05)" : "#f7e9ea",
+                          bgcolor: isClickable ? "rgba(59, 82, 46, 0.05)" : "#f7e9ea",
                         },
                       }}
                       onClick={() => isClickable && handleCellClick(room.id, cellStart, cellEnd)}

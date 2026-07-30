@@ -234,7 +234,7 @@ export const InputField = ({ label, placeholder, value, onChange, disabled = fal
       }}
       onFocus={(e) => {
         e.target.style.borderColor = '#2f68f9';
-        e.target.style.boxShadow = '0 0 0 2px rgba(47, 104, 249, 0.1)';
+        e.target.style.boxShadow = '0 0 0 2px rgba(59, 82, 46, 0.1)';
       }}
       onBlur={(e) => {
         e.target.style.borderColor = '#d9d9d9';
@@ -262,7 +262,7 @@ export const TimeBlock = ({ status = 'reserved', title, time, organizer }) => {
     <div style={{
       position: 'absolute',
       backgroundColor: style.bg,
-      backgroundImage: status === 'reserved' ? 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(47, 104, 249, 0.3) 3px, rgba(47, 104, 249, 0.3) 6px)' : 'none',
+      backgroundImage: status === 'reserved' ? 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(59, 82, 46, 0.3) 3px, rgba(59, 82, 46, 0.3) 6px)' : 'none',
       border: `1px solid ${style.border}`,
       borderRadius: '6px',
       padding: '4px 8px',

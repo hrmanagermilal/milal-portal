@@ -196,13 +196,13 @@ export default function MonthViewCalendar({
         <Stack direction="row" spacing={1} alignItems="center" sx={{ order: { xs: 1, md: 2 }, ml: { xs: 0, md: "auto" } }}>
           <ButtonGroup size="small" variant="outlined">
             <Button onClick={() => onNavigate(-1)}
-              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+              sx={{ color: "#3b522e", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", borderColor: "#3b522e" } }}
             >{t("prev")}</Button>
             <Button onClick={() => onNavigate(0)}
-              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+              sx={{ color: "#3b522e", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", borderColor: "#3b522e" } }}
             >{t("today")}</Button>
             <Button onClick={() => onNavigate(1)}
-              sx={{ color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.08)", borderColor: "#1976d2" } }}
+              sx={{ color: "#3b522e", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px", transition: "all 0.2s ease", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", borderColor: "#3b522e" } }}
             >{t("next")}</Button>
           </ButtonGroup>
           <TextField
@@ -263,7 +263,7 @@ export default function MonthViewCalendar({
                     className="month-event-line"
                     onClick={(e) => { e.stopPropagation(); setDetailItem(item); }}
                     style={{ cursor: "pointer", borderRadius: "4px", padding: "1px 4px", transition: "background 0.15s" }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = "rgba(25,118,210,0.08)"}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,82,46,0.08)"}
                     onMouseLeave={(e) => e.currentTarget.style.background = ""}
                   >
                     <span>{item.room_name}</span>
@@ -297,7 +297,7 @@ export default function MonthViewCalendar({
       <Dialog open={!!detailItem} onClose={() => setDetailItem(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ pb: 1, pr: 1, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #eef2f7" }}>
           <Stack direction="row" spacing={1.5} alignItems="center">
-            <Box sx={{ width: 4, height: 24, bgcolor: "#1976d2", borderRadius: "2px" }} />
+            <Box sx={{ width: 4, height: 24, bgcolor: "#3b522e", borderRadius: "2px" }} />
             <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e" }}>Reservation Detail</Typography>
           </Stack>
           <IconButton size="small" onClick={() => setDetailItem(null)} sx={{ color: "#5d7186", "&:hover": { bgcolor: "#eef2f7" } }}>✕</IconButton>
@@ -310,7 +310,7 @@ export default function MonthViewCalendar({
                 <Box>
                   <Typography variant="caption" sx={{ color: "#5d7186", textTransform: "uppercase", letterSpacing: "0.5px", fontSize: "11px" }}>Room</Typography>
                   <FloorPlanTooltip roomId={detailItem.room_id} roomName={detailItem.room_name}>
-                    <Typography fontWeight={700} sx={{ color: "#1976d2", fontSize: "16px" }}>{detailItem.room_name}</Typography>
+                    <Typography fontWeight={700} sx={{ color: "#3b522e", fontSize: "16px" }}>{detailItem.room_name}</Typography>
                   </FloorPlanTooltip>
                 </Box>
                 <Chip
@@ -320,14 +320,14 @@ export default function MonthViewCalendar({
                     fontWeight: 700,
                     fontSize: "12px",
                     px: 0.5,
-                    bgcolor: detailItem.status === "approved" ? "rgba(34,185,86,0.12)" :
+                    bgcolor: detailItem.status === "approved" ? "rgba(59,82,46,0.12)" :
                               detailItem.status === "pending"  ? "rgba(246,197,77,0.18)" :
                               detailItem.status === "rejected" ? "rgba(249,92,92,0.12)" :
-                              "rgba(25,118,210,0.12)",
-                    color: detailItem.status === "approved" ? "#22b956" :
+                              "rgba(59,82,46,0.12)",
+                    color: detailItem.status === "approved" ? "#3b522e" :
                            detailItem.status === "pending"  ? "#b07d00" :
                            detailItem.status === "rejected" ? "#f95c5c" :
-                           "#1976d2",
+                           "#3b522e",
                   }}
                 />
               </Box>

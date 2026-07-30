@@ -336,10 +336,10 @@ export default function RoomSettingsPanel({ onRoomsChanged, guideText }) {
                           onClick={() => handleUpdateRoom(room.id)}
                           sx={{
                             ...(isDirty ? {
-                              borderColor: "#1976d2",
-                              color: "#1976d2",
+                              borderColor: "#3b522e",
+                              color: "#3b522e",
                               fontWeight: 700,
-                              "&:hover": { bgcolor: "rgba(25,118,210,0.08)" },
+                              "&:hover": { bgcolor: "rgba(59,82,46,0.08)" },
                             } : {}),
                           }}
                         >

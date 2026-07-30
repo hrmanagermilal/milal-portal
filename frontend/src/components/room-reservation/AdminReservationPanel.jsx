@@ -149,20 +149,20 @@ export default function AdminReservationPanel({
               <Button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                sx={{ fontSize: "12px", fontWeight: 600, color: "#1976d2", borderColor: "#d8dfe7" }}
+                sx={{ fontSize: "12px", fontWeight: 600, color: "#3b522e", borderColor: "#d8dfe7" }}
               >
                 {t("prev")}
               </Button>
               <Button
                 disabled
-                sx={{ fontSize: "12px", color: "#1976d2", borderColor: "#d8dfe7", cursor: "default" }}
+                sx={{ fontSize: "12px", color: "#3b522e", borderColor: "#d8dfe7", cursor: "default" }}
               >
                 {currentPage} / {totalPages || 1}
               </Button>
               <Button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages || totalPages === 0}
-                sx={{ fontSize: "12px", fontWeight: 600, color: "#1976d2", borderColor: "#d8dfe7" }}
+                sx={{ fontSize: "12px", fontWeight: 600, color: "#3b522e", borderColor: "#d8dfe7" }}
               >
                 {t("next")}
               </Button>
@@ -190,7 +190,7 @@ export default function AdminReservationPanel({
                 displayedItems.map((item) => (
                   <TableRow key={item.id} hover>
                     <TableCell>
-                      <Typography sx={{ color: "#1976d2", fontWeight: 600 }}>
+                      <Typography sx={{ color: "#3b522e", fontWeight: 600 }}>
                         <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
                           <span>{item.room_name}</span>
                         </FloorPlanTooltip>
@@ -217,7 +217,7 @@ export default function AdminReservationPanel({
                       <IconButton
                         size="small"
                         onClick={() => handleEditClick(item)}
-                        sx={{ color: "#1976d2", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.1)" } }}
+                        sx={{ color: "#3b522e", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.1)" } }}
                         title={t("edit")}
                       >
                         ✎

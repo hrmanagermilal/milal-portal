@@ -89,7 +89,7 @@ export default function TopBar({ userName = "", pageTitle = "", subtitle = "", o
           onClick={(e) => setLangAnchor(e.currentTarget)}
           sx={{
             color: "#5d7186",
-            "&:hover": { color: "#1976d2", bgcolor: "rgba(25,118,210,0.07)" },
+            "&:hover": { color: "#3b522e", bgcolor: "rgba(59,82,46,0.07)" },
           }}
         >
           {GlobeIcon}
@@ -107,7 +107,7 @@ export default function TopBar({ userName = "", pageTitle = "", subtitle = "", o
               key={code}
               selected={lang === code}
               onClick={() => { setLanguage(code); setLangAnchor(null); }}
-              sx={{ fontSize: "13px", fontWeight: lang === code ? 700 : 400, color: lang === code ? "#1976d2" : "#313b5e", "&.Mui-selected": { bgcolor: "rgba(25,118,210,0.06)" } }}
+              sx={{ fontSize: "13px", fontWeight: lang === code ? 700 : 400, color: lang === code ? "#3b522e" : "#313b5e", "&.Mui-selected": { bgcolor: "rgba(59,82,46,0.06)" } }}
             >
               {label}
             </MenuItem>
@@ -133,9 +133,9 @@ export default function TopBar({ userName = "", pageTitle = "", subtitle = "", o
           <Box
             sx={{
               width: 30, height: 30, borderRadius: "50%",
-              bgcolor: "#1976d2",
+              bgcolor: "#3b522e",
               display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 2px 8px rgba(25,118,210,0.3)",
+              boxShadow: "0 2px 8px rgba(59,82,46,0.3)",
               flexShrink: 0,
             }}
           >
@@ -147,7 +147,7 @@ export default function TopBar({ userName = "", pageTitle = "", subtitle = "", o
           {/* Name – hide on very small screens */}
           <Typography
             variant="body2"
-            sx={{ fontWeight: 600, color: "#1976d2", fontSize: "13px", display: { xs: "none", sm: "block" } }}
+            sx={{ fontWeight: 600, color: "#3b522e", fontSize: "13px", display: { xs: "none", sm: "block" } }}
           >
             {userName || t("guest")}
           </Typography>
@@ -175,7 +175,7 @@ export default function TopBar({ userName = "", pageTitle = "", subtitle = "", o
         >
           <MenuItem
             onClick={() => { setAnchorEl(null); setMyAccountOpen(true); }}
-            sx={{ fontSize: "14px", color: "#313b5e", py: 1, gap: 1.5, "&:hover": { bgcolor: "rgba(25,118,210,0.06)", color: "#1976d2" } }}
+            sx={{ fontSize: "14px", color: "#313b5e", py: 1, gap: 1.5, "&:hover": { bgcolor: "rgba(59,82,46,0.06)", color: "#3b522e" } }}
           >
             <Box sx={{ fontSize: "16px" }}>👤</Box> {t("myAccount")}
           </MenuItem>
