@@ -50,6 +50,7 @@ from .schemas import (
 )
 from .auth_routes import router as auth_router, _send_email, get_current_user, oauth2_scheme
 from .ai_chat import create_ai_chat_router
+from .reservation_eligibility import assess_reservation_eligibility
 
 app = FastAPI(title="Milal Community API", version="1.0.0")
 
@@ -711,35 +712,13 @@ def can_reserve_room(
         f"membership_category={membership_category}"
     )
 
-    all_rules = db.query(ReservationRule).filter(ReservationRule.room_id == room_id).all()
-    matched_rules = [
-        rule for rule in all_rules
-        if _matches_rule_selector(rule, start_time)
-        and _matches_rule_time_scope(rule, start_time, end_time)
-        and _matches_rule_target(rule, membership_category)
-    ]
-
-    if not matched_rules:
-        return True, ""
-
-    denied_rules = [rule for rule in matched_rules if not rule.is_allowed]
-    if denied_rules:
-        blocked_rule = denied_rules[0]
-        target_label = (
-            blocked_rule.specific_date.isoformat() if blocked_rule.rule_type.value == "specific_date" else "해당 요일"
-        )
-        if blocked_rule.applies_all_day:
-            return False, f"{target_label}은(는) 종일 예약이 금지되어 있습니다."
-        return False, (
-            f"{target_label} {blocked_rule.start_time.strftime('%H:%M')}~"
-            f"{blocked_rule.end_time.strftime('%H:%M')} 시간대는 예약이 금지되어 있습니다."
-        )
-
-    allowed_rules = [rule for rule in matched_rules if rule.is_allowed]
-    if allowed_rules:
-        return True, ""
-
-    return True, ""
+    return assess_reservation_eligibility(
+        db=db,
+        room_id=room_id,
+        start_time=start_time,
+        end_time=end_time,
+        membership_category=membership_category,
+    )
 
 
 @app.post("/api/reservations", response_model=dict)
@@ -988,7 +967,11 @@ def update_reservation_by_admin(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> ReservationOut:
-    get_current_user(token, db)  # Verify JWT token
+    current_member = get_current_user(token, db)  # Verify JWT token
+    membership_category = "adult"
+    actor_user = db.scalar(select(User).where(User.member_id == current_member.id))
+    if actor_user and actor_user.membership_category:
+        membership_category = actor_user.membership_category.value
 
     item = db.scalar(
         select(Reservation)
@@ -1015,6 +998,17 @@ def update_reservation_by_admin(
             item.end_time = payload.end_time
 
         validate_reservation_times(item.start_time, item.end_time)
+
+        eligible, reason = can_reserve_room(
+            item.room_id,
+            item.start_time,
+            item.end_time,
+            membership_category,
+            db,
+        )
+        if not eligible:
+            raise HTTPException(status_code=403, detail=reason)
+
         item.status = ReservationStatus.changed
 
         # Re-arm reminders when reservation schedule is changed by admin.
