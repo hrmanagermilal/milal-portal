@@ -127,22 +127,21 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
                 x={room.x} y={room.y}
                 width={room.width} height={room.height}
                 rx={3} ry={3}
-                fill={isActive ? "rgba(25,118,210,0.22)" : "#e8edf5"}
+                fill={isActive ? "rgba(25,118,210,0.18)" : "rgba(232, 237, 245, 0.5)"}
                 stroke={isActive ? "#1976d2" : isCustomLocation ? "#ff9800" : "#a8b8cc"}
-                strokeWidth={isActive ? 2 : isCustomLocation ? 2 : 1}
-                strokeDasharray={isCustomLocation ? "4,2" : "none"}
+                strokeWidth={isActive ? 1.2 : isCustomLocation ? 1.2 : 0.7}
                 style={{ transition: "all 0.2s", pointerEvents: "auto" }}
                 onMouseEnter={(e) => {
                   if (isSelectable) {
-                    e.currentTarget.style.fill = "rgba(25,118,210,0.35)";
+                    e.currentTarget.style.fill = "rgba(25,118,210,0.25)";
                     e.currentTarget.style.stroke = "#1565c0";
-                    e.currentTarget.style.strokeWidth = "2";
+                    e.currentTarget.style.strokeWidth = "1.5";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.fill = isActive ? "rgba(25,118,210,0.22)" : "#e8edf5";
+                  e.currentTarget.style.fill = isActive ? "rgba(25,118,210,0.18)" : "rgba(232, 237, 245, 0.5)";
                   e.currentTarget.style.stroke = isActive ? "#1976d2" : isCustomLocation ? "#ff9800" : "#a8b8cc";
-                  e.currentTarget.style.strokeWidth = isActive ? "2" : isCustomLocation ? "2" : "1";
+                  e.currentTarget.style.strokeWidth = isActive ? "1.2" : isCustomLocation ? "1.2" : "0.7";
                 }}
               />
               {/* Room label – split on \n */}
@@ -208,7 +207,17 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
   );
 }
 
-export default function FloorPlanTooltip({ roomId, roomName, children, mode = "hover", onSelectRoom, floor, visibleRoomIds }) {
+export default function FloorPlanTooltip({
+  roomId,
+  roomName,
+  children,
+  mode = "hover",
+  onSelectRoom,
+  floor,
+  visibleRoomIds,
+  open,
+  onClose,
+}) {
   const boxRef = useRef(null);
   const svgContainerRef = useRef(null);
   const [show, setShow] = useState(false);
@@ -427,17 +436,31 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
     }
   };
 
+  const isControlledSelectModal = isSelectMode && typeof open === "boolean";
+  const isModalOpen = isControlledSelectModal ? open : show;
+  const handleClose = () => {
+    if (isControlledSelectModal) {
+      if (onClose) onClose();
+      return;
+    }
+    setShow(false);
+  };
+
   return (
     <>
-      {isSelectMode ? (
+      {isSelectMode && !isControlledSelectModal ? (
         <div
           ref={boxRef}
           style={{
             width: "100%",
+            height: "100%",
             padding: "12px",
             borderRadius: "10px",
             border: "1px solid #d8dfe7",
             backgroundColor: "#f8f9fa",
+            boxSizing: "border-box",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           <Typography
@@ -454,6 +477,7 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
           >
             Floor {floorNum} · Select Room
           </Typography>
+          <Box sx={{ flex: 1, minHeight: 0 }}>
           <FloorPlanSVG 
             floorData={floorData}
             floorNum={floorNum}
@@ -463,6 +487,7 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
             roomLocations={roomLocations}
             visibleRoomIds={selectableRoomIds}
           />
+          </Box>
         </div>
       ) : (
         <span
@@ -480,11 +505,11 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
         </span>
       )}
 
-      {show && !isSelectMode && ReactDOM.createPortal(
+      {isModalOpen && ReactDOM.createPortal(
         <>
           {/* Backdrop */}
           <Box
-            onClick={() => setShow(false)}
+            onClick={handleClose}
             sx={{
               position: "fixed",
               top: 0,
@@ -538,7 +563,7 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
                 Floor {floorNum} · {roomName}
               </Typography>
               <IconButton
-                onClick={() => setShow(false)}
+                onClick={handleClose}
                 size="small"
                 sx={{
                   color: "#666",
@@ -550,58 +575,60 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
             </Box>
 
             {/* Zoom Controls (PC only) */}
-            <Box
-              sx={{
-                display: "flex",
-                gap: 1,
-                p: 1.5,
-                borderBottom: "1px solid #e0e0e0",
-                alignItems: "center",
-                flexShrink: 0,
-              }}
-            >
-              <IconButton
-                onClick={handleZoomOut}
-                disabled={zoom <= 1}
-                size="small"
-                title="줄이기"
-              >
-                <RemoveIcon />
-              </IconButton>
-              
-              <Typography
+            {!isSelectMode && (
+              <Box
                 sx={{
-                  fontWeight: 600,
-                  color: "#666",
-                  minWidth: "60px",
-                  textAlign: "center",
-                  fontSize: "14px",
+                  display: "flex",
+                  gap: 1,
+                  p: 1.5,
+                  borderBottom: "1px solid #e0e0e0",
+                  alignItems: "center",
+                  flexShrink: 0,
                 }}
               >
-                {(zoom * 100).toFixed(0)}%
-              </Typography>
-              
-              <IconButton
-                onClick={handleZoomIn}
-                disabled={zoom >= 5}
-                size="small"
-                title="확대"
-              >
-                <AddIcon />
-              </IconButton>
-              
-              <Box sx={{ flex: 1 }} />
-              
-              <Typography
-                variant="caption"
-                sx={{
-                  color: "#999",
-                  fontSize: "12px",
-                }}
-              >
-                {zoom > 1 ? "드래그로 이동" : "모바일: 핀치 / PC: ±버튼"}
-              </Typography>
-            </Box>
+                <IconButton
+                  onClick={handleZoomOut}
+                  disabled={zoom <= 1}
+                  size="small"
+                  title="줄이기"
+                >
+                  <RemoveIcon />
+                </IconButton>
+                
+                <Typography
+                  sx={{
+                    fontWeight: 600,
+                    color: "#666",
+                    minWidth: "60px",
+                    textAlign: "center",
+                    fontSize: "14px",
+                  }}
+                >
+                  {(zoom * 100).toFixed(0)}%
+                </Typography>
+                
+                <IconButton
+                  onClick={handleZoomIn}
+                  disabled={zoom >= 5}
+                  size="small"
+                  title="확대"
+                >
+                  <AddIcon />
+                </IconButton>
+                
+                <Box sx={{ flex: 1 }} />
+                
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "#999",
+                    fontSize: "12px",
+                  }}
+                >
+                  {zoom > 1 ? "드래그로 이동" : "모바일: 핀치 / PC: ±버튼"}
+                </Typography>
+              </Box>
+            )}
 
             {/* Floor Plan SVG Container */}
             <Box
@@ -623,11 +650,13 @@ export default function FloorPlanTooltip({ roomId, roomName, children, mode = "h
                 floorData={floorData}
                 floorNum={floorNum}
                 activeRoomId={id}
-                isSelectable={false}
+                onSelectRoom={isSelectMode ? handleSelectRoom : undefined}
+                isSelectable={isSelectMode}
                 roomLocations={roomLocations}
                 zoom={zoom}
                 panX={panX}
                 panY={panY}
+                visibleRoomIds={isSelectMode ? selectableRoomIds : undefined}
               />
             </Box>
           </Paper>

@@ -128,6 +128,7 @@ export default function LoginModal({ open, onLogin }) {
       onLogin(res.name, res.permission, res.title, res.cell_group, {
         name: res.name,
         permission: res.permission,
+        membership_category: res.membership_category || "adult",
         title: res.title,
         cell_group: res.cell_group,
         member_id: res.member_id,

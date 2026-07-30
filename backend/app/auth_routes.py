@@ -30,6 +30,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+ALLOWED_SIGNUP_TITLES = {"순장", "시무장로", "목사"}
+
 # ── Pydantic schemas ────────────────────────────────────────────────────────
 
 class FindMemberRequest(BaseModel):
@@ -187,12 +189,18 @@ def _mask(value: str, is_email: bool) -> str:
     return "***-***-" + value[-4:] if len(value) >= 4 else "***"
 
 
+def _is_signup_allowed(member: Member) -> bool:
+    return (member.title or "").strip() in ALLOWED_SIGNUP_TITLES
+
+
 @router.post("/send-otp")
 def send_otp(body: SendOtpRequest, db: Session = Depends(get_db)):
     """Generate a 4-digit OTP and send it to the member's email or phone."""
     member = db.get(Member, body.member_id)
     if not member:
         raise HTTPException(404, "Member not found")
+    if not _is_signup_allowed(member):
+        raise HTTPException(403, "Only 순장, 시무장로, and 목사 can create an account")
 
     if body.contact_type == "email":
         contact = member.email
@@ -256,6 +264,10 @@ def create_account(body: CreateAccountRequest, db: Session = Depends(get_db)):
 
     otp = _get_valid_otp(body.member_id, body.code, db)
     member = db.get(Member, body.member_id)
+    if not member:
+        raise HTTPException(404, "Member not found")
+    if not _is_signup_allowed(member):
+        raise HTTPException(403, "Only 순장, 시무장로, and 목사 can create an account")
 
     # Check user_id not taken
     existing_user_id = db.execute(
@@ -367,6 +379,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         "name": member.name,
         "member_id": member.id,
         "permission": member.permission,
+        "membership_category": user.membership_category.value if user and user.membership_category else "adult",
         "title": member.title,
         "cell_group": member.cell_group,
         "email": member.email,

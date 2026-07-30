@@ -26,7 +26,7 @@ import ChatWidget from "./components/ChatWidget";
 import { useLanguage } from "./i18n/LanguageContext";
 import EventPublisher from "./event/EventPublisher";
 import {EventDef} from "./event/EventDef";
-import { localISOStringToUTCISO } from "./utils/datetime";
+import { dateToLocalISOString, localISOStringToUTCISO } from "./utils/datetime";
 
 // Bottom nav SVG icons
 const NavIconTimeline = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
@@ -39,8 +39,8 @@ function defaultTimes() {
   // Round up to next whole hour
   now.setMinutes(0, 0, 0);
   now.setHours(now.getHours() + 1);
-  const start = now.toISOString().slice(0, 16);
-  const end = new Date(now.getTime() + 3600000).toISOString().slice(0, 16);
+  const start = dateToLocalISOString(now);
+  const end = dateToLocalISOString(new Date(now.getTime() + 3600000));
   return { start_time: start, end_time: end };
 }
 
@@ -259,9 +259,16 @@ export default function App() {
 
   const pendingCount = reservations.filter(r => r.status === "pending").length;
 
+  if (!userName) {
+    return (
+      <Box sx={{ minHeight: "100vh", bgcolor: "#fcfdff" }}>
+        <LoginModal open onLogin={handleLogin} />
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#fcfdff" }}>
-      <LoginModal open={!userName} onLogin={handleLogin} />
       <Sidebar
         activeTab={tab}
         onTabChange={(t) => {

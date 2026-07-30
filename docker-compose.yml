@@ -30,7 +30,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "82:7000"
+      - "83:7000"
     networks:
       - milal-network
     dns:

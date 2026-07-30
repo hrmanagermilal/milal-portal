@@ -6,7 +6,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import { statusLabel } from "../../constants";
-import { addDays, formatDateTime, isPastDate, startOfWeek, toDateInputValue } from "../../utils/datetime";
+import { addDays, dateToLocalISOString, formatDateTime, isPastDate, isTooFarFuture, startOfWeek, toDateInputValue } from "../../utils/datetime";
 import DataMart from "../../common/DataMart";
 import { api } from "../../api";
 import EventPublisher from "../../event/EventPublisher";
@@ -15,6 +15,7 @@ import NewReservationModal from "./NewReservationModal";
 import FloorPlanTooltip from "./FloorPlanTooltip";
 import { useLanguage } from "../../i18n/LanguageContext";
 import ReservedItem from "./ReservedItem";
+import { evaluateRuleForSlot, groupRulesByRoom } from "../../utils/reservationRules";
 const HOUR_START = 7;
 const HOUR_END = 19; // 7AM – 7PM = 12 slots
 const TOTAL_HOURS = HOUR_END - HOUR_START;
@@ -54,11 +55,78 @@ function getEventsForRoomDay(reservations, roomId, day) {
   });
 }
 
-export default function WeekScheduleCalendar({ date, rooms, reservations, onNavigate, onSubmitReservation }) {
+function buildDaySlotStates({ roomId, day, rulesByRoom, currentUser }) {
+  const now = new Date();
+
+  return Array.from({ length: TOTAL_HOURS }, (_, i) => {
+    const hour = HOUR_START + i;
+    const slotStart = new Date(day);
+    slotStart.setHours(hour, 0, 0, 0);
+    const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
+
+    const ruleResult = evaluateRuleForSlot({
+      rulesByRoom,
+      roomId,
+      startDate: slotStart,
+      endDate: slotEnd,
+      currentUser,
+    });
+
+    const isPastSlot = slotEnd <= now;
+    const isFutureBlockedSlot = isTooFarFuture(slotStart);
+    const allowed = !isPastSlot && !isFutureBlockedSlot && ruleResult.allowed;
+
+    return {
+      hour,
+      isPastSlot,
+      isFutureBlockedSlot,
+      isRuleBlocked: !ruleResult.allowed,
+      allowed,
+      reason: isPastSlot
+        ? "지난 시간은 예약할 수 없습니다."
+        : isFutureBlockedSlot
+          ? "현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다."
+          : (ruleResult.reason || ""),
+    };
+  });
+}
+
+function summarizeSlotStates(slotStates) {
+  const firstAllowed = slotStates.find((s) => s.allowed);
+  const blockedByRuleCount = slotStates.filter((s) => s.isRuleBlocked).length;
+  const blockedByFutureCount = slotStates.filter((s) => s.isFutureBlockedSlot).length;
+  const isFullyBlockedByRule = blockedByRuleCount >= slotStates.length;
+  const isFullyBlockedByFuture = blockedByFutureCount >= slotStates.length;
+  const hasPartialBlock = blockedByRuleCount > 0 && !isFullyBlockedByRule;
+  const hasPartialFutureBlock = blockedByFutureCount > 0 && !isFullyBlockedByFuture;
+  const firstBlocked = slotStates.find((s) => s.isRuleBlocked);
+  const firstFutureBlocked = slotStates.find((s) => s.isFutureBlockedSlot);
+
+  return {
+    firstAllowedHour: firstAllowed ? firstAllowed.hour : null,
+    isFullyBlockedByRule,
+    isFullyBlockedByFuture,
+    hasPartialBlock,
+    hasPartialFutureBlock,
+    firstBlockedReason: firstBlocked ? firstBlocked.reason : "",
+    firstFutureBlockedReason: firstFutureBlocked ? firstFutureBlocked.reason : "",
+  };
+}
+
+export default function WeekScheduleCalendar({
+  date,
+  rooms,
+  reservations,
+  reservationRules = [],
+  currentUser,
+  onNavigate,
+  onSubmitReservation,
+}) {
   const { t } = useLanguage();
   const weekStart = startOfWeek(date);
   const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const today     = new Date();
+  const rulesByRoom = groupRulesByRoom(reservationRules);
 
   const [localReservations, setLocalReservations] = useState(reservations || []);
 
@@ -111,8 +179,8 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
     setForm((prev) => ({
       ...prev,
       room_id: String(roomId),
-      start_time: start.toISOString().slice(0, 16),
-      end_time:   end.toISOString().slice(0, 16),
+      start_time: dateToLocalISOString(start),
+      end_time: dateToLocalISOString(end),
     }));
     setModalOpen(true);
   }
@@ -234,30 +302,88 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
               const isToday = isSameDay(day, today);
               const isPast = isPastDate(day);
               const events  = getEventsForRoomDay(localReservations, room.id, day);
+              const slotStates = buildDaySlotStates({
+                roomId: room.id,
+                day,
+                rulesByRoom,
+                currentUser,
+              });
+              const dayAvailability = summarizeSlotStates(slotStates);
+              const isBlockedByRule = dayAvailability.isFullyBlockedByRule;
+              const isBlockedByFuture = dayAvailability.isFullyBlockedByFuture;
+              const isSelectable = !isPast && dayAvailability.firstAllowedHour !== null;
+              const cellTitle = isBlockedByFuture
+                ? (dayAvailability.firstFutureBlockedReason || "현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다.")
+                : isBlockedByRule
+                ? (dayAvailability.firstBlockedReason || "이 날짜는 규칙상 예약 가능한 시간이 없습니다.")
+                : dayAvailability.hasPartialFutureBlock
+                  ? "일부 시간대는 1개월 제한으로 예약할 수 없습니다. 허용된 시간 칸만 클릭 가능합니다."
+                : dayAvailability.hasPartialBlock
+                  ? "일부 시간대는 규칙으로 예약이 제한됩니다. 허용된 시간 칸만 클릭 가능합니다."
+                  : "";
 
               return (
                 <Box
                   key={day.toISOString()}
-                  onClick={() => !isPast && openModal(room.id, day, HOUR_START)}
+                  title={cellTitle}
+                  onClick={(e) => {
+                    if (!isSelectable) return;
+
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const offsetX = e.clientX - rect.left;
+                    const slotIndex = Math.min(
+                      TOTAL_HOURS - 1,
+                      Math.max(0, Math.floor((offsetX / rect.width) * TOTAL_HOURS))
+                    );
+
+                    const clickedSlot = slotStates[slotIndex];
+                    if (!clickedSlot || !clickedSlot.allowed) {
+                      return;
+                    }
+
+                    openModal(room.id, day, clickedSlot.hour);
+                  }}
                   sx={{
                     flex: 1, minWidth: 160, height: ROW_H,
-                    position: "relative", cursor: isPast ? "default" : "pointer",
+                    position: "relative", cursor: isSelectable ? "pointer" : "default",
                     borderRight: "1px solid #eef2f7",
                     "&:last-child": { borderRight: "none" },
-                    bgcolor: isPast ? "#f0f0f0" : isToday ? "rgba(25,118,210,0.03)" : "white",
-                    opacity: isPast ? 0.5 : 1,
-                    "&:hover": { bgcolor: isPast ? "#f0f0f0" : isToday ? "rgba(25,118,210,0.07)" : "#f8f9fa" },
+                    bgcolor: isPast
+                      ? "#f0f0f0"
+                      : isBlockedByFuture
+                        ? "#f0f0f0"
+                      : isBlockedByRule
+                        ? "#f7e9ea"
+                        : dayAvailability.hasPartialBlock || dayAvailability.hasPartialFutureBlock
+                          ? "#fff8e1"
+                        : isToday
+                          ? "rgba(25,118,210,0.03)"
+                          : "white",
+                    opacity: isSelectable ? 1 : 0.5,
+                    "&:hover": {
+                      bgcolor: isSelectable
+                        ? (dayAvailability.hasPartialBlock || dayAvailability.hasPartialFutureBlock ? "#fff3cd" : isToday ? "rgba(25,118,210,0.07)" : "#f8f9fa")
+                        : (isBlockedByRule ? "#f7e9ea" : "#f0f0f0"),
+                    },
                     transition: "background 0.15s",
                   }}
                 >
-                  {/* 12 full-height vertical slot dividers */}
+                  {/* 12 full-height slot backgrounds + vertical dividers */}
                   <Box sx={{ position: "absolute", inset: 0, display: "flex", pointerEvents: "none", zIndex: 0 }}>
-                    {Array.from({ length: TOTAL_HOURS }, (_, i) => (
+                    {slotStates.map((slot, i) => (
                       <Box
-                        key={i}
+                        key={slot.hour}
+                        title={slot.reason}
                         sx={{
                           flex: 1,
                           height: "100%",
+                          bgcolor: slot.isPastSlot
+                            ? "#f0f0f0"
+                            : slot.isFutureBlockedSlot
+                              ? "#f0f0f0"
+                            : slot.isRuleBlocked
+                              ? "#f7e9ea"
+                              : "transparent",
                           borderLeft: i > 0 ? "1px solid #eef2f7" : "none",
                         }}
                       />
@@ -299,6 +425,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
         onClose={closeModal}
         rooms={rooms}
         reservations={localReservations}
+        reservationRules={reservationRules}
         form={form}
         setForm={setForm}
         onSubmit={(formData) => { 
@@ -315,7 +442,7 @@ export default function WeekScheduleCalendar({ date, rooms, reservations, onNavi
           closeModal();
         }}
         selectedRoom={selectedRoomId}
-        currentUser={DataMart.getCurrentUser()}
+        currentUser={currentUser || DataMart.getCurrentUser()}
       />
     </Box>
   );

@@ -92,6 +92,7 @@ async function request(path, options = {}) {
 
 export const api = {
   getRooms: () => request("/api/rooms"),
+  getRoomRules: () => request("/api/rooms/rules"),
   getAvailableRooms: (startTime, endTime) =>
     request(
       `/api/rooms/available?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`

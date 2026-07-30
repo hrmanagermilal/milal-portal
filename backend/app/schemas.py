@@ -1,7 +1,7 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 class RoomOut(BaseModel):
@@ -32,11 +32,42 @@ class RoomUpdate(BaseModel):
 
 
 class ReservationRuleCreate(BaseModel):
-    rule_type: Literal["day_of_week", "specific_date", "membership_category"]
-    day_of_week: int | None = Field(default=None, ge=0, le=6)  # 0=Sunday, 6=Saturday
+    rule_type: Literal["day_of_week", "specific_date"]
+    day_of_week: int | None = Field(default=None, ge=0, le=6)  # 0=Monday, 6=Sunday
     specific_date: date | None = None
     membership_category: Literal["youth", "adult"] | None = None
+    applies_all_day: bool = True
+    start_time: time | None = None
+    end_time: time | None = None
     is_allowed: bool = True
+
+    @field_validator("end_time")
+    @classmethod
+    def validate_time_range(cls, end_value: time | None, values):
+        start_value = values.data.get("start_time") if values and hasattr(values, "data") else None
+        if end_value is not None and start_value is not None and end_value <= start_value:
+            raise ValueError("end_time must be after start_time")
+        return end_value
+
+    @model_validator(mode="after")
+    def validate_selector_and_scope(self):
+        if self.rule_type == "specific_date":
+            if self.specific_date is None:
+                raise ValueError("specific_date is required when rule_type is specific_date")
+            self.day_of_week = None
+        elif self.rule_type == "day_of_week":
+            if self.day_of_week is None:
+                raise ValueError("day_of_week is required when rule_type is day_of_week")
+            self.specific_date = None
+
+        if self.applies_all_day:
+            if self.start_time is not None or self.end_time is not None:
+                raise ValueError("start_time/end_time must be null when applies_all_day is true")
+        else:
+            if self.start_time is None or self.end_time is None:
+                raise ValueError("start_time and end_time are required when applies_all_day is false")
+
+        return self
 
 
 class ReservationRuleOut(BaseModel):
@@ -46,6 +77,9 @@ class ReservationRuleOut(BaseModel):
     day_of_week: int | None
     specific_date: date | None
     membership_category: str | None
+    applies_all_day: bool
+    start_time: time | None
+    end_time: time | None
     is_allowed: bool
     created_at: datetime
     updated_at: datetime

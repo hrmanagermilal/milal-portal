@@ -7,8 +7,10 @@ import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import {
   addDays,
-  endOfWeek,  isPastDate,
-  isPastTime,  startOfWeek,
+  endOfWeek,
+  isPastDate,
+  isTooFarFuture,
+  startOfWeek,
   toDateInputValue,
   toHourText,
 } from "../../utils/datetime";
@@ -137,6 +139,10 @@ function overlapsPeriod(item, periodStart, periodEnd) {
   const itemStart = new Date(item.start_time);
   const itemEnd = new Date(item.end_time);
   return !(itemEnd <= periodStart || itemStart >= periodEnd);
+}
+
+function isFutureBlocked(date) {
+  return isTooFarFuture(date);
 }
 
 function isToday(date) {
@@ -371,8 +377,8 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
                     key={`${room.id}-${day.toISOString()}`} 
                     className="calendar-grid-cell"
                     style={{
-                      backgroundColor: isPastDate(day) ? "#f0f0f0" : isToday(day) ? "#eef2ff" : "transparent",
-                      opacity: isPastDate(day) ? 0.5 : 1,
+                      backgroundColor: isPastDate(day) || isFutureBlocked(day) ? "#f0f0f0" : isToday(day) ? "#eef2ff" : "transparent",
+                      opacity: isPastDate(day) || isFutureBlocked(day) ? 0.5 : 1,
                     }}
                   >
                     <EventBars 
@@ -381,7 +387,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
                       windowEnd={dayEnd}
                       onCellClick={handleCellClick}
                       roomId={room.id}
-                      isPast={isPastDate(day)}
+                      isPast={isPastDate(day) || isFutureBlocked(day)}
                     />
                   </div>
                 );

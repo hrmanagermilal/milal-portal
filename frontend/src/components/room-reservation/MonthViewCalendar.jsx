@@ -14,10 +14,12 @@ import Typography from "@mui/material/Typography";
 import { statusLabel } from "../../constants";
 import {
   addDays,
+  dateToLocalISOString,
   endOfDay,
   endOfMonth,
   formatDateTime,
   isPastDate,
+  isTooFarFuture,
   startOfDay,
   startOfMonth,
   startOfWeek,
@@ -29,6 +31,7 @@ import EventPublisher from "../../event/EventPublisher";
 import { EventDef } from "../../event/EventDef";
 import NewReservationModal from "./NewReservationModal";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { findFirstAllowedSlotForDate, groupRulesByRoom } from "../../utils/reservationRules";
 
 function sortByStartTime(items) {
   return items.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
@@ -50,7 +53,15 @@ function statusClass(status) {
   return statusColorMap[status] || "status-default";
 }
 
-export default function MonthViewCalendar({ date, rooms, reservations, onNavigate, onSubmitReservation }) {
+export default function MonthViewCalendar({
+  date,
+  rooms,
+  reservations,
+  reservationRules = [],
+  currentUser,
+  onNavigate,
+  onSubmitReservation,
+}) {
   const { t } = useLanguage();
   const monthStart = startOfMonth(date);
   const monthEnd = endOfMonth(date);
@@ -77,6 +88,7 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
     repeat_type: "none",
     repeat_count: 1,
   });
+  const rulesByRoom = groupRulesByRoom(reservationRules);
 
   // Auto-refresh reservations every 5 seconds
   useEffect(() => {
@@ -111,21 +123,27 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
   }, []);
 
   const handleCellClick = (clickedDate) => {
+    const firstAllowed = findFirstAllowedSlotForDate({
+      rooms,
+      day: clickedDate,
+      rulesByRoom,
+      currentUser,
+      hourStart: 9,
+      hourEnd: 22,
+    });
+
+    if (!firstAllowed) {
+      return;
+    }
+
     setSelectedDate(clickedDate);
-    
-    // Set default room (first room if available)
-    const defaultRoomId = rooms.length > 0 ? rooms[0].id : null;
-    setSelectedRoomId(defaultRoomId);
-    
-    const startDateTime = new Date(clickedDate);
-    startDateTime.setHours(9, 0, 0, 0); // Default to 9 AM
-    const endDateTime = new Date(startDateTime.getTime() + 3600000); // 1 hour duration
+    setSelectedRoomId(firstAllowed.roomId);
     
     setForm((prev) => ({
       ...prev,
-      room_id: defaultRoomId ? String(defaultRoomId) : "",
-      start_time: startDateTime.toISOString().slice(0, 16),
-      end_time: endDateTime.toISOString().slice(0, 16),
+      room_id: String(firstAllowed.roomId),
+      start_time: dateToLocalISOString(firstAllowed.start),
+      end_time: dateToLocalISOString(firstAllowed.end),
     }));
     
     setModalOpen(true);
@@ -208,7 +226,17 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
         ))}
         {days.map((day) => {
           const inCurrentMonth = day.getMonth() === date.getMonth();
-          const isClickable = inCurrentMonth && !isPastDate(day);
+          const firstAllowed = findFirstAllowedSlotForDate({
+            rooms,
+            day,
+            rulesByRoom,
+            currentUser,
+            hourStart: 9,
+            hourEnd: 22,
+          });
+          const blockedByRules = inCurrentMonth && !firstAllowed;
+          const blockedByFuture = inCurrentMonth && !!firstAllowed && isTooFarFuture(firstAllowed.start);
+          const isClickable = inCurrentMonth && !isPastDate(day) && !blockedByFuture && !blockedByRules;
           const dayStart = startOfDay(day);
           const dayEnd = endOfDay(day);
           const dayItems = sortByStartTime(
@@ -220,7 +248,12 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
               key={day.toISOString()} 
               className={`month-cell ${isClickable ? "" : "dim"}`}
               onClick={() => isClickable && handleCellClick(day)}
-              style={{ cursor: isClickable ? "pointer" : "default" }}
+              title={blockedByRules ? "이 날짜는 규칙상 예약 가능한 시간이 없습니다." : blockedByFuture ? "현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다." : ""}
+              style={{
+                cursor: isClickable ? "pointer" : "default",
+                backgroundColor: blockedByRules || blockedByFuture ? "#f7e9ea" : undefined,
+                opacity: blockedByRules || blockedByFuture ? 0.7 : undefined,
+              }}
             >
               <div className="month-date">{day.getDate()}</div>
               <div className="month-events">
@@ -252,11 +285,12 @@ export default function MonthViewCalendar({ date, rooms, reservations, onNavigat
         onClose={handleModalClose}
         rooms={rooms}
         reservations={localReservations}
+        reservationRules={reservationRules}
         form={form}
         setForm={setForm}
         onSubmit={handleFormSubmit}
         selectedRoom={selectedRoomId}
-        currentUser={DataMart.getCurrentUser()}
+        currentUser={currentUser || DataMart.getCurrentUser()}
       />
 
       {/* Reservation Detail Popup */}
