@@ -68,7 +68,7 @@ export default function UserManagementDetail({ open, onClose, user, onUserUpdate
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 1, pr: 1, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #eef2f7" }}>
         <Stack direction="row" spacing={1.5} alignItems="center">
-          <Box sx={{ width: 4, height: 24, bgcolor: "#1976d2", borderRadius: "2px" }} />
+          <Box sx={{ width: 4, height: 24, bgcolor: "#3b522e", borderRadius: "2px" }} />
           <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e", fontSize: "15px" }}>
             {t("userDetail") || "User Details"}
           </Typography>

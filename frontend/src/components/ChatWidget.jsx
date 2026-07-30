@@ -139,11 +139,11 @@ function MessageBubble({ msg }) {
           py: 1.1,
           borderRadius: isUser ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
           background: isUser
-            ? "linear-gradient(135deg, #1976d2 0%, #1565c0 100%)"
+            ? "linear-gradient(135deg, #3b522e 0%, #2f4325 100%)"
             : "#f1f5f9",
           color: isUser ? "white" : "#1e293b",
           boxShadow: isUser
-            ? "0 2px 8px rgba(25,118,210,0.35)"
+            ? "0 2px 8px rgba(59,82,46,0.35)"
             : "0 1px 4px rgba(0,0,0,0.08)",
         }}
       >

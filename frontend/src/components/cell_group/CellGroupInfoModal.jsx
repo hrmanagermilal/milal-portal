@@ -128,7 +128,7 @@ export default function CellGroupInfoModal() {
                       <TableCell
                         sx={{
                           cursor: "pointer",
-                          color: "#1976d2",
+                          color: "#3b522e",
                           "&:hover": { textDecoration: "underline" },
                         }}
                         onClick={() => handleEditMember(member)}

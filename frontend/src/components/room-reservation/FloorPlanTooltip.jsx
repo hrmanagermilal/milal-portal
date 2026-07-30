@@ -127,20 +127,20 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
                 x={room.x} y={room.y}
                 width={room.width} height={room.height}
                 rx={3} ry={3}
-                fill={isActive ? "rgba(25,118,210,0.18)" : "rgba(232, 237, 245, 0.5)"}
-                stroke={isActive ? "#1976d2" : isCustomLocation ? "#ff9800" : "#a8b8cc"}
+                fill={isActive ? "rgba(59,82,46,0.18)" : "rgba(232, 237, 245, 0.5)"}
+                stroke={isActive ? "#3b522e" : isCustomLocation ? "#ff9800" : "#a8b8cc"}
                 strokeWidth={isActive ? 1.2 : isCustomLocation ? 1.2 : 0.7}
                 style={{ transition: "all 0.2s", pointerEvents: "auto" }}
                 onMouseEnter={(e) => {
                   if (isSelectable) {
-                    e.currentTarget.style.fill = "rgba(25,118,210,0.25)";
-                    e.currentTarget.style.stroke = "#1565c0";
+                    e.currentTarget.style.fill = "rgba(59,82,46,0.25)";
+                    e.currentTarget.style.stroke = "#2f4325";
                     e.currentTarget.style.strokeWidth = "1.5";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.fill = isActive ? "rgba(25,118,210,0.18)" : "rgba(232, 237, 245, 0.5)";
-                  e.currentTarget.style.stroke = isActive ? "#1976d2" : isCustomLocation ? "#ff9800" : "#a8b8cc";
+                  e.currentTarget.style.fill = isActive ? "rgba(59,82,46,0.18)" : "rgba(232, 237, 245, 0.5)";
+                  e.currentTarget.style.stroke = isActive ? "#3b522e" : isCustomLocation ? "#ff9800" : "#a8b8cc";
                   e.currentTarget.style.strokeWidth = isActive ? "1.2" : isCustomLocation ? "1.2" : "0.7";
                 }}
               />
@@ -173,7 +173,7 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
                   cx={room.x + room.width - 8}
                   cy={room.y + 8}
                   r={4}
-                  fill="#1976d2"
+                  fill="#3b522e"
                 />
               )}
               {/* Custom location indicator */}
@@ -494,7 +494,7 @@ export default function FloorPlanTooltip({
           style={{
             display: "inline-block",
             cursor: "pointer",
-            borderBottom: "1px dotted #1976d2",
+            borderBottom: "1px dotted #3b522e",
             position: "relative",
             minWidth: "auto",
             padding: "2px 4px",

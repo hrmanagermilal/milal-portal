@@ -6,13 +6,13 @@
 
 :root {
   /* Velok Primary Colors */
-  --primary: #22b956;
-  --primary-light: #4dc974;
-  --primary-dark: #1a8a43;
+  --primary: #3b522e;
+  --primary-light: #4c6a3a;
+  --primary-dark: #2f4325;
   --primary-bg: #f0f7f3;
   
   /* Velok Color Palette */
-  --blue: #1989df;
+  --blue: #3b522e;
   --indigo: #53389f;
   --purple: #7f56da;
   --pink: #ff86c8;
@@ -23,11 +23,11 @@
   --cyan: #32bbe5;
   
   /* Status */
-  --status-reserved: #1989df;
+  --status-reserved: #3b522e;
   --status-reserved-bg: #e8f4ff;
   --status-pending: #f6c54d;
   --status-pending-bg: #fffbf0;
-  --status-restricted: #22b956;
+  --status-restricted: #3b522e;
   --status-restricted-bg: #f0f7f3;
   --status-error: #f95c5c;
   --status-error-bg: #ffe8e8;
@@ -124,13 +124,13 @@ body {
 }
 
 .time-block-pending  { background: rgba(255, 168, 40, 0.1); border-color: var(--status-pending); }
-.time-block-approved { background: rgba(150, 204, 41, 0.1); border-color: var(--status-restricted); }
+.time-block-approved { background: rgba(59, 82, 46, 0.1); border-color: var(--status-restricted); }
 .time-block-changed  { background: rgba(27, 89, 248, 0.1); border-color: var(--primary); }
 .time-block-rejected { background: rgba(255, 44, 26, 0.1); border-color: var(--status-error); }
 
 .empty-pill {
   display: inline-block;
-  background: rgba(150, 204, 41, 0.1);
+  background: rgba(59, 82, 46, 0.1);
   color: var(--status-restricted);
   padding: 4px 10px;
   border-radius: 999px;

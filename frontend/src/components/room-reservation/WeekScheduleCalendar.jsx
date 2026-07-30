@@ -210,9 +210,9 @@ export default function WeekScheduleCalendar({
                 key={label}
                 onClick={() => onNavigate(dir)}
                 sx={{
-                  color: "#1976d2", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px",
+                  color: "#3b522e", borderColor: "#d8dfe7", fontWeight: 600, fontSize: "13px",
                   transition: "all 0.2s ease",
-                  "&:hover": { bgcolor: "rgba(25,118,210,0.08)", borderColor: "#1976d2" },
+                  "&:hover": { bgcolor: "rgba(59,82,46,0.08)", borderColor: "#3b522e" },
                 }}
               >
                 {label}
@@ -248,14 +248,14 @@ export default function WeekScheduleCalendar({
             return (
               <Box
                 key={day.toISOString()}
-                sx={{ flex: 1, minWidth: 160, borderRight: "1px solid #d8dfe7", "&:last-child": { borderRight: "none" }, bgcolor: isToday ? "rgba(25,118,210,0.07)" : "transparent" }}
+                sx={{ flex: 1, minWidth: 160, borderRight: "1px solid #d8dfe7", "&:last-child": { borderRight: "none" }, bgcolor: isToday ? "rgba(59,82,46,0.07)" : "transparent" }}
               >
                 {/* Day label */}
                 <Box sx={{ textAlign: "center", py: 1, borderBottom: "1px solid #d8dfe7" }}>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: isToday ? "#1976d2" : "#313b5e", display: "block", fontSize: "12px" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: isToday ? "#3b522e" : "#313b5e", display: "block", fontSize: "12px" }}>
                     {day.toLocaleDateString([], { weekday: "short" })}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: isToday ? "#1976d2" : "#5d7186", fontWeight: isToday ? 700 : 400, fontSize: "11px" }}>
+                  <Typography variant="caption" sx={{ color: isToday ? "#3b522e" : "#5d7186", fontWeight: isToday ? 700 : 400, fontSize: "11px" }}>
                     {day.toLocaleDateString([], { month: "numeric", day: "numeric" })}
                   </Typography>
                 </Box>
@@ -291,7 +291,7 @@ export default function WeekScheduleCalendar({
               }}
             >
               <FloorPlanTooltip roomId={room.id} roomName={room.name}>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: "#1976d2", lineHeight: 1.3, fontSize: "13px" }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: "#3b522e", lineHeight: 1.3, fontSize: "13px" }}>
                   {room.name}
                 </Typography>
               </FloorPlanTooltip>
@@ -357,12 +357,12 @@ export default function WeekScheduleCalendar({
                         : dayAvailability.hasPartialBlock || dayAvailability.hasPartialFutureBlock
                           ? "#fff8e1"
                         : isToday
-                          ? "rgba(25,118,210,0.03)"
+                          ? "rgba(59,82,46,0.03)"
                           : "white",
                     opacity: isSelectable ? 1 : 0.5,
                     "&:hover": {
                       bgcolor: isSelectable
-                        ? (dayAvailability.hasPartialBlock || dayAvailability.hasPartialFutureBlock ? "#fff3cd" : isToday ? "rgba(25,118,210,0.07)" : "#f8f9fa")
+                        ? (dayAvailability.hasPartialBlock || dayAvailability.hasPartialFutureBlock ? "#fff3cd" : isToday ? "rgba(59,82,46,0.07)" : "#f8f9fa")
                         : (isBlockedByRule ? "#f7e9ea" : "#f0f0f0"),
                     },
                     transition: "background 0.15s",

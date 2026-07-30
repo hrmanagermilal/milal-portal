@@ -320,7 +320,7 @@ export default function NewReservationModal({
         <Typography variant="caption" sx={{ color: "#5d7186", display: "block", mb: 0.75, fontSize: "12px", fontWeight: 500 }}>
           {t("fieldEndTime")} *
           {startDate && (
-            <Chip label={startDate} size="small" sx={{ ml: 1, height: 18, fontSize: "11px", bgcolor: "rgba(25,118,210,0.1)", color: "#1976d2", fontWeight: 600 }} />
+            <Chip label={startDate} size="small" sx={{ ml: 1, height: 18, fontSize: "11px", bgcolor: "rgba(59,82,46,0.1)", color: "#3b522e", fontWeight: 600 }} />
           )}
         </Typography>
         <TextField
@@ -387,10 +387,10 @@ export default function NewReservationModal({
             minWidth: 120,
             fontSize: "12px",
             fontWeight: 600,
-            color: selectedFloor === "all" || floorRooms.length === 0 ? "#a0aab4" : "#1976d2",
-            borderColor: selectedFloor === "all" || floorRooms.length === 0 ? "#d8dfe7" : "#1976d2",
+            color: selectedFloor === "all" || floorRooms.length === 0 ? "#a0aab4" : "#3b522e",
+            borderColor: selectedFloor === "all" || floorRooms.length === 0 ? "#d8dfe7" : "#3b522e",
             "&:hover": {
-              bgcolor: selectedFloor === "all" || floorRooms.length === 0 ? "transparent" : "rgba(25,118,210,0.08)"
+              bgcolor: selectedFloor === "all" || floorRooms.length === 0 ? "transparent" : "rgba(59,82,46,0.08)"
             }
           }}
         >

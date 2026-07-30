@@ -140,7 +140,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                 textTransform: "none",
                 fontSize: "14px",
                 fontWeight: 700,
-                color: (activeTab === "cell-group" || activeTab === "cell-report") ? "#1976d2" : "#313b5e",
+                color: (activeTab === "cell-group" || activeTab === "cell-report") ? "#3b522e" : "#313b5e",
                 borderRadius: "8px",
                 px: 1.5,
                 py: 1.1,
@@ -176,11 +176,11 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                           startIcon={item.icon}
                           sx={{
                             justifyContent: "flex-start",
-                            color: activeTab === item.key ? "#1976d2" : "#5d7186",
+                            color: activeTab === item.key ? "#3b522e" : "#5d7186",
                             textTransform: "none",
                             fontSize: "13px",
                             fontWeight: activeTab === item.key ? 700 : 500,
-                            bgcolor: activeTab === item.key ? "rgba(25, 118, 210, 0.08)" : "transparent",
+                            bgcolor: activeTab === item.key ? "rgba(59, 82, 46, 0.08)" : "transparent",
                             borderRadius: "8px",
                             pl: 2,
                             pr: 1.5,
@@ -188,8 +188,8 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                             transition: "all 0.2s ease",
                             position: "relative",
                             "&:hover": {
-                              bgcolor: "rgba(25, 118, 210, 0.08)",
-                              color: "#1976d2",
+                              bgcolor: "rgba(59, 82, 46, 0.08)",
+                              color: "#3b522e",
                             },
                             "&::before": activeTab === item.key ? {
                               content: '""',
@@ -198,7 +198,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                               top: "25%",
                               bottom: "25%",
                               width: "3px",
-                              bgcolor: "#1976d2",
+                              bgcolor: "#3b522e",
                               borderRadius: "0 3px 3px 0",
                             } : {},
                           }}
@@ -221,11 +221,11 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
               startIcon={<AdminPanelSettingsIcon />}
               sx={{
                 justifyContent: "flex-start",
-                color: activeTab === "users" ? "#1976d2" : "#313b5e",
+                color: activeTab === "users" ? "#3b522e" : "#313b5e",
                 textTransform: "none",
                 fontSize: "14px",
                 fontWeight: 700,
-                bgcolor: activeTab === "users" ? "rgba(25, 118, 210, 0.08)" : "transparent",
+                bgcolor: activeTab === "users" ? "rgba(59, 82, 46, 0.08)" : "transparent",
                 borderRadius: "8px",
                 px: 1.5,
                 py: 1.1,
@@ -233,8 +233,8 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                 mb: 1,
                 position: "relative",
                 "&:hover": {
-                  bgcolor: "rgba(25, 118, 210, 0.08)",
-                  color: "#1976d2",
+                  bgcolor: "rgba(59, 82, 46, 0.08)",
+                  color: "#3b522e",
                 },
                 "&::before": activeTab === "users" ? {
                   content: '""',
@@ -243,7 +243,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                   top: "15%",
                   bottom: "15%",
                   width: "3px",
-                  bgcolor: "#1976d2",
+                  bgcolor: "#3b522e",
                   borderRadius: "0 3px 3px 0",
                 } : {},
               }}
@@ -296,11 +296,11 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                       startIcon={item.icon}
                       sx={{
                         justifyContent: "flex-start",
-                        color: activeTab === item.key ? "#1976d2" : "#5d7186",
+                        color: activeTab === item.key ? "#3b522e" : "#5d7186",
                         textTransform: "none",
                         fontSize: "13px",
                         fontWeight: activeTab === item.key ? 700 : 500,
-                        bgcolor: activeTab === item.key ? "rgba(25, 118, 210, 0.08)" : "transparent",
+                        bgcolor: activeTab === item.key ? "rgba(59, 82, 46, 0.08)" : "transparent",
                         borderRadius: "8px",
                         pl: 2,
                         pr: 1.5,
@@ -308,8 +308,8 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                         transition: "all 0.2s ease",
                         position: "relative",
                         "&:hover": {
-                          bgcolor: "rgba(25, 118, 210, 0.08)",
-                          color: "#1976d2",
+                          bgcolor: "rgba(59, 82, 46, 0.08)",
+                          color: "#3b522e",
                         },
                         "&::before": activeTab === item.key ? {
                           content: '""',
@@ -318,7 +318,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                           top: "25%",
                           bottom: "25%",
                           width: "3px",
-                          bgcolor: "#1976d2",
+                          bgcolor: "#3b522e",
                           borderRadius: "0 3px 3px 0",
                         } : {},
                       }}
@@ -353,7 +353,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
             fontSize: "13px",
             fontWeight: 500,
             py: 0.75,
-            "&:hover": { borderColor: "#1976d2", bgcolor: "rgba(25,118,210,0.06)", color: "#1976d2" },
+            "&:hover": { borderColor: "#3b522e", bgcolor: "rgba(59,82,46,0.06)", color: "#3b522e" },
           }}
         >
           {t("navRefresh")}

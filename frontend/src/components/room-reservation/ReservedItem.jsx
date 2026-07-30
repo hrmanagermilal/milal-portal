@@ -14,8 +14,8 @@ import FloorPlanTooltip from "./FloorPlanTooltip";
 
 const STATUS_COLORS = {
   pending:  { bg: "rgba(246,197,77,0.18)",  border: "#f6c54d", text: "#b07d00" },
-  approved: { bg: "rgba(34,185,86,0.12)",   border: "#22b956", text: "#155e2a" },
-  changed:  { bg: "rgba(25,118,210,0.12)",  border: "#1976d2", text: "#0d47a1" },
+  approved: { bg: "rgba(59,82,46,0.12)",   border: "#3b522e", text: "#155e2a" },
+  changed:  { bg: "rgba(59,82,46,0.12)",  border: "#3b522e", text: "#0d47a1" },
   rejected: { bg: "rgba(249,92,92,0.12)",   border: "#f95c5c", text: "#b71c1c" },
 };
 
@@ -129,7 +129,7 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
           }}
         >
           <Stack direction="row" spacing={1.5} alignItems="center">
-            <Box sx={{ width: 4, height: 24, bgcolor: "#1976d2", borderRadius: "2px" }} />
+            <Box sx={{ width: 4, height: 24, bgcolor: "#3b522e", borderRadius: "2px" }} />
             <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e" }}>
               Reservation Detail
             </Typography>
@@ -171,7 +171,7 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
                   <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
                     <Typography
                       fontWeight={700}
-                      sx={{ color: "#1976d2", fontSize: "16px" }}
+                      sx={{ color: "#3b522e", fontSize: "16px" }}
                     >
                       {item.room_name}
                     </Typography>

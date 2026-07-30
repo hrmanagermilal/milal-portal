@@ -4,13 +4,13 @@ import { createTheme } from "@mui/material/styles";
 export const designTokens = {
   colors: {
     // Velok Primary Colors
-    primary: "#22b956",           // Velok Green
-    primaryLight: "#4dc974",
-    primaryDark: "#1a8a43",
+    primary: "#3b522e",           // Velok Green
+    primaryLight: "#4c6a3a",
+    primaryDark: "#2f4325",
     primaryBg: "#f0f7f3",
     
     // Velok Color Palette
-    blue: "#1989df",
+    blue: "#3b522e",
     indigo: "#53389f",
     purple: "#7f56da",
     pink: "#ff86c8",
@@ -21,14 +21,14 @@ export const designTokens = {
     cyan: "#32bbe5",
     
     // Status Colors (mapped to Velok palette)
-    reserved: "#1989df",      // Blue
+    reserved: "#3b522e",      // Blue
     reservedBg: "#e8f4ff",
     pending: "#f6c54d",       // Yellow
     pendingBg: "#fffbf0",
-    restricted: "#22b956",    // Green
+    restricted: "#3b522e",    // Green
     restrictedBg: "#f0f7f3",
-    approved: "#22b956",
-    changed: "#1989df",
+    approved: "#3b522e",
+    changed: "#3b522e",
     rejected: "#f95c5c",
     error: "#f95c5c",
     errorBg: "#ffe8e8",
@@ -89,9 +89,9 @@ export const designTokens = {
     card: "0 2px 8px rgba(0, 0, 0, 0.06)",
     cardHover: "0 4px 12px rgba(0, 0, 0, 0.1)",
     // Velok elevated shadows
-    elevation1: "0 2px 8px rgba(34, 185, 86, 0.08)",
-    elevation2: "0 4px 16px rgba(34, 185, 86, 0.12)",
-    elevation3: "0 8px 24px rgba(34, 185, 86, 0.15)",
+    elevation1: "0 2px 8px rgba(59, 82, 46, 0.08)",
+    elevation2: "0 4px 16px rgba(59, 82, 46, 0.12)",
+    elevation3: "0 8px 24px rgba(59, 82, 46, 0.15)",
   },
   
   transitions: {
@@ -104,7 +104,7 @@ const theme = createTheme({
   palette: {
     mode: "light",
     primary: {
-      main: designTokens.colors.primary,      // #22b956 Velok Green
+      main: designTokens.colors.primary,      // #3b522e Velok Green
       light: designTokens.colors.primaryLight,
       dark: designTokens.colors.primaryDark,
       contrastText: "#ffffff",
@@ -122,7 +122,7 @@ const theme = createTheme({
       secondary: designTokens.colors.textSecondary,
     },
     success: {
-      main: designTokens.colors.restricted,    // #22b956 Green
+      main: designTokens.colors.restricted,    // #3b522e Green
       light: designTokens.colors.restrictedBg,
     },
     error: {
@@ -134,7 +134,7 @@ const theme = createTheme({
       light: designTokens.colors.pendingBg,
     },
     info: {
-      main: designTokens.colors.blue,          // #1989df Blue
+      main: designTokens.colors.blue,          // #3b522e Blue
       light: designTokens.colors.reservedBg,
     },
     divider: designTokens.colors.border,
@@ -236,9 +236,9 @@ const theme = createTheme({
           },
         },
         contained: {
-          boxShadow: `0 2px 8px rgba(34, 185, 86, 0.2)`,
+          boxShadow: `0 2px 8px rgba(59, 82, 46, 0.2)`,
           "&:hover": {
-            boxShadow: `0 4px 12px rgba(34, 185, 86, 0.3)`,
+            boxShadow: `0 4px 12px rgba(59, 82, 46, 0.3)`,
           },
         },
         outlined: {
@@ -268,7 +268,7 @@ const theme = createTheme({
           color: designTokens.colors.primary,
         },
         colorSuccess: {
-          backgroundColor: "rgba(150, 204, 41, 0.1)",
+          backgroundColor: "rgba(59, 82, 46, 0.1)",
           color: designTokens.colors.restricted,
         },
         colorError: {
@@ -332,7 +332,7 @@ const theme = createTheme({
           borderLeftColor: designTokens.colors.primary,
         },
         standardSuccess: {
-          backgroundColor: "rgba(150, 204, 41, 0.1)",
+          backgroundColor: "rgba(59, 82, 46, 0.1)",
           color: designTokens.colors.restricted,
           borderLeftColor: designTokens.colors.restricted,
         },

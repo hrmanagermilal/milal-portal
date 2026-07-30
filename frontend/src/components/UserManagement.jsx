@@ -97,20 +97,20 @@ export default function UserManagement() {
               <Button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                sx={{ fontSize: "12px", fontWeight: 600, color: "#1976d2", borderColor: "#d8dfe7" }}
+                sx={{ fontSize: "12px", fontWeight: 600, color: "#3b522e", borderColor: "#d8dfe7" }}
               >
                 {t("prev") || "Prev"}
               </Button>
               <Button
                 disabled
-                sx={{ fontSize: "12px", color: "#1976d2", borderColor: "#d8dfe7", cursor: "default" }}
+                sx={{ fontSize: "12px", color: "#3b522e", borderColor: "#d8dfe7", cursor: "default" }}
               >
                 {currentPage} / {totalPages || 1}
               </Button>
               <Button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages || totalPages === 0}
-                sx={{ fontSize: "12px", fontWeight: 600, color: "#1976d2", borderColor: "#d8dfe7" }}
+                sx={{ fontSize: "12px", fontWeight: 600, color: "#3b522e", borderColor: "#d8dfe7" }}
               >
                 {t("next") || "Next"}
               </Button>
@@ -184,7 +184,7 @@ export default function UserManagement() {
                       <IconButton
                         size="small"
                         onClick={() => handleUserClick(user)}
-                        sx={{ color: "#1976d2", "&:hover": { bgcolor: "rgba(25, 118, 210, 0.1)" } }}
+                        sx={{ color: "#3b522e", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.1)" } }}
                         title="Edit user"
                       >
                         ✎

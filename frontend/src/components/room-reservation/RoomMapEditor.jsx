@@ -185,7 +185,7 @@ export default function RoomMapEditor({ open, room, onClose, onSave }) {
         <Box
           ref={svgRef}
           sx={{
-            border: "2px solid #1976d2",
+            border: "2px solid #3b522e",
             borderRadius: "4px",
             mb: 2,
             cursor: isDrawing ? "crosshair" : "pointer",
@@ -243,16 +243,16 @@ export default function RoomMapEditor({ open, room, onClose, onSave }) {
                   y={rectY1}
                   width={rectWidth}
                   height={rectHeight}
-                  fill="#1976d2"
+                  fill="#3b522e"
                   fillOpacity="0.2"
-                  stroke="#1976d2"
+                  stroke="#3b522e"
                   strokeWidth="2"
                 />
                 {/* Corner indicators */}
-                <circle cx={rectX1} cy={rectY1} r="3" fill="#1976d2" />
-                <circle cx={rectX2} cy={rectY1} r="3" fill="#1976d2" />
-                <circle cx={rectX1} cy={rectY2} r="3" fill="#1976d2" />
-                <circle cx={rectX2} cy={rectY2} r="3" fill="#1976d2" />
+                <circle cx={rectX1} cy={rectY1} r="3" fill="#3b522e" />
+                <circle cx={rectX2} cy={rectY1} r="3" fill="#3b522e" />
+                <circle cx={rectX1} cy={rectY2} r="3" fill="#3b522e" />
+                <circle cx={rectX2} cy={rectY2} r="3" fill="#3b522e" />
               </>
             )}
 
@@ -264,7 +264,7 @@ export default function RoomMapEditor({ open, room, onClose, onSave }) {
                   y={rectY1 - 5}
                   textAnchor="middle"
                   fontSize="10"
-                  fill="#1976d2"
+                  fill="#3b522e"
                   fontWeight="bold"
                 >
                   {rectWidth.toFixed(1)}
@@ -273,7 +273,7 @@ export default function RoomMapEditor({ open, room, onClose, onSave }) {
                   x={rectX2 + 5}
                   y={(rectY1 + rectY2) / 2}
                   fontSize="10"
-                  fill="#1976d2"
+                  fill="#3b522e"
                   fontWeight="bold"
                 >
                   {rectHeight.toFixed(1)}

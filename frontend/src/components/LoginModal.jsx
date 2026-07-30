@@ -142,11 +142,11 @@ export default function LoginModal({ open, onLogin }) {
   }
 
   const Header = ({ subtitle }) => (
-    <Box sx={{ bgcolor: "#1976d2", px: 4, py: 3.5, textAlign: "center" }}>
+    <Box sx={{ bgcolor: "#3b522e", px: 4, py: 3.5, textAlign: "center" }}>
       <Box sx={{ width: 56, height: 56, bgcolor: "white", borderRadius: "50%",
         display: "flex", alignItems: "center", justifyContent: "center",
         mx: "auto", mb: 1.5, boxShadow: "0 4px 16px rgba(0,0,0,0.15)" }}>
-        <Typography sx={{ fontSize: "24px", fontWeight: 800, color: "#1976d2" }}>M</Typography>
+        <Typography sx={{ fontSize: "24px", fontWeight: 800, color: "#3b522e" }}>M</Typography>
       </Box>
       <Typography variant="h6" sx={{ color: "white", fontWeight: 800 }}>{t("loginTitle")}</Typography>
       <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.78)", mt: 0.4, fontSize: "13px" }}>
@@ -180,12 +180,12 @@ export default function LoginModal({ open, onLogin }) {
 
               <Button variant="outlined" fullWidth onClick={() => { setError(""); setStep(STEPS.FIND_MEMBER); }}
                   sx={{ textTransform: "none", fontWeight: 400, borderColor: "#d8dfe7", color: "#999999",
-                    "&:hover": { borderColor: "#1976d2", color: "#1976d2", bgcolor: "rgba(25,118,210,0.04)" } }}>
+                    "&:hover": { borderColor: "#3b522e", color: "#3b522e", bgcolor: "rgba(59,82,46,0.04)" } }}>
                   {t("authCreateAccount")}
                 </Button>
                   <Button type="submit" variant="contained" fullWidth disabled={loading}
-                    sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
-                      "&:hover": { bgcolor: "#1565c0" } }}>
+                    sx={{ bgcolor: "#3b522e", py: 1.2, fontWeight: 700, textTransform: "none",
+                      "&:hover": { bgcolor: "#2f4325" } }}>
                     {loading ? <CircularProgress size={18} color="inherit" /> : t("authLogin")}
                   </Button>
                 </Stack>
@@ -224,7 +224,7 @@ export default function LoginModal({ open, onLogin }) {
                   )}
                   {foundMember && !error && !foundMember.has_account && (
                     <Box sx={{ bgcolor: "#f0f7ff", border: "1px solid #bbdefb", borderRadius: "8px", p: 1.5 }}>
-                      <Typography variant="body2" fontWeight={700} sx={{ color: "#1976d2" }}>
+                      <Typography variant="body2" fontWeight={700} sx={{ color: "#3b522e" }}>
                         ✓ {foundMember.name}
                       </Typography>
                       <Typography variant="caption" sx={{ color: "#5d7186" }}>
@@ -232,15 +232,15 @@ export default function LoginModal({ open, onLogin }) {
                       </Typography>
                       <Button variant="contained" fullWidth size="small" disabled={loading}
                         onClick={handleSendOtp}
-                        sx={{ mt: 1.5, bgcolor: "#1976d2", fontWeight: 700, textTransform: "none" }}>
+                        sx={{ mt: 1.5, bgcolor: "#3b522e", fontWeight: 700, textTransform: "none" }}>
                         {loading ? <CircularProgress size={16} color="inherit" /> : t("authSendCode")}
                       </Button>
                     </Box>
                   )}
                   {!foundMember && (
                     <Button type="submit" variant="contained" fullWidth disabled={loading}
-                      sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
-                        "&:hover": { bgcolor: "#1565c0" } }}>
+                      sx={{ bgcolor: "#3b522e", py: 1.2, fontWeight: 700, textTransform: "none",
+                        "&:hover": { bgcolor: "#2f4325" } }}>
                       {loading ? <CircularProgress size={18} color="inherit" /> : t("authFindMember")}
                     </Button>
                   )}
@@ -269,8 +269,8 @@ export default function LoginModal({ open, onLogin }) {
                     autoFocus />
                   {error && <Alert severity="error" sx={{ py: 0.5 }}>{error}</Alert>}
                   <Button type="submit" variant="contained" fullWidth disabled={loading || otpCode.length !== 4}
-                    sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
-                      "&:hover": { bgcolor: "#1565c0" } }}>
+                    sx={{ bgcolor: "#3b522e", py: 1.2, fontWeight: 700, textTransform: "none",
+                      "&:hover": { bgcolor: "#2f4325" } }}>
                     {loading ? <CircularProgress size={18} color="inherit" /> : t("authVerify")}
                   </Button>
                   <Button size="small" onClick={handleSendOtp} disabled={loading}
@@ -299,8 +299,8 @@ export default function LoginModal({ open, onLogin }) {
                     helperText="Minimum 3 characters, letters and dots allowed" />
                   {userIdError && <Alert severity="error" sx={{ py: 0.5 }}>{userIdError}</Alert>}
                   <Button type="submit" variant="contained" fullWidth disabled={loading || userId.length < 3}
-                    sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
-                      "&:hover": { bgcolor: "#1565c0" } }}>
+                    sx={{ bgcolor: "#3b522e", py: 1.2, fontWeight: 700, textTransform: "none",
+                      "&:hover": { bgcolor: "#2f4325" } }}>
                     {loading ? <CircularProgress size={18} color="inherit" /> : "Next"}
                   </Button>
                 </Stack>
@@ -322,8 +322,8 @@ export default function LoginModal({ open, onLogin }) {
                     value={confirm} onChange={(e) => setConfirm(e.target.value)} />
                   {error && <Alert severity="error" sx={{ py: 0.5 }}>{error}</Alert>}
                   <Button type="submit" variant="contained" fullWidth disabled={loading}
-                    sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
-                      "&:hover": { bgcolor: "#1565c0" } }}>
+                    sx={{ bgcolor: "#3b522e", py: 1.2, fontWeight: 700, textTransform: "none",
+                      "&:hover": { bgcolor: "#2f4325" } }}>
                     {loading ? <CircularProgress size={18} color="inherit" /> : t("authCreateAccountBtn")}
                   </Button>
                 </Stack>
@@ -340,8 +340,8 @@ export default function LoginModal({ open, onLogin }) {
               <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e" }}>{t("authSuccessTitle")}</Typography>
               <Typography variant="body2" sx={{ color: "#5d7186", mt: 1, mb: 3 }}>{t("authSuccessDesc")}</Typography>
               <Button variant="contained" fullWidth onClick={reset}
-                sx={{ bgcolor: "#1976d2", py: 1.2, fontWeight: 700, textTransform: "none",
-                  "&:hover": { bgcolor: "#1565c0" } }}>
+                sx={{ bgcolor: "#3b522e", py: 1.2, fontWeight: 700, textTransform: "none",
+                  "&:hover": { bgcolor: "#2f4325" } }}>
                 {t("authGoToLogin")}
               </Button>
             </Box>
