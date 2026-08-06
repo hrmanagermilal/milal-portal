@@ -139,7 +139,7 @@ def create_ai_chat_router(
             "type": "function",
             "function": {
                 "name": "update_cell_group_member",
-                "description": "Update contact info (email, phone, address) of a cell group member. Only available for 순장. Confirm with user before updating.",
+                "description": "Update contact info (email, phone, address) of a cell group member. Only available for 순장/순모. Confirm with user before updating.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -156,7 +156,7 @@ def create_ai_chat_router(
             "type": "function",
             "function": {
                 "name": "create_cell_report",
-                "description": "Create a new cell group report for the current user's cell group. Only available for 순장. Confirm with the user before saving.",
+                "description": "Create a new cell group report for the current user's cell group. Only available for 순장/순모. Confirm with the user before saving.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -330,8 +330,8 @@ You can help users:
 1. Browse rooms and check availability
 2. View existing reservations
 3. Create new reservations
-4. If the user is 순장 (cell group leader): view and update cell group member information
-5. If the user is 순장 (cell group leader): create a cell report for a meeting
+4. If the user is 순장 or 순모: view and update cell group member information
+5. If the user is 순장 or 순모: create a cell report for a meeting
 6. If the user asks for insights: analyze yearly cell report data (attendance and prayer-sharing patterns)
 7. If the user asks for a specific date: analyze that day's cell report in detail
 8. If the user asks about one person: analyze changes in that member's prayer topics over recent months
@@ -346,9 +346,9 @@ Important rules:
 - Reservations more than 1 month from now are not allowed.
 - For create_reservation, use the logged-in user's name/phone/email from the context. If the user is not logged in (no user info), inform them they must log in first.
 - After creating a reservation, the status is 'pending' and requires admin approval.
-- For cell group tools (get_cell_group_members, update_cell_group_member): only available when user title is '순장'.
-- For create_cell_report: only available when user title is '순장'. Gather meeting date/time/place, attendance, member prayer topics, and overall prayer topics before saving.
-- For get_cell_report_analysis: only available when user title is '순장' (or admin). Use it when user asks questions like "who had the lowest attendance this year".
+- For cell group tools (get_cell_group_members, update_cell_group_member): only available when user title is '순장' or '순모'.
+- For create_cell_report: only available when user title is '순장' or '순모'. Gather meeting date/time/place, attendance, member prayer topics, and overall prayer topics before saving.
+- For get_cell_report_analysis: only available when user title is '순장', '순모', or admin. Use it when user asks questions like "who had the lowest attendance this year".
 - For get_cell_report_date_analysis: use when user asks about one meeting date, such as "2026-06-10 순모임 보고 분석해줘".
 - For get_member_prayer_trend: use when user asks questions like "OOO의 기도제목이 지난 5개월간 어떻게 변했나요?".
 - For get_cell_group_members, when the user asks about a car number/plate, pass it in query and include car_plate in your answer.
@@ -653,8 +653,8 @@ Important rules:
             }
 
         def _exec_get_cell_group_members(query: str | None = None) -> list[dict] | dict:
-            if payload.user_title != "순장":
-                return {"error": "순장 권한이 있는 사용자만 순 정보에 접근할 수 있습니다."}
+            if payload.user_title not in ("순장", "순모"):
+                return {"error": "순장 또는 순모 권한이 있는 사용자만 순 정보에 접근할 수 있습니다."}
             if not payload.user_cell_group:
                 return {"error": "순 정보가 없습니다. 로그인 상태를 확인해주세요."}
             members = db.scalars(select(Member).where(Member.cell_group == payload.user_cell_group)).all()
@@ -691,8 +691,8 @@ Important rules:
             phone: str | None = None,
             address: str | None = None,
         ) -> dict:
-            if payload.user_title != "순장":
-                return {"error": "순장 권한이 있는 사용자만 순원 정보를 수정할 수 있습니다."}
+            if payload.user_title not in ("순장", "순모"):
+                return {"error": "순장 또는 순모 권한이 있는 사용자만 순원 정보를 수정할 수 있습니다."}
             target = db.get(Member, member_id)
             if not target:
                 return {"error": f"멤버 ID {member_id}를 찾을 수 없습니다."}
@@ -725,8 +725,8 @@ Important rules:
             meeting_place: str = "",
             overall_prayer: str = "",
         ) -> dict:
-            if payload.user_title != "순장":
-                return {"error": "순장 권한이 있는 사용자만 순보고서를 작성할 수 있습니다."}
+            if payload.user_title not in ("순장", "순모"):
+                return {"error": "순장 또는 순모 권한이 있는 사용자만 순보고서를 작성할 수 있습니다."}
             if not payload.user_cell_group:
                 return {"error": "순 정보가 없습니다. 로그인 상태를 확인해주세요."}
 
@@ -811,8 +811,8 @@ Important rules:
                 .where(Member.name == payload.user_name, Member.cell_group == payload.user_cell_group)
                 .limit(1)
             )
-            if not me or (me.title != "순장" and me.permission != "admin"):
-                return {"error": "순장(또는 관리자) 권한이 있는 사용자만 순보고 분석에 접근할 수 있습니다."}
+            if not me or (me.title not in ("순장", "순모") and me.permission != "admin"):
+                return {"error": "순장, 순모(또는 관리자) 권한이 있는 사용자만 순보고 분석에 접근할 수 있습니다."}
 
             target_year = year or datetime.now().year
             if target_year < 2000 or target_year > 2100:
@@ -829,8 +829,8 @@ Important rules:
                 .where(Member.name == payload.user_name, Member.cell_group == payload.user_cell_group)
                 .limit(1)
             )
-            if not me or (me.title != "순장" and me.permission != "admin"):
-                return {"error": "순장(또는 관리자) 권한이 있는 사용자만 순보고 분석에 접근할 수 있습니다."}
+            if not me or (me.title not in ("순장", "순모") and me.permission != "admin"):
+                return {"error": "순장, 순모(또는 관리자) 권한이 있는 사용자만 순보고 분석에 접근할 수 있습니다."}
 
             try:
                 target_date = date.fromisoformat(meeting_date)
@@ -852,8 +852,8 @@ Important rules:
                 .where(Member.name == payload.user_name, Member.cell_group == payload.user_cell_group)
                 .limit(1)
             )
-            if not me or (me.title != "순장" and me.permission != "admin"):
-                return {"error": "순장(또는 관리자) 권한이 있는 사용자만 개인 기도제목 분석에 접근할 수 있습니다."}
+            if not me or (me.title not in ("순장", "순모") and me.permission != "admin"):
+                return {"error": "순장, 순모(또는 관리자) 권한이 있는 사용자만 개인 기도제목 분석에 접근할 수 있습니다."}
 
             return analyze_member_prayer_trend(
                 db=db,

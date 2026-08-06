@@ -222,7 +222,7 @@ export default function LoginModal({ open, onLogin }) {
                       </Button>
                     </Box>
                   )}
-                  {foundMember && !error && !foundMember.has_account && (
+                  {foundMember && !error && !foundMember.has_account && ["순장", "순모"].includes(foundMember.title || "") && (
                     <Box sx={{ bgcolor: "#f0f7ff", border: "1px solid #bbdefb", borderRadius: "8px", p: 1.5 }}>
                       <Typography variant="body2" fontWeight={700} sx={{ color: "#3b522e" }}>
                         ✓ {foundMember.name}
@@ -234,6 +234,25 @@ export default function LoginModal({ open, onLogin }) {
                         onClick={handleSendOtp}
                         sx={{ mt: 1.5, bgcolor: "#3b522e", fontWeight: 700, textTransform: "none" }}>
                         {loading ? <CircularProgress size={16} color="inherit" /> : t("authSendCode")}
+                      </Button>
+                    </Box>
+                  )}
+                  {foundMember && !error && !foundMember.has_account && !["순장", "순모"].includes(foundMember.title || "") && (
+                    <Box sx={{ bgcolor: "#ffebee", border: "1px solid #ffcdd2", borderRadius: "8px", p: 1.5 }}>
+                      <Typography variant="body2" fontWeight={700} sx={{ color: "#c62828" }}>
+                        ✗ {foundMember.name}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "#c62828", mt: 1, fontWeight: 600 }}>
+                        Account creation not allowed
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: "#b71c1c", display: "block", mt: 0.5 }}>
+                        Only 순장 and 순모 can create an account.
+                      </Typography>
+                      <Button variant="outlined" fullWidth size="small" 
+                        onClick={() => { setError(""); setStep(STEPS.ENTRY); setFoundMember(null); }}
+                        sx={{ mt: 1.5, color: "#c62828", borderColor: "#c62828", fontWeight: 600, textTransform: "none",
+                          "&:hover": { bgcolor: "rgba(198, 40, 40, 0.04)", borderColor: "#c62828" } }}>
+                        {t("authBack")}
                       </Button>
                     </Box>
                   )}

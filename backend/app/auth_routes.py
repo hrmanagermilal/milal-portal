@@ -30,7 +30,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-ALLOWED_SIGNUP_TITLES = {"순장", "시무장로", "목사"}
+ALLOWED_SIGNUP_TITLES = {"순장", "순모"}
 
 # ── Pydantic schemas ────────────────────────────────────────────────────────
 
@@ -173,6 +173,7 @@ def find_member(body: FindMemberRequest, db: Session = Depends(get_db)):
     return {
         "member_id":      member.id,
         "name":           member.name,
+        "title":          member.title or "",
         "email_masked":   _mask(member.email, is_email=True),
         "phone_masked":   _mask(member.phone, is_email=False),
         "has_account":    user is not None,
@@ -200,7 +201,7 @@ def send_otp(body: SendOtpRequest, db: Session = Depends(get_db)):
     if not member:
         raise HTTPException(404, "Member not found")
     if not _is_signup_allowed(member):
-        raise HTTPException(403, "Only 순장, 시무장로, and 목사 can create an account")
+        raise HTTPException(403, "Only 순장 and 순모 can create an account")
 
     if body.contact_type == "email":
         contact = member.email
@@ -267,7 +268,7 @@ def create_account(body: CreateAccountRequest, db: Session = Depends(get_db)):
     if not member:
         raise HTTPException(404, "Member not found")
     if not _is_signup_allowed(member):
-        raise HTTPException(403, "Only 순장, 시무장로, and 목사 can create an account")
+        raise HTTPException(403, "Only 순장 and 순모 can create an account")
 
     # Check user_id not taken
     existing_user_id = db.execute(
