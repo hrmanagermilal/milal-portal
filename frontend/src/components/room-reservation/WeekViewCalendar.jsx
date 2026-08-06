@@ -124,6 +124,7 @@ function EventBars({ items, windowStart, windowEnd, onCellClick, roomId, isPast 
           <ReservedItem
             item={item}
             placement={placement}
+            currentUser={DataMart.getCurrentUser()}
           />
         </div>
       ))}
@@ -205,9 +206,11 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
     };
 
     EventPublisher.addEventListener(EventDef.onReservationCreated, "WEEKVIEW_SUB", handleReservationCreated);
+    EventPublisher.addEventListener(EventDef.onReservationUpdated, "WEEKVIEW_SUB", handleReservationCreated);
 
     return () => {
       EventPublisher.removeEventListener(EventDef.onReservationCreated, "WEEKVIEW_SUB", handleReservationCreated);
+      EventPublisher.removeEventListener(EventDef.onReservationUpdated, "WEEKVIEW_SUB", handleReservationCreated);
     };
   }, []);
 

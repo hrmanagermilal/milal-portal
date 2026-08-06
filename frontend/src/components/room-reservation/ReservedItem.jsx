@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -8,9 +9,15 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
-import { formatDateTime, toHourText } from "../../utils/datetime";
+import Alert from "@mui/material/Alert";
+import CircularProgress from "@mui/material/CircularProgress";
+import TextField from "@mui/material/TextField";
+import { formatDateTime, toHourText, dateToLocalISOString, localISOStringToUTCISO } from "../../utils/datetime";
 import { statusLabel } from "../../constants";
 import FloorPlanTooltip from "./FloorPlanTooltip";
+import { api } from "../../api";
+import EventPublisher from "../../event/EventPublisher";
+import { EventDef } from "../../event/EventDef";
 
 const STATUS_COLORS = {
   pending:  { bg: "rgba(246,197,77,0.18)",  border: "#f6c54d", text: "#b07d00" },
@@ -19,10 +26,79 @@ const STATUS_COLORS = {
   rejected: { bg: "rgba(249,92,92,0.12)",   border: "#f95c5c", text: "#b71c1c" },
 };
 
-export default function ReservedItem({ item, startHour, endHour, hourRange, placement, compact = false }) {
+export default function ReservedItem({ item, startHour, endHour, hourRange, placement, compact = false, currentUser = null, onUpdate = null, onDelete = null }) {
   const [detailOpen, setDetailOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editForm, setEditForm] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  // Calculate position and width based on hour range (if placement not provided)
+  const isOwner = currentUser && item.requester_name === currentUser.name;
+  const canEdit = isOwner && (item.status === "pending" || item.status === "changed");
+  const canDelete = isOwner;
+
+  const openEditDialog = () => {
+    setEditError("");
+    setEditForm({
+      purpose: item.purpose || "",
+      attendees: String(item.attendees || 1),
+      notes: item.notes || "",
+      start_time: dateToLocalISOString(new Date(item.start_time)).slice(0, 16),
+      end_time: dateToLocalISOString(new Date(item.end_time)).slice(0, 16),
+    });
+    setEditOpen(true);
+  };
+
+  const handleEditChange = (key) => (event) => {
+    setEditForm((prev) => ({ ...(prev || {}), [key]: event.target.value }));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm) return;
+    setEditError("");
+    setEditLoading(true);
+    try {
+      await api.updateReservation(item.id, {
+        purpose: editForm.purpose.trim(),
+        attendees: Number(editForm.attendees) || 1,
+        notes: editForm.notes || "",
+        start_time: localISOStringToUTCISO(editForm.start_time),
+        end_time: localISOStringToUTCISO(editForm.end_time),
+      });
+      setEditOpen(false);
+      setDetailOpen(false);
+      EventPublisher.publish(EventDef.onReservationUpdated, { id: item.id, action: "user-update" });
+      if (onUpdate) onUpdate(item.id);
+    } catch (err) {
+      setEditError(err.message || "Failed to update reservation");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    setDeleteError("");
+    setDeleteLoading(true);
+    try {
+      await api.deleteReservation(item.id);
+      setDeleteConfirmOpen(false);
+      setDetailOpen(false);
+      EventPublisher.publish(EventDef.onReservationUpdated, { id: item.id, action: "user-delete" });
+      if (onDelete) onDelete(item.id);
+    } catch (err) {
+      setDeleteError(err.message || "Failed to delete reservation");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+  
   let leftPercent, widthPercent;
   
   if (placement) {
@@ -382,6 +458,134 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
               </Stack>
             </Box>
           )}
+        </DialogContent>
+        
+        {/* Action Buttons */}
+        {isOwner && (
+          <Box sx={{ px: 3, py: 2, borderTop: "1px solid #eef2f7", bgcolor: "#fafbfc" }}>
+            <Stack direction="row" spacing={1}>
+              {canEdit && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    setDetailOpen(false);
+                    openEditDialog();
+                  }}
+                  sx={{ textTransform: "none", flex: 1, borderColor: "#3b522e", color: "#3b522e" }}
+                >
+                  Edit
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleDeleteClick}
+                  sx={{ textTransform: "none", flex: 1, borderColor: "#f95c5c", color: "#f95c5c" }}
+                >
+                  Delete
+                </Button>
+              )}
+            </Stack>
+          </Box>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={editOpen}
+        onClose={() => !editLoading && setEditOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e" }}>
+            Edit Reservation
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField label="Purpose" fullWidth value={editForm?.purpose || ""} onChange={handleEditChange("purpose")} />
+            <Stack direction="row" spacing={1}>
+              <TextField
+                label="Start Time"
+                type="datetime-local"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={editForm?.start_time || ""}
+                onChange={handleEditChange("start_time")}
+              />
+              <TextField
+                label="End Time"
+                type="datetime-local"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={editForm?.end_time || ""}
+                onChange={handleEditChange("end_time")}
+              />
+            </Stack>
+            <TextField label="Attendees" type="number" inputProps={{ min: 1 }} fullWidth value={editForm?.attendees || "1"} onChange={handleEditChange("attendees")} />
+            <TextField label="Notes" fullWidth multiline minRows={2} value={editForm?.notes || ""} onChange={handleEditChange("notes")} />
+            {editError && (
+              <Alert severity="error" sx={{ py: 0.5 }}>
+                {editError}
+              </Alert>
+            )}
+            <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}>
+              <Button variant="outlined" size="small" onClick={() => setEditOpen(false)} disabled={editLoading} sx={{ textTransform: "none" }}>
+                Cancel
+              </Button>
+              <Button variant="contained" size="small" onClick={handleSaveEdit} disabled={editLoading} sx={{ bgcolor: "#3b522e", textTransform: "none", "&:hover": { bgcolor: "#2f4325" } }}>
+                {editLoading ? <CircularProgress size={18} color="inherit" /> : "Save"}
+              </Button>
+            </Stack>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => !deleteLoading && setDeleteConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e" }}>
+            Delete Reservation?
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" sx={{ color: "#5d7186" }}>
+              Are you sure you want to delete this reservation? This action cannot be undone.
+            </Typography>
+            {deleteError && (
+              <Alert severity="error" sx={{ py: 0.5 }}>
+                {deleteError}
+              </Alert>
+            )}
+            <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={deleteLoading}
+                sx={{ textTransform: "none" }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleConfirmDelete}
+                disabled={deleteLoading}
+                sx={{ bgcolor: "#f95c5c", textTransform: "none", "&:hover": { bgcolor: "#d32f2f" } }}
+              >
+                {deleteLoading ? <CircularProgress size={18} color="inherit" /> : "Delete"}
+              </Button>
+            </Stack>
+          </Stack>
         </DialogContent>
       </Dialog>
     </>

@@ -163,7 +163,11 @@ export default function WeekScheduleCalendar({
         console.error("[WeekScheduleCalendar] Failed to refresh after reservation created:", err);
       }
     };
-
+          EventPublisher.addEventListener(EventDef.onReservationUpdated, "WEEKVIEW", handleReservationCreated);
+          return () => {
+            EventPublisher.removeEventListener(EventDef.onReservationCreated, "WEEKVIEW", handleReservationCreated);
+            EventPublisher.removeEventListener(EventDef.onReservationUpdated, "WEEKVIEW", handleReservationCreated);
+          };
     EventPublisher.addEventListener(EventDef.onReservationCreated, "WEEKVIEW", handleReservationCreated);
 
     return () => {
@@ -409,6 +413,7 @@ export default function WeekScheduleCalendar({
                           item={item}
                           placement={placement}
                           compact={true}
+                          currentUser={currentUser}
                         />
                       </div>
                     );

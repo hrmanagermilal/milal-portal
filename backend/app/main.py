@@ -47,6 +47,7 @@ from .schemas import (
     RoomLocationOut,
     RoomLocationCreate,
     RoomLocationUpdate,
+    UserUpdateReservation,
 )
 from .auth_routes import router as auth_router, _send_email, get_current_user, oauth2_scheme
 from .ai_chat import create_ai_chat_router
@@ -1101,6 +1102,179 @@ Google Calendar에 추가:
         created_at=_as_utc_aware(item.created_at),
         updated_at=_as_utc_aware(item.updated_at),
     )
+
+
+@app.patch("/api/reservations/{reservation_id}", response_model=ReservationOut)
+def update_reservation_by_user(
+    reservation_id: int,
+    payload: UserUpdateReservation,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> ReservationOut:
+    """User self-service update for their own reservation (pending/changed status only)"""
+    current_user = get_current_user(token, db)
+
+    item = db.scalar(
+        select(Reservation)
+        .where(Reservation.id == reservation_id)
+        .options(joinedload(Reservation.room))
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="reservation not found")
+
+    # Verify ownership: match requester identity against the logged-in member
+    is_owner = item.requester_name == current_user.name
+    if current_user.email and item.email == current_user.email:
+        is_owner = True
+    if current_user.phone and item.phone == current_user.phone:
+        is_owner = True
+    if not is_owner:
+        raise HTTPException(status_code=403, detail="You can only update your own reservations")
+
+    # Can only update pending or changed status
+    if item.status not in [ReservationStatus.pending, ReservationStatus.changed]:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Cannot update reservation with status '{item.status.value}'. Only pending or changed reservations can be updated."
+        )
+
+    # Update allowed fields
+    if payload.purpose is not None:
+        item.purpose = payload.purpose
+    if payload.attendees is not None:
+        item.attendees = payload.attendees
+    if payload.notes is not None:
+        item.notes = payload.notes
+    
+    # If updating time, validate and check for conflicts
+    if payload.start_time is not None or payload.end_time is not None:
+        new_start = payload.start_time if payload.start_time is not None else item.start_time
+        new_end = payload.end_time if payload.end_time is not None else item.end_time
+
+        validate_reservation_times(new_start, new_end)
+
+        # Check for conflicts with other reservations (excluding this one)
+        conflict = db.scalar(
+            select(Reservation)
+            .where(
+                and_(
+                    Reservation.id != reservation_id,
+                    Reservation.room_id == item.room_id,
+                    Reservation.status.in_([
+                        ReservationStatus.pending,
+                        ReservationStatus.approved,
+                        ReservationStatus.changed,
+                    ]),
+                    Reservation.start_time < new_end,
+                    Reservation.end_time > new_start,
+                )
+            )
+            .limit(1)
+        )
+        if conflict:
+            raise HTTPException(status_code=409, detail="time slot conflicts with another reservation")
+
+        item.start_time = new_start
+        item.end_time = new_end
+
+    db.commit()
+    db.refresh(item)
+
+    # Send update email
+    if item.email:
+        subject = f"[예약 변경] {item.room.name if item.room else 'N/A'}"
+        body = f"""안녕하세요 {item.requester_name}님,
+
+귀하의 예약이 수정되었습니다.
+
+【 예약 정보 】
+- 예약 ID: #{item.id}
+- 장소: {item.room.name if item.room else 'N/A'}
+- 시작 시간(ET): {_format_eastern_time(item.start_time)}
+- 종료 시간(ET): {_format_eastern_time(item.end_time)}
+- 목적: {item.purpose}
+- 참석자 수: {item.attendees}
+- 상태: {item.status.value}
+
+밀알교회 포털팀"""
+        _send_email(item.email, subject, body)
+
+    room_name = item.room.name if item.room else "Unknown"
+    return ReservationOut(
+        id=item.id,
+        room_id=item.room_id,
+        room_name=room_name,
+        requester_name=item.requester_name,
+        phone=item.phone,
+        email=item.email,
+        purpose=item.purpose,
+        attendees=item.attendees,
+        notes=item.notes,
+        start_time=_as_utc_aware(item.start_time),
+        end_time=_as_utc_aware(item.end_time),
+        status=item.status.value,
+        admin_comment=item.admin_comment,
+        repeat_type=item.repeat_type,
+        repeat_count=item.repeat_count,
+        parent_reservation_id=item.parent_reservation_id,
+        created_at=_as_utc_aware(item.created_at),
+        updated_at=_as_utc_aware(item.updated_at),
+    )
+
+
+@app.delete("/api/reservations/{reservation_id}")
+def delete_reservation_by_user(
+    reservation_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    """User self-service delete for their own reservation"""
+    current_user = get_current_user(token, db)
+
+    item = db.scalar(
+        select(Reservation)
+        .where(Reservation.id == reservation_id)
+        .options(joinedload(Reservation.room))
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="reservation not found")
+
+    # Verify ownership: match requester identity against the logged-in member
+    is_owner = item.requester_name == current_user.name
+    if current_user.email and item.email == current_user.email:
+        is_owner = True
+    if current_user.phone and item.phone == current_user.phone:
+        is_owner = True
+    if not is_owner:
+        raise HTTPException(status_code=403, detail="You can only delete your own reservations")
+
+    # Delete is allowed for all statuses
+    room_name = item.room.name if item.room else "Unknown"
+    
+    # Send cancellation email
+    if item.email:
+        subject = f"[예약 취소] {room_name}"
+        body = f"""안녕하세요 {item.requester_name}님,
+
+귀하의 예약이 취소되었습니다.
+
+【 예약 정보 】
+- 예약 ID: #{item.id}
+- 장소: {room_name}
+- 시작 시간(ET): {_format_eastern_time(item.start_time)}
+- 종료 시간(ET): {_format_eastern_time(item.end_time)}
+- 목적: {item.purpose}
+
+밀알교회 포털팀"""
+        _send_email(item.email, subject, body)
+
+    db.delete(item)
+    db.commit()
+
+    return {
+        "message": "reservation deleted successfully",
+        "reservation_id": reservation_id,
+    }
 
 
 # ── Cell Report ───────────────────────────────────────────────────────────

@@ -143,6 +143,15 @@ class AdminUpdateReservation(BaseModel):
         return value
 
 
+class UserUpdateReservation(BaseModel):
+    """User self-service update for their own reservation (pending/changed status only)"""
+    purpose: str | None = Field(default=None, min_length=3, max_length=255)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    attendees: int | None = Field(default=None, ge=1)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 # ── User Management schemas ────────────────────────────────────────────────
 class UserOut(BaseModel):
     """User info for admin panel"""
