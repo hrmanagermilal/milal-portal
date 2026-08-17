@@ -1,0 +1,2937 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "오직 API v2",
+    "description": "오직(ohjic) 교회 시스템 외부 연동 API v2. **API secret key 인증** — 발급받은 secret key(`osk_live_...`)를 `X-Api-Key` 헤더로 전달합니다(포털 로그인 계정과 무관). scope 권한. 각 region 서버는 자기 도메인으로 호출하며, 키는 발급받은 region 의 endpoint 에서만 유효합니다.\\n\\n모든 응답은 `{ \"data\": ... }`(목록은 `{ \"data\": [...], \"meta\": { \"pagination\": {...} } }`) envelope 로 감싸지며, 오류는 `{ \"error\": { \"code\", \"message\", \"detail\"? } }` 입니다.",
+    "version": "2.1.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.ohjic.us",
+      "description": "API 서버 (git smudge 가 체크아웃 서버의 TLD 로 변환 — 개발 ohjic.us / 사내테스트 ohjic.in / 운영 KR ohjic.com / 운영 US ohjic.us)"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Members",
+      "description": "성도(회원) 조회 · 검색 · 가족 · 등록/수정 · 사진 · 소속 · 소천"
+    },
+    {
+      "name": "Educations",
+      "description": "교육 · 클래스 · 성도 수강 이력"
+    },
+    {
+      "name": "Groups",
+      "description": "그룹(조직) 조회"
+    },
+    {
+      "name": "Codes",
+      "description": "코드 (PG 직분 / CL 신급)"
+    },
+    {
+      "name": "Auth",
+      "description": "인증 · 키 주체 조회(introspection) · SSO 로그인 토큰"
+    }
+  ],
+  "security": [
+    {
+      "apiKeyAuth": []
+    }
+  ],
+  "paths": {
+    "/v2/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "키 주체 조회(introspection)",
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/KeyIntrospection"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/members": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도 목록·검색",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "페이지(기본 1)"
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "페이지당 개수(기본 20, 최대 100)"
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "이름 부분검색"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemberListItem"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도 등록",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "member_name": {
+                    "type": "string",
+                    "description": "이름(2자+ 한글/영문/숫자)"
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "M",
+                      "F"
+                    ],
+                    "description": "성별"
+                  },
+                  "birth_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "생년월일 YYYY-MM-DD"
+                  },
+                  "mobile_phone": {
+                    "type": "string",
+                    "description": "휴대전화"
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "이메일"
+                  },
+                  "position_name": {
+                    "type": "string",
+                    "description": "직분명"
+                  },
+                  "church_level_name": {
+                    "type": "string",
+                    "description": "신급명"
+                  }
+                },
+                "required": [
+                  "member_name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Member"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/members/{id}": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도 상세 조회",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Member"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도 수정(부분)",
+        "description": "전달된 필드만 부분 수정. 이름 변경 시 가족 세대주명·관리자·그룹로그 등 연관 정보 동기화.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "member_name": {
+                    "type": "string"
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "M",
+                      "F"
+                    ]
+                  },
+                  "birth_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "mobile_phone": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "position_name": {
+                    "type": "string"
+                  },
+                  "church_level_name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Member"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/members/{id}/family": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도 가족 조회",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemberFamilyItem"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/members/{id}/photo": {
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도 사진 수정",
+        "description": "multipart/form-data 로 photo 파일 업로드(jpg/jpeg/gif/png/bmp, 5MB 이하).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "photo": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "이미지 파일"
+                  }
+                },
+                "required": [
+                  "photo"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "member_id": {
+                          "type": "integer"
+                        },
+                        "photo_url": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "upstream_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/members/{id}/groups": {
+      "post": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도 소속(그룹) 등록",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "group_id": {
+                    "type": "integer",
+                    "description": "그룹 고유번호"
+                  },
+                  "year": {
+                    "type": "integer",
+                    "description": "연도(기본 올해)"
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "소속 시작일"
+                  },
+                  "ended_at": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "소속 종료일"
+                  }
+                },
+                "required": [
+                  "group_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/GroupMembership"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/funerals": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "소천(장례) 정보 조회",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "페이지(기본 1)"
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "페이지당 개수(기본 20, 최대 100)"
+          },
+          {
+            "name": "tid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호"
+          },
+          {
+            "name": "member_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "이름 전방검색"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "소천일 시작"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "소천일 종료"
+          },
+          {
+            "name": "custom_field1",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "자유항목1 필터"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Funeral"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/codes": {
+      "get": {
+        "tags": [
+          "Codes"
+        ],
+        "summary": "코드 조회(직분/신급/교인구분)",
+        "description": "PG=직분, CL=신급(nameCode 평면). MC=교인구분(cGroup 2계층 트리: depth=1 대분류 / depth=2 소분류, parent_code_id=상위). 회원 응답의 position_code↔PG, church_level_code↔CL, member_category1_code↔MC depth1, member_category2_code↔MC depth2 로 매핑.",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PG",
+                "CL",
+                "MC"
+              ]
+            },
+            "description": "PG=직분 / CL=신급 / MC=교인구분"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Code"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/custom-fields": {
+      "get": {
+        "tags": [
+          "Codes"
+        ],
+        "summary": "교회 정의 자유항목 정의(라벨/타입/옵션)",
+        "description": "성도(member.etc1~9 → member_custom_N)·소천(funeral_info.custom_field1~9 → funeral_custom_N) 응답 필드의 **교회별 라벨·입력형식·선택지**를 반환. 자유항목 라벨은 교회마다 다르므로(예: member_custom_1=\"국가\", funeral_custom_2=\"방문예정교역자\") 이 엔드포인트로 매핑을 조회한 뒤 회원/소천 응답의 해당 필드를 해석한다.",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "member",
+                "funeral"
+              ]
+            },
+            "description": "member=성도 자유항목 / funeral=소천 자유항목"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CustomField"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/groups": {
+      "get": {
+        "tags": [
+          "Groups"
+        ],
+        "summary": "그룹 조회",
+        "parameters": [
+          {
+            "name": "group_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "그룹명 부분검색"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "연도(기본 올해)"
+          },
+          {
+            "name": "group_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "그룹 분류 코드"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Group"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/educations": {
+      "get": {
+        "tags": [
+          "Educations"
+        ],
+        "summary": "교육 목록",
+        "parameters": [
+          {
+            "name": "edu_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "교육명 전방검색"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Education"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/educations/classes": {
+      "get": {
+        "tags": [
+          "Educations"
+        ],
+        "summary": "교육 클래스(기수) 목록",
+        "parameters": [
+          {
+            "name": "edu_idx",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "교육 고유번호"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EducationClass"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/educations/members/{tid}/classes": {
+      "get": {
+        "tags": [
+          "Educations"
+        ],
+        "summary": "성도 수강 내역",
+        "parameters": [
+          {
+            "name": "tid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Enrollment"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Educations"
+        ],
+        "summary": "성도 수강 등록",
+        "parameters": [
+          {
+            "name": "tid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "class_id": {
+                    "type": "integer",
+                    "description": "클래스 고유번호"
+                  },
+                  "enrollment_status": {
+                    "type": "string",
+                    "description": "수강 상태(신청/등록/수료)"
+                  },
+                  "education_start_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "education_end_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "preferred_time": {
+                    "type": "string",
+                    "description": "희망 시간"
+                  },
+                  "preferred_place": {
+                    "type": "string",
+                    "description": "희망 장소/특이사항"
+                  }
+                },
+                "required": [
+                  "class_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Enrollment"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/educations/member-classes/{eduMemberIdx}": {
+      "put": {
+        "tags": [
+          "Educations"
+        ],
+        "summary": "성도 수강 수정",
+        "parameters": [
+          {
+            "name": "eduMemberIdx",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "수강 고유번호(enrollment_id)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "class_id": {
+                    "type": "integer",
+                    "description": "클래스 고유번호"
+                  },
+                  "enrollment_status": {
+                    "type": "string",
+                    "description": "수강 상태"
+                  }
+                },
+                "required": [
+                  "class_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Enrollment"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Educations"
+        ],
+        "summary": "성도 수강 삭제",
+        "parameters": [
+          {
+            "name": "eduMemberIdx",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "수강 고유번호(enrollment_id)"
+          },
+          {
+            "name": "class_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "클래스 고유번호"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "본문 없음"
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/members/{id}/sso-tokens": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "SSO 1회용 로그인 토큰 발급",
+        "description": "회원 로그인 위임용 1회용 토큰(5분 TTL, sha256 저장). 발급 시에만 평문 노출.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "생성됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SsoToken"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/sso/sessions": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "SSO 토큰 검증·교환",
+        "description": "1회용 토큰을 검증·소진하고 검증된 성도 신원을 반환. 실제 브라우저 세션은 소비자가 수립.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "member_id": {
+                    "type": "integer",
+                    "description": "성도 고유번호"
+                  },
+                  "sso_token": {
+                    "type": "string",
+                    "description": "발급받은 1회용 토큰"
+                  }
+                },
+                "required": [
+                  "member_id",
+                  "sso_token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SsoSession"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key",
+        "description": "발급받은 **API secret key** (`osk_live_...` 운영 / `osk_test_...` 개발)를 `X-Api-Key` 헤더로 전달합니다. 포털 로그인 계정과 무관한 별도 자격증명입니다."
+      }
+    },
+    "schemas": {
+      "MemberListItem": {
+        "type": "object",
+        "properties": {
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "family_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "세대(가족) 식별자(=세대주 member_id)"
+          },
+          "member_name": {
+            "type": "string",
+            "description": "이름"
+          },
+          "gender": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "M",
+              "F"
+            ],
+            "description": "성별(M=남, F=여. DB는 남/여 저장, API는 M/F 노출)"
+          },
+          "birth_year": {
+            "type": "integer",
+            "nullable": true,
+            "description": "출생연도"
+          },
+          "family_relation": {
+            "type": "string",
+            "nullable": true,
+            "description": "세대 내 관계"
+          },
+          "position_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "직분명"
+          },
+          "mobile_phone": {
+            "type": "string",
+            "nullable": true,
+            "description": "휴대전화"
+          }
+        },
+        "description": "성도(회원) 목록 항목",
+        "required": [
+          "member_id",
+          "member_name"
+        ]
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "family_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "세대(가족) 식별자(=세대주 member_id)"
+          },
+          "member_name": {
+            "type": "string",
+            "description": "이름"
+          },
+          "gender": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "M",
+              "F"
+            ],
+            "description": "성별(M=남, F=여. DB는 남/여 저장, API는 M/F 노출)"
+          },
+          "birth_year": {
+            "type": "integer",
+            "nullable": true,
+            "description": "출생연도"
+          },
+          "birth_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "생년월일(연+월일 정규화)"
+          },
+          "family_relation": {
+            "type": "string",
+            "nullable": true,
+            "description": "세대 내 관계"
+          },
+          "family_head_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "세대주 이름"
+          },
+          "mobile_phone": {
+            "type": "string",
+            "nullable": true,
+            "description": "휴대전화"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "description": "이메일"
+          },
+          "position_code": {
+            "type": "integer",
+            "nullable": true,
+            "description": "직분 코드(nameCode.no)"
+          },
+          "position_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "직분명"
+          },
+          "position_order": {
+            "type": "integer",
+            "nullable": true,
+            "description": "직분 정렬순서"
+          },
+          "church_level_code": {
+            "type": "integer",
+            "nullable": true,
+            "description": "신급 코드(nameCode.no)"
+          },
+          "church_level_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "신급명(세례/학습/입교 등)"
+          },
+          "church_level_order": {
+            "type": "integer",
+            "nullable": true,
+            "description": "신급 정렬순서"
+          },
+          "church_level_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "집례(세례)일"
+          },
+          "church_level_church": {
+            "type": "string",
+            "nullable": true,
+            "description": "집례 교회"
+          },
+          "member_category1_code": {
+            "type": "integer",
+            "nullable": true,
+            "description": "교인구분1 코드(<0=비교인)"
+          },
+          "member_category1_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "교인구분1 명칭"
+          },
+          "member_category2_code": {
+            "type": "integer",
+            "nullable": true,
+            "description": "교인구분2 코드"
+          },
+          "member_category2_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "교인구분2 명칭"
+          },
+          "member_category_updated_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "교인구분 변경일(실측 kyo6 member 스냅샷: date)"
+          },
+          "membership_status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "member",
+              "unclassified",
+              "non_member"
+            ],
+            "description": "소속 상태"
+          },
+          "group_category_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "소속 분류명(교구 등) 또는 미분류교인/비교인"
+          },
+          "group_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "소속 계층 표시명(동적 길이)"
+          },
+          "postal_code_jibun": {
+            "type": "string",
+            "nullable": true,
+            "description": "우편번호(지번)"
+          },
+          "postal_code_road": {
+            "type": "string",
+            "nullable": true,
+            "description": "우편번호(도로명)"
+          },
+          "address_jibun": {
+            "type": "string",
+            "nullable": true,
+            "description": "지번주소"
+          },
+          "address_detail": {
+            "type": "string",
+            "nullable": true,
+            "description": "상세주소"
+          },
+          "address_road": {
+            "type": "string",
+            "nullable": true,
+            "description": "도로명주소"
+          },
+          "photo_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "프로필 사진 URL"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "교회 등록일시(regi_date unix)"
+          },
+          "welcomed_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "교회 환영일"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "최종 수정일시(last_view unix)"
+          },
+          "member_custom_1": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목1 (라벨/타입: GET /v2/custom-fields?scope=member)"
+          },
+          "member_custom_2": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목2 (GET /v2/custom-fields?scope=member)"
+          },
+          "member_custom_3": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목3 (GET /v2/custom-fields?scope=member)"
+          },
+          "member_custom_4": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목4 (GET /v2/custom-fields?scope=member)"
+          },
+          "member_custom_5": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목5 (GET /v2/custom-fields?scope=member)"
+          },
+          "member_custom_6": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목6 (GET /v2/custom-fields?scope=member)"
+          },
+          "member_custom_7": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목7 (GET /v2/custom-fields?scope=member)"
+          },
+          "member_custom_8": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목8 (GET /v2/custom-fields?scope=member)"
+          },
+          "member_custom_9": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 자유항목9 (GET /v2/custom-fields?scope=member)"
+          }
+        },
+        "description": "성도(회원) 상세 정보",
+        "required": [
+          "member_id",
+          "member_name"
+        ]
+      },
+      "MemberFamilyItem": {
+        "type": "object",
+        "properties": {
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "family_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "세대 식별자"
+          },
+          "member_name": {
+            "type": "string",
+            "description": "이름"
+          },
+          "family_relation": {
+            "type": "string",
+            "nullable": true,
+            "description": "세대 내 관계"
+          },
+          "gender": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "M",
+              "F"
+            ],
+            "description": "성별(M=남, F=여. DB는 남/여 저장, API는 M/F 노출)"
+          },
+          "birth_year": {
+            "type": "integer",
+            "nullable": true,
+            "description": "출생연도"
+          },
+          "age": {
+            "type": "integer",
+            "nullable": true,
+            "description": "나이(한국식 세는나이)"
+          },
+          "position_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "직분명"
+          },
+          "mobile_phone": {
+            "type": "string",
+            "nullable": true,
+            "description": "휴대전화"
+          },
+          "member_category1_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "교인구분1 명칭"
+          },
+          "member_category2_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "교인구분2 명칭"
+          },
+          "deceased_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "소천일"
+          }
+        },
+        "description": "성도 가족 항목",
+        "required": [
+          "member_id",
+          "member_name"
+        ]
+      },
+      "Funeral": {
+        "type": "object",
+        "properties": {
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "member_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "이름"
+          },
+          "gender": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "M",
+              "F"
+            ],
+            "description": "성별(M=남, F=여. DB는 남/여 저장, API는 M/F 노출)"
+          },
+          "birth_year": {
+            "type": "integer",
+            "nullable": true,
+            "description": "출생연도"
+          },
+          "birth_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "생년월일"
+          },
+          "mobile_phone": {
+            "type": "string",
+            "nullable": true,
+            "description": "휴대전화"
+          },
+          "address_road": {
+            "type": "string",
+            "nullable": true,
+            "description": "도로명주소"
+          },
+          "photo_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "프로필 사진 URL"
+          },
+          "position_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "직분명"
+          },
+          "deceased_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "소천일(member.dead_date)"
+          },
+          "funeral_death_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "소천일(소천레코드 funeral_info.death_date)"
+          },
+          "deceased_age": {
+            "type": "integer",
+            "nullable": true,
+            "description": "소천 나이(한국식)"
+          },
+          "cause_of_death": {
+            "type": "string",
+            "nullable": true,
+            "description": "사인"
+          },
+          "death_note": {
+            "type": "string",
+            "nullable": true,
+            "description": "사망 메모"
+          },
+          "funeral_pastor": {
+            "type": "string",
+            "nullable": true,
+            "description": "담당 목사"
+          },
+          "funeral_church": {
+            "type": "string",
+            "nullable": true,
+            "description": "집례 교회"
+          },
+          "funeral_place": {
+            "type": "string",
+            "nullable": true,
+            "description": "장례 장소"
+          },
+          "bereaved_ascendants": {
+            "type": "string",
+            "nullable": true,
+            "description": "유가족 직계존속"
+          },
+          "bereaved_descendants": {
+            "type": "string",
+            "nullable": true,
+            "description": "유가족 직계비속"
+          },
+          "bereaved_group": {
+            "type": "string",
+            "nullable": true,
+            "description": "유가족 관련그룹"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "소천레코드 생성일시"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "소천레코드 수정일시"
+          },
+          "registered_by_manager_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "등록 관리자 번호"
+          },
+          "funeral_service_1_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "입관 예배 일자"
+          },
+          "funeral_service_1_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "입관 예배 시각"
+          },
+          "funeral_service_1_place": {
+            "type": "string",
+            "nullable": true,
+            "description": "입관 예배 장소"
+          },
+          "funeral_service_1_note": {
+            "type": "string",
+            "nullable": true,
+            "description": "입관 예배 비고"
+          },
+          "funeral_service_1_departure_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "입관 출발(발인) 시각"
+          },
+          "funeral_service_1_departure_place": {
+            "type": "string",
+            "nullable": true,
+            "description": "입관 출발(발인) 장소"
+          },
+          "funeral_service_2_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "발인 예배 일자"
+          },
+          "funeral_service_2_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "발인 예배 시각"
+          },
+          "funeral_service_2_place": {
+            "type": "string",
+            "nullable": true,
+            "description": "발인 예배 장소"
+          },
+          "funeral_service_2_note": {
+            "type": "string",
+            "nullable": true,
+            "description": "발인 예배 비고"
+          },
+          "funeral_service_2_departure_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "발인 출발(발인) 시각"
+          },
+          "funeral_service_2_departure_place": {
+            "type": "string",
+            "nullable": true,
+            "description": "발인 출발(발인) 장소"
+          },
+          "funeral_service_3_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "안장 예배 일자"
+          },
+          "funeral_service_3_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "안장 예배 시각"
+          },
+          "funeral_service_3_place": {
+            "type": "string",
+            "nullable": true,
+            "description": "안장 예배 장소"
+          },
+          "funeral_service_3_note": {
+            "type": "string",
+            "nullable": true,
+            "description": "안장 예배 비고"
+          },
+          "funeral_service_3_departure_time": {
+            "type": "string",
+            "nullable": true,
+            "description": "안장 출발(발인) 시각"
+          },
+          "funeral_service_3_departure_place": {
+            "type": "string",
+            "nullable": true,
+            "description": "안장 출발(발인) 장소"
+          },
+          "funeral_custom_1": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목1 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          },
+          "funeral_custom_2": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목2 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          },
+          "funeral_custom_3": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목3 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          },
+          "funeral_custom_4": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목4 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          },
+          "funeral_custom_5": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목5 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          },
+          "funeral_custom_6": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목6 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          },
+          "funeral_custom_7": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목7 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          },
+          "funeral_custom_8": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목8 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          },
+          "funeral_custom_9": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회 정의 소천 자유항목9 (라벨/타입: GET /v2/custom-fields?scope=funeral)"
+          }
+        },
+        "description": "소천(장례) 정보",
+        "required": [
+          "member_id"
+        ]
+      },
+      "Group": {
+        "type": "object",
+        "properties": {
+          "group_id": {
+            "type": "integer",
+            "description": "그룹 고유번호"
+          },
+          "group_category_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "그룹 분류(파트) 코드"
+          },
+          "group_category_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "그룹 분류명"
+          },
+          "year": {
+            "type": "integer",
+            "description": "편제 연도"
+          },
+          "tree_depth": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층 레벨(1~5)"
+          },
+          "group_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "그룹 이름"
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "유효기간 시작일"
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "유효기간 종료일"
+          },
+          "level_1_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층1 조상 그룹 id"
+          },
+          "level_1_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층1 그룹명"
+          },
+          "level_2_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층2 조상 그룹 id"
+          },
+          "level_2_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층2 그룹명"
+          },
+          "level_3_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층3 조상 그룹 id"
+          },
+          "level_3_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층3 그룹명"
+          },
+          "level_4_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층4 조상 그룹 id"
+          },
+          "level_4_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층4 그룹명"
+          },
+          "level_5_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층5 조상 그룹 id"
+          },
+          "level_5_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층5 그룹명"
+          }
+        },
+        "description": "그룹/부서",
+        "required": [
+          "group_id",
+          "year"
+        ]
+      },
+      "Code": {
+        "type": "object",
+        "properties": {
+          "code_id": {
+            "type": "integer",
+            "description": "코드 고유번호 (PG/CL=nameCode.no, MC=cGroup.no, 음수=시스템 분류)"
+          },
+          "sort_order": {
+            "type": "integer",
+            "nullable": true,
+            "description": "정렬 순서"
+          },
+          "code_name": {
+            "type": "string",
+            "description": "코드 명칭 (MC=교인구분명)"
+          },
+          "short_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "약칭 (PG/CL 전용, MC=null)"
+          },
+          "rank_level": {
+            "type": "integer",
+            "nullable": true,
+            "description": "권한/서열 레벨 (PG/CL 전용)"
+          },
+          "is_system_fixed": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "시스템 고정 여부 (PG/CL 전용)"
+          },
+          "depth": {
+            "type": "integer",
+            "nullable": true,
+            "description": "교인구분 계층(1=대분류, 2=소분류). PG/CL=null."
+          },
+          "parent_code_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "교인구분 소분류(depth=2)의 상위 code_id. depth=1·PG/CL=null. (member_category1_code↔depth1, member_category2_code↔depth2)"
+          }
+        },
+        "description": "교회 코드. type=PG(직분)/CL(신급)은 nameCode, type=MC(교인구분)는 cGroup(2계층 트리).",
+        "required": [
+          "code_id",
+          "code_name"
+        ]
+      },
+      "CustomField": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "응답 필드 키(member_custom_N / funeral_custom_N)"
+          },
+          "slot": {
+            "type": "integer",
+            "description": "자유항목 순번(1~9)"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true,
+            "description": "교회가 지정한 라벨(예: 국가, 방문예정교역자, 소천나이). 미설정 슬롯은 null."
+          },
+          "field_type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "select",
+              "date"
+            ],
+            "description": "입력 형식"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "field_type=select(범례) 일 때 선택지 목록"
+          }
+        },
+        "description": "교회가 정의한 자유항목의 라벨·타입·옵션. member.etc1~9 / funeral_info.custom_field1~9 의 의미를 해석.",
+        "required": [
+          "key",
+          "slot",
+          "field_type"
+        ]
+      },
+      "Education": {
+        "type": "object",
+        "properties": {
+          "education_id": {
+            "type": "integer",
+            "description": "교육 고유번호"
+          },
+          "education_name": {
+            "type": "string",
+            "description": "교육 이름"
+          }
+        },
+        "description": "교육(과정)",
+        "required": [
+          "education_id",
+          "education_name"
+        ]
+      },
+      "EducationClass": {
+        "type": "object",
+        "properties": {
+          "class_id": {
+            "type": "integer",
+            "description": "클래스(기수) 고유번호"
+          },
+          "phase_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "기수명"
+          },
+          "class_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "클래스명"
+          },
+          "recruit_start_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "모집 시작일"
+          },
+          "recruit_end_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "모집 종료일"
+          },
+          "education_start_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "교육 시작일"
+          },
+          "education_end_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "교육 종료일"
+          }
+        },
+        "description": "교육 클래스(기수)",
+        "required": [
+          "class_id"
+        ]
+      },
+      "Enrollment": {
+        "type": "object",
+        "properties": {
+          "education_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "교육 고유번호"
+          },
+          "education_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "교육 이름"
+          },
+          "phase_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "기수명"
+          },
+          "class_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "클래스 고유번호"
+          },
+          "class_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "클래스명"
+          },
+          "enrollment_id": {
+            "type": "integer",
+            "description": "수강 고유번호"
+          },
+          "member_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "성도 고유번호"
+          },
+          "member_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "이름"
+          },
+          "enrollment_status": {
+            "type": "string",
+            "nullable": true,
+            "description": "수강 상태(신청/등록/수료)"
+          },
+          "education_start_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "교육 시작일"
+          },
+          "education_end_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "교육 종료일"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "등록일"
+          },
+          "last_attendance_step": {
+            "type": "integer",
+            "nullable": true,
+            "description": "최근 출석 차시"
+          },
+          "last_attendance_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "최근 출석일"
+          },
+          "last_manager_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "최근 담당 매니저 id"
+          },
+          "last_manager_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "최근 담당 매니저명"
+          }
+        },
+        "description": "교육 수강(등록)",
+        "required": [
+          "enrollment_id"
+        ]
+      },
+      "GroupMembership": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "integer",
+            "description": "소속이력 고유번호(kGroupLog.no)"
+          },
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "member_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "이름"
+          },
+          "group_id": {
+            "type": "integer",
+            "description": "그룹 고유번호"
+          },
+          "group_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "그룹 이름"
+          },
+          "group_category_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "그룹 분류 코드"
+          },
+          "year": {
+            "type": "integer",
+            "nullable": true,
+            "description": "연도"
+          },
+          "sort_order": {
+            "type": "integer",
+            "nullable": true,
+            "description": "정렬 순서"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "소속 시작일"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "소속 종료일"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "등록 일시"
+          },
+          "level_1_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층1 그룹 id"
+          },
+          "level_1_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층1 그룹명"
+          },
+          "level_2_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층2 그룹 id"
+          },
+          "level_2_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층2 그룹명"
+          },
+          "level_3_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층3 그룹 id"
+          },
+          "level_3_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층3 그룹명"
+          },
+          "level_4_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층4 그룹 id"
+          },
+          "level_4_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층4 그룹명"
+          },
+          "level_5_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층5 그룹 id"
+          },
+          "level_5_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층5 그룹명"
+          }
+        },
+        "description": "성도 소속(그룹) 등록 결과",
+        "required": [
+          "membership_id",
+          "member_id",
+          "group_id"
+        ]
+      },
+      "KeyIntrospection": {
+        "type": "object",
+        "properties": {
+          "owner_member_idx": {
+            "type": "integer",
+            "nullable": true,
+            "description": "키에 연결된 회원 idx(mas)"
+          },
+          "church_code": {
+            "type": "integer",
+            "description": "교회 코드"
+          },
+          "key_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "키 식별자"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "유효 scope 목록"
+          },
+          "region": {
+            "type": "string",
+            "nullable": true,
+            "description": "키 region(kr1/us1)"
+          },
+          "key_status": {
+            "type": "string",
+            "nullable": true,
+            "description": "키 상태"
+          }
+        },
+        "description": "API 키 컨텍스트",
+        "required": [
+          "church_code",
+          "scopes"
+        ]
+      },
+      "SsoToken": {
+        "type": "object",
+        "properties": {
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "member_name": {
+            "type": "string",
+            "description": "이름"
+          },
+          "sso_token": {
+            "type": "string",
+            "description": "1회용 토큰(평문, 발급 시 1회 노출)"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "만료 일시"
+          },
+          "expires_in": {
+            "type": "integer",
+            "description": "만료까지 남은 초"
+          }
+        },
+        "description": "1회용 SSO 로그인 토큰",
+        "required": [
+          "member_id",
+          "member_name",
+          "sso_token",
+          "expires_at",
+          "expires_in"
+        ]
+      },
+      "SsoSession": {
+        "type": "object",
+        "properties": {
+          "verified": {
+            "type": "boolean",
+            "description": "검증 성공 여부"
+          },
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "church_code": {
+            "type": "integer",
+            "description": "교회 코드"
+          },
+          "member_name": {
+            "type": "string",
+            "description": "이름"
+          }
+        },
+        "description": "SSO 토큰 검증 결과(신원)",
+        "required": [
+          "verified",
+          "member_id",
+          "church_code",
+          "member_name"
+        ]
+      },
+      "Pagination": {
+        "type": "object",
+        "description": "페이지네이션 메타",
+        "properties": {
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "total_pages": {
+            "type": "integer"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "description": "오류 응답",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "오류 코드"
+              },
+              "message": {
+                "type": "string",
+                "description": "오류 메시지"
+              },
+              "detail": {
+                "type": "object",
+                "nullable": true,
+                "description": "추가 정보"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      }
+    }
+  }
+}

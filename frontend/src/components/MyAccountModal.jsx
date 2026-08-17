@@ -38,10 +38,9 @@ export default function MyAccountModal({ open, onClose, targetMemberId = null, i
           }
           setMemberInfo(data);
           setEditableInfo({
-            car_plate: data.car_plate || "",
             email: data.email || "",
             phone: data.phone || "",
-            address: data.address || "",
+            address_road: data.address_road || "",
           });
           setError("");
         } catch (err) {
@@ -61,14 +60,24 @@ export default function MyAccountModal({ open, onClose, targetMemberId = null, i
 
   const handleSave = async () => {
     try {
+      // Step 1: Update local database (memberInfo state) immediately
+      setMemberInfo((prev) => ({
+        ...prev,
+        ...editableInfo,
+      }));
+
+      // Step 2: Call API to update OHJIC server and backend
       if (isEditingOther && targetMemberId) {
         await api.updateMember(targetMemberId, editableInfo);
       } else {
         await api.updateMyAccountInfo(editableInfo);
       }
+
+      setError("");
       onClose();
     } catch (err) {
       setError(err.message || "Failed to update information.");
+      // Note: Local state is already updated; user can still see changes in UI
     }
   };
 
@@ -373,44 +382,7 @@ export default function MyAccountModal({ open, onClose, targetMemberId = null, i
                   />
                 </Box>
 
-                {/* Car Plate */}
-                <Box>
-                  <Typography
-                    component="label"
-                    sx={{
-                      fontSize: "14px",
-                      fontWeight: 500,
-                      color: "#666",
-                      mb: 0.8,
-                      display: "block",
-                    }}
-                  >
-                    Car Plate
-                  </Typography>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    name="car_plate"
-                    type="text"
-                    placeholder="Enter car plate"
-                    value={editableInfo.car_plate}
-                    onChange={handleInputChange}
-                    variant="outlined"
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        fontSize: "15px",
-                        borderRadius: 0.5,
-                        "& fieldset": {
-                          borderColor: "#e0e0e0",
-                        },
-                        "&:hover fieldset": {
-                          borderColor: "#bdbdbd",
-                        },
-                      },
-                    }}
-                  />
-                </Box>
-              </Box>
+              </Box> 
 
               {/* Address - Full Width */}
               <Box sx={{ mt: 3 }}>
@@ -429,9 +401,9 @@ export default function MyAccountModal({ open, onClose, targetMemberId = null, i
                 <TextField
                   fullWidth
                   size="small"
-                  name="address"
+                  name="address_road"
                   placeholder={t("address")}
-                  value={editableInfo.address}
+                  value={editableInfo.address_road}
                   onChange={handleInputChange}
                   variant="outlined"
                   multiline

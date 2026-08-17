@@ -26,7 +26,7 @@ export default function CellGroupInfoModal() {
   const [selectedMember, setSelectedMember] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const currentCellGroup = sessionStorage.getItem("milal_cell_group") || "";
-  const cellLeader = members.find((member) => member.title === "순장");
+  const cellLeader = members.find((member) => member.permission === "manager" );
   const cellGroupDisplay = currentCellGroup
     ? `${currentCellGroup}${cellLeader?.name ? `(${cellLeader.name} 순장)` : ""}`
     : "";
@@ -114,9 +114,9 @@ export default function CellGroupInfoModal() {
                     <TableCell sx={{ fontWeight: 600, fontSize: "14px" }}>
                       {t("colAddress")}
                     </TableCell>
-                    <TableCell sx={{ fontWeight: 600, fontSize: "14px" }}>
+                    {/* <TableCell sx={{ fontWeight: 600, fontSize: "14px" }}>
                       {t("colCarPlate")}
-                    </TableCell>
+                    </TableCell> */}
                     <TableCell sx={{ fontWeight: 600, fontSize: "14px", textAlign: "center" }}>
                       {t("editMember")}
                     </TableCell>
@@ -139,9 +139,9 @@ export default function CellGroupInfoModal() {
                       <TableCell>{member.phone}</TableCell>
                       <TableCell>{member.email}</TableCell>
                       <TableCell sx={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {member.address}
+                        {member.address_road}
                       </TableCell>
-                      <TableCell>{member.car_plate}</TableCell>
+                      {/* <TableCell>{member.car_plate}</TableCell> */}
                       <TableCell sx={{ textAlign: "center" }}>
                         <Button
                           size="small"

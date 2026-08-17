@@ -289,13 +289,19 @@ export const api = {
     }),
 
   // ── Admin User Management ─────────────────────────────────────────────
-  adminGetUsers: (skip = 0, limit = 20) =>
-    request(`/api/auth/admin/users?skip=${skip}&limit=${limit}`, {
+  adminGetUsers: (skip = 0, limit = 20, query = "") =>
+    request(`/api/auth/admin/users?skip=${skip}&limit=${limit}&query=${encodeURIComponent(query)}`, {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
-  adminGetUserCount: () =>
-    request("/api/auth/admin/users/total", {
+  adminGetUserCount: (query = "") =>
+    request(`/api/auth/admin/users/total?query=${encodeURIComponent(query)}`, {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+  adminUpdateMemberAccessible: (memberId, accessible) =>
+    request(`/api/auth/admin/members/${memberId}/accessible`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: { accessible },
     }),
   adminGetUserDetail: (userId) =>
     request(`/api/auth/admin/users/${userId}`, {

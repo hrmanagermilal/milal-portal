@@ -78,23 +78,17 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
       <Box sx={{ p: 3, pb: 2 }}>
         <Stack spacing={1.5}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            {/* Velok Logo */}
+            {/* Milal Logo */}
             <Box
+              component="img"
+              src="/favicon.png"
+              alt="Milal Logo"
               sx={{
                 width: 32,
                 height: 32,
-                bgcolor: "#d6dbd8",
                 borderRadius: "8px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "18px",
-                fontWeight: 800,
-                color: "white",
               }}
-            >
-              M
-            </Box>
+            />
             <Box>
               <Typography
                 variant="h6"
@@ -130,7 +124,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
       {/* Navigation Tree */}
       <Stack sx={{ p: 1.5, pb: 2 }}>
         {/* Cell Meeting section - for 순장 users */}
-        {title === "순장" && (
+        {(title === "순장" || title === "서리집사" ) && (
           <>
             <Button
               onClick={() => setCellMeetingOpen((prev) => !prev)}

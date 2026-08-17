@@ -1,6 +1,7 @@
 import os
 import asyncio
 import contextlib
+import logging
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 import re
@@ -12,8 +13,17 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import and_, or_, select, text
+from sqlalchemy import and_, or_, select, text, func
 from sqlalchemy.orm import Session, joinedload, selectinload
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -51,6 +61,8 @@ from .schemas import (
 )
 from .auth_routes import router as auth_router, _send_email, get_current_user, oauth2_scheme
 from .ai_chat import create_ai_chat_router
+from .reservation_eligibility import assess_reservation_eligibility
+from .sync_tasks import sync_all_members_from_ohjic
 
 app = FastAPI(title="Milal Community API", version="1.0.0")
 
@@ -70,6 +82,7 @@ REMINDER_LEAD_MINUTES = 15
 REMINDER_POLL_SECONDS = 60
 reminder_task: asyncio.Task | None = None
 EASTERN_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
+scheduler: AsyncIOScheduler | None = None
 
 
 def _as_utc_naive(dt: datetime) -> datetime:
@@ -347,18 +360,52 @@ async def startup() -> None:
     finally:
         db.close()
 
-    global reminder_task
+    global reminder_task, scheduler
     reminder_task = asyncio.create_task(_reservation_reminder_worker())
+    
+    # Initialize scheduler for daily member sync
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        sync_all_members_from_ohjic,
+        CronTrigger(hour=1, minute=0),  # 매일 오전 1시에 실행
+        id='sync_all_members_daily',
+        name='Daily sync all members from OHJIC API',
+        misfire_grace_time=900  # 15분의 오차 허용
+    )
+    scheduler.start()
+    logger.info("✓ Scheduler started for daily member sync (01:00 UTC)")
+    
+    # 앱 시작 시 캐시 상태 확인 (100개 이하면 즉시 동기화)
+    db = next(get_db())
+    try:
+        member_count = db.scalar(select(func.count()).select_from(Member))
+        logger.info(f"[startup] Current member cache size: {member_count}")
+        
+        if member_count is None or member_count <= 100:
+            logger.info(f"[startup] Cache has {member_count or 0} members (≤100) - Starting initial sync from OHJIC API...")
+            try:
+                await sync_all_members_from_ohjic()
+                logger.info("✓ [startup] Initial member sync completed successfully")
+            except Exception as e:
+                logger.error(f"✗ [startup] Initial member sync failed: {type(e).__name__}: {e}", exc_info=True)
+        else:
+            logger.info(f"[startup] Cache has {member_count} members (>100) - Skipping initial sync, using existing cache")
+    finally:
+        db.close()
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global reminder_task
+    global reminder_task, scheduler
     if reminder_task:
         reminder_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await reminder_task
         reminder_task = None
+    
+    if scheduler:
+        scheduler.shutdown(wait=False)
+        logger.info("✓ Scheduler shut down")
 
 
 @app.get("/health")
@@ -712,35 +759,13 @@ def can_reserve_room(
         f"membership_category={membership_category}"
     )
 
-    all_rules = db.query(ReservationRule).filter(ReservationRule.room_id == room_id).all()
-    matched_rules = [
-        rule for rule in all_rules
-        if _matches_rule_selector(rule, start_time)
-        and _matches_rule_time_scope(rule, start_time, end_time)
-        and _matches_rule_target(rule, membership_category)
-    ]
-
-    if not matched_rules:
-        return True, ""
-
-    denied_rules = [rule for rule in matched_rules if not rule.is_allowed]
-    if denied_rules:
-        blocked_rule = denied_rules[0]
-        target_label = (
-            blocked_rule.specific_date.isoformat() if blocked_rule.rule_type.value == "specific_date" else "해당 요일"
-        )
-        if blocked_rule.applies_all_day:
-            return False, f"{target_label}은(는) 종일 예약이 금지되어 있습니다."
-        return False, (
-            f"{target_label} {blocked_rule.start_time.strftime('%H:%M')}~"
-            f"{blocked_rule.end_time.strftime('%H:%M')} 시간대는 예약이 금지되어 있습니다."
-        )
-
-    allowed_rules = [rule for rule in matched_rules if rule.is_allowed]
-    if allowed_rules:
-        return True, ""
-
-    return True, ""
+    return assess_reservation_eligibility(
+        db=db,
+        room_id=room_id,
+        start_time=start_time,
+        end_time=end_time,
+        membership_category=membership_category,
+    )
 
 
 @app.post("/api/reservations", response_model=dict)
@@ -989,7 +1014,11 @@ def update_reservation_by_admin(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> ReservationOut:
-    get_current_user(token, db)  # Verify JWT token
+    current_member = get_current_user(token, db)  # Verify JWT token
+    membership_category = "adult"
+    actor_user = db.scalar(select(User).where(User.member_id == current_member.id))
+    if actor_user and actor_user.membership_category:
+        membership_category = actor_user.membership_category.value
 
     item = db.scalar(
         select(Reservation)
@@ -1016,6 +1045,17 @@ def update_reservation_by_admin(
             item.end_time = payload.end_time
 
         validate_reservation_times(item.start_time, item.end_time)
+
+        eligible, reason = can_reserve_room(
+            item.room_id,
+            item.start_time,
+            item.end_time,
+            membership_category,
+            db,
+        )
+        if not eligible:
+            raise HTTPException(status_code=403, detail=reason)
+
         item.status = ReservationStatus.changed
 
         # Re-arm reminders when reservation schedule is changed by admin.

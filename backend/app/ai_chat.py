@@ -21,6 +21,7 @@ from .models import (
     Room,
     User,
 )
+from .reservation_eligibility import assess_reservation_eligibility
 from .schemas import ChatRequest
 
 
@@ -527,25 +528,27 @@ Important rules:
                     "conflicts": [],
                 }
 
-            time_allowed, time_error = _validate_time_window(start, end)
-            if not time_allowed:
+            membership_category = _resolve_membership_category()
+            eligible, reason = assess_reservation_eligibility(
+                db=db,
+                room_id=room_id,
+                start_time=start,
+                end_time=end,
+                membership_category=membership_category,
+            )
+            if not eligible:
+                is_time_violation = (
+                    "종료 시간" in reason
+                    or "과거" in reason
+                    or "1개월" in reason
+                )
                 return {
                     "available": False,
-                    "time_allowed": False,
-                    "time_error": time_error,
-                    "rule_allowed": True,
-                    "rule_error": "",
-                    "conflicts": [],
-                }
-
-            rule_allowed, rule_error = _evaluate_reservation_rules(room_id, start, end)
-            if not rule_allowed:
-                return {
-                    "available": False,
-                    "time_allowed": True,
-                    "time_error": "",
-                    "rule_allowed": False,
-                    "rule_error": rule_error,
+                    "time_allowed": not is_time_violation,
+                    "time_error": reason if is_time_violation else "",
+                    "rule_allowed": is_time_violation,
+                    "rule_error": "" if is_time_violation else reason,
+                    "analysis": reason,
                     "conflicts": [],
                 }
 
@@ -601,17 +604,20 @@ Important rules:
             if end_err:
                 return {"error": end_err}
 
-            time_allowed, time_error = _validate_time_window(start, end)
-            if not time_allowed:
-                return {"error": time_error}
-
             room = db.get(Room, room_id)
             if not room or not room.is_active:
                 return {"error": f"Room ID {room_id}를 찾을 수 없습니다."}
 
-            rule_allowed, rule_error = _evaluate_reservation_rules(room_id, start, end)
-            if not rule_allowed:
-                return {"error": rule_error}
+            membership_category = _resolve_membership_category()
+            eligible, reason = assess_reservation_eligibility(
+                db=db,
+                room_id=room_id,
+                start_time=start,
+                end_time=end,
+                membership_category=membership_category,
+            )
+            if not eligible:
+                return {"error": reason}
 
             conflict = db.scalar(
                 select(Reservation).where(
