@@ -122,6 +122,22 @@ export default function DayViewCalendar({
     };
   }, []);
 
+  useEffect(() => {
+    const handleReservationUpdated = async () => {
+      try {
+        const data = await api.getReservations();
+        setLocalReservations(data);
+      } catch (err) {
+        console.error("[DayViewCalendar] Failed to refresh after reservation updated:", err);
+      }
+    };
+
+    EventPublisher.addEventListener(EventDef.onReservationUpdated, "DAYVIEW_UPDATE", handleReservationUpdated);
+    return () => {
+      EventPublisher.removeEventListener(EventDef.onReservationUpdated, "DAYVIEW_UPDATE", handleReservationUpdated);
+    };
+  }, []);
+
   const handleCellClick = (roomId, cellDateTimeStart, cellDateTimeEnd) => {
     setSelectedRoomId(roomId);
     setSelectedDateTime(cellDateTimeStart);
@@ -316,6 +332,7 @@ export default function DayViewCalendar({
                     startHour={HOUR_START}
                     endHour={HOUR_END}
                     hourRange={HOUR_END - HOUR_START}
+                    currentUser={currentUser}
                   />
                 ))}
               </Box>

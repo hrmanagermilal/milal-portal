@@ -120,7 +120,11 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
     };
 
     EventPublisher.addEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
-    return () => EventPublisher.removeEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
+    EventPublisher.addEventListener(EventDef.onReservationUpdated, "TIMELINE", handleReservationCreated);
+    return () => {
+      EventPublisher.removeEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
+      EventPublisher.removeEventListener(EventDef.onReservationUpdated, "TIMELINE", handleReservationCreated);
+    };
   }, []);
 
   useEffect(() => {

@@ -198,6 +198,17 @@ export const api = {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: payload,
     }),
+  updateReservation: (id, payload) =>
+    request(`/api/reservations/${id}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+  deleteReservation: (id) =>
+    request(`/api/reservations/${id}`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
   adminUpdateReservation: (id, payload) =>
     request(`/api/admin/reservations/${id}`, {
       method: "PATCH",
