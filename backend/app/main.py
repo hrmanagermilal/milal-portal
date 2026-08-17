@@ -954,7 +954,41 @@ def create_reservation(
     if calendar_link:
         email_body += f"\n\nGoogle Calendar에 추가:\n{calendar_link}\n"
 
+    # Send email to requester
     _send_email(payload.email, email_subject, email_body)
+    
+    # Send notification email to admins
+    admins = db.scalars(
+        select(Member).where(
+            Member.permission == "admin",
+            Member.email != "",
+        )
+    ).all()
+    
+    if admins:
+        admin_email_subject = f"[관리자 알림] {room.name} - 새로운 예약 신청"
+        admin_email_body = f"""
+새로운 예약이 신청되었습니다.
+
+예약자: {payload.requester_name}
+연락처: {payload.phone}
+이메일: {payload.email}
+장소: {room.name}
+목적: {payload.purpose}
+참석인원: {payload.attendees}
+예약 시간(ET): {_format_eastern_time(reservations[0].start_time)} - {_format_eastern_time(reservations[0].end_time)}
+메모: {payload.notes}
+상태: {'자동승인 (관리자 예약)' if is_admin else '승인 대기중'}
+"""
+        
+        if payload.repeat_count > 1:
+            repeat_type_kr = "매주" if payload.repeat_type == "weekly" else "매달"
+            admin_email_body += f"\n반복 예약: {repeat_type_kr} {payload.repeat_count}회\n"
+            for idx, res in enumerate(reservations, 1):
+                admin_email_body += f"  {idx}. {_format_eastern_time(res.start_time)} - {_format_eastern_time(res.end_time)}\n"
+        
+        for admin in admins:
+            _send_email(admin.email, admin_email_subject, admin_email_body)
 
     return {
         "message": "reservation created successfully",
