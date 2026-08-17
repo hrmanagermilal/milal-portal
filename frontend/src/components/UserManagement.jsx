@@ -12,6 +12,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import ButtonGroup from "@mui/material/ButtonGroup";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -25,14 +26,15 @@ export default function UserManagement() {
   const [users, setUsers] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Load users on mount and when page changes
+  // Load users on mount and when page/search changes
   useEffect(() => {
     loadUsers();
-  }, [currentPage]);
+  }, [currentPage, searchQuery]);
 
   // Load total count on mount
   useEffect(() => {
@@ -43,7 +45,7 @@ export default function UserManagement() {
     setLoading(true);
     try {
       const skip = (currentPage - 1) * ITEMS_PER_PAGE;
-      const data = await api.adminGetUsers(skip, ITEMS_PER_PAGE);
+      const data = await api.adminGetUsers(skip, ITEMS_PER_PAGE, searchQuery);
       setUsers(data);
     } catch (err) {
       console.error("Failed to load users:", err);
@@ -54,11 +56,16 @@ export default function UserManagement() {
 
   async function loadTotalCount() {
     try {
-      const data = await api.adminGetUserCount();
+      const data = await api.adminGetUserCount(searchQuery);
       setTotalCount(data.total);
     } catch (err) {
       console.error("Failed to load user count:", err);
     }
+  }
+
+  function handleSearchChange(e) {
+    setSearchQuery(e.target.value);
+    setCurrentPage(1);
   }
 
   function handleUserClick(user) {
@@ -83,6 +90,22 @@ export default function UserManagement() {
         <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
           {t("userManagement") || "User Management"}
         </Typography>
+
+        {/* Search Field */}
+        <Box sx={{ mb: 2 }}>
+          <TextField
+            placeholder="Search by name, email, phone, or user ID..."
+            size="small"
+            fullWidth
+            value={searchQuery}
+            onChange={handleSearchChange}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: "8px",
+              },
+            }}
+          />
+        </Box>
 
         {/* Pagination Controls */}
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, gap: 2 }}>
@@ -136,6 +159,9 @@ export default function UserManagement() {
                   {t("colStatus") || "Status"}
                 </TableCell>
                 <TableCell sx={{ color: "#313b5e", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Accessible
+                </TableCell>
+                <TableCell sx={{ color: "#313b5e", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   {t("action") || "Action"}
                 </TableCell>
               </TableRow>
@@ -178,6 +204,15 @@ export default function UserManagement() {
                         fontSize: "13px" 
                       }}>
                         {user.is_admin ? "Admin" : "User"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ 
+                        color: user.member_accessible ? "#3b522e" : "#999999", 
+                        fontWeight: 600,
+                        fontSize: "13px" 
+                      }}>
+                        {user.member_accessible ? "✓" : "✗"}
                       </Typography>
                     </TableCell>
                     <TableCell align="right">

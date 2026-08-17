@@ -16,6 +16,7 @@ import { api } from "../api";
 export default function UserManagementDetail({ open, onClose, user, onUserUpdated }) {
   const { t } = useLanguage();
   const [isAdmin, setIsAdmin] = useState(user?.is_admin || false);
+  const [isAccessible, setIsAccessible] = useState(user?.member_accessible || 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -36,6 +37,27 @@ export default function UserManagementDetail({ open, onClose, user, onUserUpdate
     } catch (err) {
       setError(err.message || "Failed to update admin status");
       setIsAdmin(!newValue); // Revert on error
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAccessibleToggle(event) {
+    const newValue = event.target.checked ? 1 : 0;
+    setIsAccessible(newValue);
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      await api.adminUpdateMemberAccessible(user.member_id, newValue);
+      setSuccess(`Accessible status updated to ${newValue ? "Yes" : "No"}`);
+      if (onUserUpdated) {
+        setTimeout(onUserUpdated, 1500);
+      }
+    } catch (err) {
+      setError(err.message || "Failed to update accessible status");
+      setIsAccessible(1 - newValue); // Revert on error
     } finally {
       setLoading(false);
     }
@@ -133,6 +155,26 @@ export default function UserManagementDetail({ open, onClose, user, onUserUpdate
             <Switch
               checked={isAdmin}
               onChange={handleAdminToggle}
+              disabled={loading}
+              color="primary"
+            />
+          </Box>
+
+          <Divider />
+
+          {/* Accessible Toggle */}
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", bgcolor: "#f8f9fa", p: 1.5, borderRadius: 1 }}>
+            <Stack>
+              <Typography variant="body2" sx={{ color: "#313b5e", fontWeight: 600, fontSize: "13px" }}>
+                Allow Sign-up
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#8486a7", fontSize: "12px" }}>
+                Permit this member to create account
+              </Typography>
+            </Stack>
+            <Switch
+              checked={isAccessible === 1}
+              onChange={handleAccessibleToggle}
               disabled={loading}
               color="primary"
             />

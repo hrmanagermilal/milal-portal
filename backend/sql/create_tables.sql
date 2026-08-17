@@ -15,19 +15,80 @@ DROP TABLE IF EXISTS rooms;
 DROP TABLE IF EXISTS members;
 
 -- ============================================================
--- Table: members  (church directory)
+-- Table: members  (church directory - synced from OHJIC API)
 -- ============================================================
 CREATE TABLE members (
+    -- 기본 식별 정보
     id           INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
     name         VARCHAR(100) NOT NULL,
-    car_plate VARCHAR(50)  NOT NULL DEFAULT '',
-    phone        VARCHAR(30)  NOT NULL DEFAULT '',
-    address      VARCHAR(255) NOT NULL DEFAULT '',
     email        VARCHAR(255) NOT NULL DEFAULT '',
-    title        VARCHAR(12) NOT NULL DEFAULT '',
-    cell_group   VARCHAR(20) NOT NULL DEFAULT '',
+    phone        VARCHAR(30)  NOT NULL DEFAULT '',
+    
+    -- 세대/가족 정보
+    family_id    INT          DEFAULT NULL,
+    family_relation VARCHAR(50) NOT NULL DEFAULT '',
+    family_head_name VARCHAR(100) NOT NULL DEFAULT '',
+    
+    -- 개인 정보
+    gender       VARCHAR(1)   NOT NULL DEFAULT '',
+    birth_year   INT          DEFAULT NULL,
+    birth_date   DATE         DEFAULT NULL,
+    
+    -- 교회 역할 및 지위
+    title        VARCHAR(50)  NOT NULL DEFAULT '',
+    position_code INT         DEFAULT NULL,
+    position_order INT        DEFAULT NULL,
+    
+    -- 신급 (세례/입교 등)
+    church_level_name VARCHAR(50) NOT NULL DEFAULT '',
+    church_level_code INT      DEFAULT NULL,
+    church_level_order INT     DEFAULT NULL,
+    church_level_date DATE     DEFAULT NULL,
+    church_level_church VARCHAR(100) NOT NULL DEFAULT '',
+    
+    -- 교인 구분
+    member_category1_code INT  DEFAULT NULL,
+    member_category1_name VARCHAR(50) NOT NULL DEFAULT '',
+    member_category2_code INT  DEFAULT NULL,
+    member_category2_name VARCHAR(50) NOT NULL DEFAULT '',
+    member_category_updated_at DATE DEFAULT NULL,
+    membership_status VARCHAR(20) NOT NULL DEFAULT '',
+    
+    -- 소속 그룹
+    group_category_name VARCHAR(100) NOT NULL DEFAULT '',
+    cell_group   VARCHAR(100) NOT NULL DEFAULT '',
+    
+    -- 주소 정보
+    postal_code_jibun VARCHAR(20) NOT NULL DEFAULT '',
+    postal_code_road VARCHAR(20) NOT NULL DEFAULT '',
+    address      VARCHAR(255) NOT NULL DEFAULT '',
+    address_detail VARCHAR(255) NOT NULL DEFAULT '',
+    address_road VARCHAR(255) NOT NULL DEFAULT '',
+    
+    -- 추가 정보
+    photo_url    VARCHAR(500) NOT NULL DEFAULT '',
+    
+    -- 시스템 필드 (Milal Portal specific)
     user_id      VARCHAR(30)  NOT NULL DEFAULT '',
-    permission   ENUM('member','admin') NOT NULL DEFAULT 'member'
+    permission   VARCHAR(20)  NOT NULL DEFAULT 'member',
+    accessible   TINYINT(1)   NOT NULL DEFAULT 0,
+    
+    -- 타임스탬프
+    created_at   DATETIME     DEFAULT NULL,
+    welcomed_at  DATE         DEFAULT NULL,
+    updated_at   DATETIME     DEFAULT NULL,
+    
+    -- 자유항목 (member_custom_1 ~ member_custom_9)
+    custom_1     VARCHAR(255) NOT NULL DEFAULT '',
+    custom_2     VARCHAR(255) NOT NULL DEFAULT '',
+    custom_3     VARCHAR(255) NOT NULL DEFAULT '',
+    custom_4     VARCHAR(255) NOT NULL DEFAULT '',
+    custom_5     VARCHAR(255) NOT NULL DEFAULT '',
+    custom_6     VARCHAR(255) NOT NULL DEFAULT '',
+    custom_7     VARCHAR(255) NOT NULL DEFAULT '',
+    custom_8     VARCHAR(255) NOT NULL DEFAULT '',
+    custom_9     VARCHAR(255) NOT NULL DEFAULT ''
+    
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ============================================================

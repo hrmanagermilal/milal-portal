@@ -37,13 +37,15 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     environment:
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-milal-admin-key}
-      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://milal_user:milal_password_2026@db:3306/milal_room_reservation?charset=utf8mb4}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+      DATABASE_URL: ${DATABASE_URL}
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-it-team@milalchurch.com}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-kwpy oubh zafz cjke}
-      SMTP_FROM: ${SMTP_FROM:-it-team@milalchurch.com}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      OHJIC_API_KEY: ${OHJIC_API_KEY}
+      OHJIC_API_BASE_URL: ${OHJIC_API_BASE_URL:-https://api.ohjic.us}
     restart: unless-stopped
 
 volumes:

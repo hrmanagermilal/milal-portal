@@ -29,16 +29,78 @@ class AttendanceType(str, enum.Enum):
 class Member(Base):
     __tablename__ = "members"
 
-    id:           Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name:         Mapped[str] = mapped_column(String(100), nullable=False)
-    car_plate: Mapped[str] = mapped_column(String(50),  default="")
-    phone:        Mapped[str] = mapped_column(String(30),  default="")
-    address:      Mapped[str] = mapped_column(String(255), default="")
+    # 기본 식별 정보
+    id:           Mapped[int] = mapped_column(Integer, primary_key=True, index=True)  # member_id (OHJIC)
+    name:         Mapped[str] = mapped_column(String(100), nullable=False)  # member_name
     email:        Mapped[str] = mapped_column(String(255), default="")
-    title:        Mapped[str] = mapped_column(String(12), default="")
-    cell_group:   Mapped[str] = mapped_column(String(20), default="")
-    user_id:      Mapped[str] = mapped_column(String(30), default="")
-    permission:   Mapped[str] = mapped_column(String(20), default="")
+    phone:        Mapped[str] = mapped_column(String(30),  default="")  # mobile_phone
+    
+    # 세대/가족 정보
+    family_id:    Mapped[int] = mapped_column(Integer, nullable=True)  # 세대(가족) 식별자
+    family_relation: Mapped[str] = mapped_column(String(50), default="")  # 세대 내 관계
+    family_head_name: Mapped[str] = mapped_column(String(100), default="")  # 세대주 이름
+    
+    # 개인 정보
+    gender:       Mapped[str] = mapped_column(String(1), default="")  # M=남, F=여
+    birth_year:   Mapped[int] = mapped_column(Integer, nullable=True)  # 출생연도
+    birth_date:   Mapped[date] = mapped_column(Date, nullable=True)  # 생년월일
+    
+    # 교회 역할 및 지위
+    title:        Mapped[str] = mapped_column(String(50), default="")  # position_name (직분명)
+    position_code: Mapped[int] = mapped_column(Integer, nullable=True)  # 직분 코드
+    position_order: Mapped[int] = mapped_column(Integer, nullable=True)  # 직분 정렬순서
+    
+    # 신급(세례/입교 등)
+    church_level_name: Mapped[str] = mapped_column(String(50), default="")  # 신급명
+    church_level_code: Mapped[int] = mapped_column(Integer, nullable=True)  # 신급 코드
+    church_level_order: Mapped[int] = mapped_column(Integer, nullable=True)  # 신급 정렬순서
+    church_level_date: Mapped[date] = mapped_column(Date, nullable=True)  # 집례(세례)일
+    church_level_church: Mapped[str] = mapped_column(String(100), default="")  # 집례 교회
+    
+    # 교인 구분
+    member_category1_code: Mapped[int] = mapped_column(Integer, nullable=True)  # 교인구분1 코드
+    member_category1_name: Mapped[str] = mapped_column(String(50), default="")  # 교인구분1 명칭
+    member_category2_code: Mapped[int] = mapped_column(Integer, nullable=True)  # 교인구분2 코드
+    member_category2_name: Mapped[str] = mapped_column(String(50), default="")  # 교인구분2 명칭
+    member_category_updated_at: Mapped[date] = mapped_column(Date, nullable=True)  # 교인구분 변경일
+    membership_status: Mapped[str] = mapped_column(String(20), default="")  # member/unclassified/non_member
+    
+    # 소속 그룹
+    group_category_name: Mapped[str] = mapped_column(String(100), default="")  # 소속 분류명(교구 등)
+    cell_group:   Mapped[str] = mapped_column(String(100), default="")  # group_names[-1] (마지막 항목)
+    
+    # 주소 정보
+    postal_code_jibun: Mapped[str] = mapped_column(String(20), default="")  # 우편번호(지번)
+    postal_code_road: Mapped[str] = mapped_column(String(20), default="")  # 우편번호(도로명)
+    address:      Mapped[str] = mapped_column(String(255), default="")  # address_jibun (지번주소)
+    address_detail: Mapped[str] = mapped_column(String(255), default="")  # 상세주소
+    address_road: Mapped[str] = mapped_column(String(255), default="")  # 도로명주소
+    
+    # 추가 정보
+    photo_url:    Mapped[str] = mapped_column(String(500), default="")  # 프로필 사진 URL
+    
+    # 시스템 필드 (Milal Portal specific)
+    user_id:      Mapped[str] = mapped_column(String(30), default="")  # 로그인 계정
+    permission:   Mapped[str] = mapped_column(String(20), default="")  # admin/manager/member
+    accessible:   Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 포털 접근 여부
+    
+    # 타임스탬프
+    created_at:   Mapped[datetime] = mapped_column(DateTime, nullable=True)  # 교회 등록일시
+    welcomed_at:  Mapped[date] = mapped_column(Date, nullable=True)  # 교회 환영일
+    updated_at:   Mapped[datetime] = mapped_column(DateTime, nullable=True)  # 최종 수정일시
+    
+    # 자유항목 (member_custom_1 ~ member_custom_9)
+    custom_1:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_1
+    custom_2:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_2
+    custom_3:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_3
+    custom_4:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_4
+    custom_5:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_5
+    custom_6:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_6
+    custom_7:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_7
+    custom_8:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_8
+    custom_9:     Mapped[str] = mapped_column(String(255), default="")  # member_custom_9
+    
+    # 관계
     user:      Mapped[Optional["User"]]      = relationship(back_populates="member", uselist=False)
     otp_codes: Mapped[list["OtpCode"]]       = relationship(back_populates="member")
     change_logs: Mapped[list["MemberChangeLog"]] = relationship(back_populates="member")

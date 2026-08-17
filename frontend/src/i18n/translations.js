@@ -15,7 +15,10 @@ export const translations = {
     navCellGroupInfo: "Cell Member Info",
     navCellReport: "Cell Report",
     navUserManagement: "User Management",
+    cellGroupGuideText: "Find and edit your cell group members.",
+    cellReportGuideText: "Record attendance and individual/group prayer requests for cell members.",
     userManagement : "User Management",
+
 
     // TopBar
     myAccount: "My Account",

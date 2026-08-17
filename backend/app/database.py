@@ -8,6 +8,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./reservation.db")
 engine_kwargs = {}
 if DATABASE_URL.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
+elif DATABASE_URL.startswith("mysql"):
+    # Ensure UTF-8 encoding for Korean characters
+    engine_kwargs["connect_args"] = {"charset": "utf8mb4"}
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

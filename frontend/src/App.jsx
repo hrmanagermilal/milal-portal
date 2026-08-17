@@ -20,6 +20,7 @@ import ReservationTimeline from "./components/room-reservation/ReservationTimeli
 import RoomSettingsPanel from "./components/room-reservation/RoomSettingsPanel";
 import CellGroupInfoModal from "./components/cell_group/CellGroupInfoModal";
 import CellReportPanel from "./components/cell_group/CellReportPanel";
+import AdminSearchMembers from "./components/AdminSearchMembers";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ChatWidget from "./components/ChatWidget";
@@ -64,6 +65,7 @@ export default function App() {
     { key: "timeline", label: t("navTimeline") },
     { key: "request",  label: t("navRequest") },
     { key: "admin",    label: t("navAdmin") },
+    { key: "member-search", label: "🔍 성도 검색" },
     { key: "space-settings", label: t("navSettings") },
     { key: "cell-group", label: t("navCellGroupInfo") },
     { key: "cell-report", label: t("navCellReport") },
@@ -353,6 +355,9 @@ export default function App() {
               onAdminAction={handleAdminAction}
               guideText={t("adminGuideText")}
             />
+          )}
+          {!loading && tab === "member-search" && (
+            <AdminSearchMembers />
           )}
           {!loading && tab === "users" && (
             <UserManagement />
