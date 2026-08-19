@@ -70,7 +70,7 @@ def assess_reservation_eligibility(
         return False, "종료 시간은 시작 시간 이후여야 합니다."
 
     app_tz = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
-    now_local = datetime.now(app_tz)
+    now_local = datetime.now(app_tz).replace(tzinfo=None)  # Convert to timezone-naive for comparison
 
     if start_time < now_local:
         return False, "과거 시간은 예약할 수 없습니다."
