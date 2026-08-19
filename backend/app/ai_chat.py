@@ -439,11 +439,12 @@ Important rules:
             if not member:
                 return default_category
 
-            user = db.scalar(select(User).where(User.member_id == member.id).limit(1))
-            if user and user.membership_category:
-                return user.membership_category.value
-
-            return default_category
+            # 멤버의 group_category_name을 기준으로 membership_category 결정
+            # '장년부'이면 adult, 나머지는 youth
+            if member.group_category_name.strip() == "장년부":
+                return "adult"
+            else:
+                return "youth"
 
         def _matches_rule_selector(rule: ReservationRule, target_start: datetime) -> bool:
             if rule.rule_type.value == "specific_date":

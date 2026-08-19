@@ -805,7 +805,12 @@ def create_reservation(
         if current_user:
             user = db.scalar(select(User).where(User.member_id == current_user.id))
             if user:
-                membership_category = user.membership_category.value if user.membership_category else "adult"
+                # 멤버의 group_category_name을 기준으로 membership_category 결정
+                # '장년부'이면 adult, 나머지는 youth
+                if current_user.group_category_name.strip() == "장년부":
+                    membership_category = "adult"
+                else:
+                    membership_category = "youth"
             print(f"[create_reservation] user: {user}, membership_category: {membership_category}")
         else:
             print(f"[create_reservation] No current_user, using default membership_category: {membership_category}")

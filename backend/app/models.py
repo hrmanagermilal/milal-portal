@@ -107,6 +107,16 @@ class Member(Base):
     cell_reports: Mapped[list["CellReport"]] = relationship(back_populates="leader")
     cell_report_entries: Mapped[list["CellReportMemberEntry"]] = relationship(back_populates="member")
 
+    @property
+    def computed_membership_category(self) -> str:
+        """
+        Compute membership_category based on group_category_name.
+        '장년부' -> 'adult', others -> 'youth'
+        """
+        if self.group_category_name.strip() == "장년부":
+            return "adult"
+        return "youth"
+
 
 # ── User (account with password) ───────────────────────────────────────────
 class User(Base):
