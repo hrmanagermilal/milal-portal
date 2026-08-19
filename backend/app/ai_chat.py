@@ -338,8 +338,9 @@ You can help users:
 8. If the user asks about one person: analyze changes in that member's prayer topics over recent months
 
 Important rules:
-- The server stores times as-is without timezone conversion. Pass times EXACTLY as the user specifies them (do NOT add or subtract hours for UTC conversion).
-- For example, if the user says "6pm tomorrow", pass "YYYY-MM-DDT18:00:00" as-is.
+- Times should be passed in local time format (YYYY-MM-DDTHH:MM:SS). The server interprets all times as local time (Eastern Time / Toronto timezone).
+- When user says "오후 1시 30분" (1:30 PM), convert it to ISO format "YYYY-MM-DDTHH:MM:SS" using local time (13:30:00). Do NOT convert to UTC.
+- For example, if user says "2026년 8월 23일 오후 1시 30분", convert to "2026-08-23T13:30:00" as-is.
 - Always call check_availability before create_reservation.
 - check_availability must validate reservation rules first and explain allowed/blocked reasons to the user before attempting creation.
 - As soon as the user gives a desired date/time, immediately call check_availability and explain whether it is inside the 1-month window and whether any rule blocks it.
