@@ -33,6 +33,7 @@ services:
       - "8083:7000"
     networks:
       - milal-network
+      - milal-shared
     dns:
       - 8.8.8.8
       - 8.8.4.4
@@ -54,3 +55,5 @@ volumes:
 networks:
   milal-network:
     driver: bridge
+  milal-shared:
+    external: true
