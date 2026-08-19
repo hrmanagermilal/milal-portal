@@ -20,7 +20,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import Member, OtpCode, User, MemberChangeLog
+from .models import Member, OtpCode, User, MemberChangeLog, MembershipCategory
 from .schemas import UserOut, ChangePasswordRequest, AdminUpdateUserRequest, ResetPasswordRequest
 from .ohjic_client import OhjicAPIClient
 
@@ -432,10 +432,18 @@ def create_account(body: CreateAccountRequest, db: Session = Depends(get_db)):
         select(User).where(User.member_id == body.member_id)
     ).scalar_one_or_none()
 
+    # Determine membership_category based on member's group_category_name
+    # '장년부' -> adult, otherwise -> youth
+    if member.group_category_name.strip() == "장년부":
+        membership_category = MembershipCategory.adult
+    else:
+        membership_category = MembershipCategory.youth
+
     if existing:
         existing.password_hash = body.password
+        existing.membership_category = membership_category
     else:
-        db.add(User(member_id=body.member_id, password_hash=body.password))
+        db.add(User(member_id=body.member_id, password_hash=body.password, membership_category=membership_category))
 
     db.commit()
     db.refresh(member)
