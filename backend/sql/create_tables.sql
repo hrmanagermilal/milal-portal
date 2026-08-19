@@ -1,281 +1,309 @@
--- ============================================================
--- Milal Community - Database Schema (MySQL)
--- ============================================================
+-- MySQL dump 10.13  Distrib 8.0.46, for Linux (x86_64)
+--
+-- Host: localhost    Database: milal_room_reservation
+-- ------------------------------------------------------
+-- Server version	8.0.46
 
--- Drop existing tables (order matters due to foreign key)
-DROP TABLE IF EXISTS cell_report_member_entries;
-DROP TABLE IF EXISTS cell_reports;
-DROP TABLE IF EXISTS reservation_rules;
-DROP TABLE IF EXISTS reservations;
-DROP TABLE IF EXISTS room_locations;
-DROP TABLE IF EXISTS otp_codes;
-DROP TABLE IF EXISTS member_change_logs;
-DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS rooms;
-DROP TABLE IF EXISTS members;
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!50503 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
--- ============================================================
--- Table: members  (church directory - synced from OHJIC API)
--- ============================================================
-CREATE TABLE members (
-    -- 기본 식별 정보
-    id           INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    name         VARCHAR(100) NOT NULL,
-    email        VARCHAR(255) NOT NULL DEFAULT '',
-    phone        VARCHAR(30)  NOT NULL DEFAULT '',
-    
-    -- 세대/가족 정보
-    family_id    INT          DEFAULT NULL,
-    family_relation VARCHAR(50) NOT NULL DEFAULT '',
-    family_head_name VARCHAR(100) NOT NULL DEFAULT '',
-    
-    -- 개인 정보
-    gender       VARCHAR(1)   NOT NULL DEFAULT '',
-    birth_year   INT          DEFAULT NULL,
-    birth_date   DATE         DEFAULT NULL,
-    
-    -- 교회 역할 및 지위
-    title        VARCHAR(50)  NOT NULL DEFAULT '',
-    position_code INT         DEFAULT NULL,
-    position_order INT        DEFAULT NULL,
-    
-    -- 신급 (세례/입교 등)
-    church_level_name VARCHAR(50) NOT NULL DEFAULT '',
-    church_level_code INT      DEFAULT NULL,
-    church_level_order INT     DEFAULT NULL,
-    church_level_date DATE     DEFAULT NULL,
-    church_level_church VARCHAR(100) NOT NULL DEFAULT '',
-    
-    -- 교인 구분
-    member_category1_code INT  DEFAULT NULL,
-    member_category1_name VARCHAR(50) NOT NULL DEFAULT '',
-    member_category2_code INT  DEFAULT NULL,
-    member_category2_name VARCHAR(50) NOT NULL DEFAULT '',
-    member_category_updated_at DATE DEFAULT NULL,
-    membership_status VARCHAR(20) NOT NULL DEFAULT '',
-    
-    -- 소속 그룹
-    group_category_name VARCHAR(100) NOT NULL DEFAULT '',
-    cell_group   VARCHAR(100) NOT NULL DEFAULT '',
-    
-    -- 주소 정보
-    postal_code_jibun VARCHAR(20) NOT NULL DEFAULT '',
-    postal_code_road VARCHAR(20) NOT NULL DEFAULT '',
-    address      VARCHAR(255) NOT NULL DEFAULT '',
-    address_detail VARCHAR(255) NOT NULL DEFAULT '',
-    address_road VARCHAR(255) NOT NULL DEFAULT '',
-    
-    -- 추가 정보
-    photo_url    VARCHAR(500) NOT NULL DEFAULT '',
-    
-    -- 시스템 필드 (Milal Portal specific)
-    user_id      VARCHAR(30)  NOT NULL DEFAULT '',
-    permission   VARCHAR(20)  NOT NULL DEFAULT 'member',
-    accessible   TINYINT(1)   NOT NULL DEFAULT 0,
-    
-    -- 타임스탬프
-    created_at   DATETIME     DEFAULT NULL,
-    welcomed_at  DATE         DEFAULT NULL,
-    updated_at   DATETIME     DEFAULT NULL,
-    
-    -- 자유항목 (member_custom_1 ~ member_custom_9)
-    custom_1     VARCHAR(255) NOT NULL DEFAULT '',
-    custom_2     VARCHAR(255) NOT NULL DEFAULT '',
-    custom_3     VARCHAR(255) NOT NULL DEFAULT '',
-    custom_4     VARCHAR(255) NOT NULL DEFAULT '',
-    custom_5     VARCHAR(255) NOT NULL DEFAULT '',
-    custom_6     VARCHAR(255) NOT NULL DEFAULT '',
-    custom_7     VARCHAR(255) NOT NULL DEFAULT '',
-    custom_8     VARCHAR(255) NOT NULL DEFAULT '',
-    custom_9     VARCHAR(255) NOT NULL DEFAULT ''
-    
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+--
+-- Table structure for table `cell_report_member_entries`
+--
 
--- ============================================================
--- Table: users  (accounts linked to members)
--- ============================================================
-CREATE TABLE users (
-    id                    INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    member_id             INT          NOT NULL UNIQUE,
-    password_hash         VARCHAR(255) NOT NULL,
-    membership_category   ENUM('youth','adult') NOT NULL DEFAULT 'adult',
-    created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_user_member FOREIGN KEY (member_id) REFERENCES members(id)
-);
+DROP TABLE IF EXISTS `cell_report_member_entries`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `cell_report_member_entries` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `report_id` int NOT NULL,
+  `member_id` int NOT NULL,
+  `attended` tinyint(1) NOT NULL,
+  `attendance_type` enum('present','absent','long_absence') NOT NULL,
+  `prayer` text NOT NULL,
+  `remarks` text NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `report_id` (`report_id`),
+  KEY `member_id` (`member_id`),
+  KEY `ix_cell_report_member_entries_id` (`id`),
+  CONSTRAINT `cell_report_member_entries_ibfk_1` FOREIGN KEY (`report_id`) REFERENCES `cell_reports` (`id`),
+  CONSTRAINT `cell_report_member_entries_ibfk_2` FOREIGN KEY (`member_id`) REFERENCES `members` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
--- ============================================================
--- Table: otp_codes  (temporary verification codes)
--- ============================================================
-CREATE TABLE otp_codes (
-    id         INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    member_id  INT          NOT NULL,
-    code       VARCHAR(4)   NOT NULL,
-    contact    VARCHAR(255) NOT NULL,
-    expires_at DATETIME     NOT NULL,
-    used       TINYINT(1)   NOT NULL DEFAULT 0,
-    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_otp_member FOREIGN KEY (member_id) REFERENCES members(id)
-);
+--
+-- Table structure for table `cell_reports`
+--
 
--- ============================================================
--- Table: member_change_logs
--- ============================================================
-CREATE TABLE member_change_logs (
-    id          INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    member_id   INT          NOT NULL,
-    changed_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    changed_by  VARCHAR(100) NOT NULL,
-    field_name  VARCHAR(50)  NOT NULL,
-    old_value   TEXT         NOT NULL,
-    new_value   TEXT         NOT NULL,
-    CONSTRAINT fk_change_log_member FOREIGN KEY (member_id) REFERENCES members(id)
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `cell_reports`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `cell_reports` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `leader_member_id` int NOT NULL,
+  `cell_group` varchar(20) NOT NULL,
+  `meeting_date` date NOT NULL,
+  `meeting_time` varchar(20) NOT NULL,
+  `meeting_place` varchar(255) NOT NULL,
+  `overall_prayer` text NOT NULL,
+  `leader_comment` text NOT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `leader_member_id` (`leader_member_id`),
+  KEY `ix_cell_reports_id` (`id`),
+  CONSTRAINT `cell_reports_ibfk_1` FOREIGN KEY (`leader_member_id`) REFERENCES `members` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
--- ============================================================
--- Table: rooms
--- ============================================================
-CREATE TABLE rooms (
-    id          INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    name        VARCHAR(100) NOT NULL UNIQUE,
-    capacity    INT          NOT NULL,
-    description VARCHAR(255) NOT NULL DEFAULT '',
-    floor       INT          NOT NULL DEFAULT 1,
-    is_active   TINYINT(1)   NOT NULL DEFAULT 1
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+--
+-- Table structure for table `member_change_logs`
+--
 
--- ============================================================
--- Table: room_locations (floor plan coordinates)
--- ============================================================
-CREATE TABLE room_locations (
-    id          INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    room_id     INT          NOT NULL UNIQUE,
-    x1          FLOAT        NOT NULL,
-    y1          FLOAT        NOT NULL,
-    x2          FLOAT        NOT NULL,
-    y2          FLOAT        NOT NULL,
-    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_location_room FOREIGN KEY (room_id) REFERENCES rooms(id)
-);
+DROP TABLE IF EXISTS `member_change_logs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `member_change_logs` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `member_id` int NOT NULL,
+  `changed_at` datetime NOT NULL,
+  `changed_by` varchar(100) NOT NULL,
+  `field_name` varchar(50) NOT NULL,
+  `old_value` text NOT NULL,
+  `new_value` text NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `member_id` (`member_id`),
+  KEY `ix_member_change_logs_id` (`id`),
+  CONSTRAINT `member_change_logs_ibfk_1` FOREIGN KEY (`member_id`) REFERENCES `members` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
--- ============================================================
--- Table: reservation_rules
--- ============================================================
-CREATE TABLE reservation_rules (
-    id                    INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    room_id               INT          NOT NULL,
-    rule_type             ENUM('day_of_week','specific_date') NOT NULL,
-    day_of_week           INT,                     -- 0=Monday, 1=Tuesday, ..., 6=Sunday
-    specific_date         DATE,
-    membership_category   ENUM('youth','adult'),  -- NULL means applies to all targets
-    applies_all_day       TINYINT(1)   NOT NULL DEFAULT 1,
-    start_time            TIME,
-    end_time              TIME,
-    is_allowed            TINYINT(1)   NOT NULL DEFAULT 1,
-    created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_rule_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+--
+-- Table structure for table `members`
+--
 
--- ============================================================
--- Table: reservations
--- ============================================================
-CREATE TABLE reservations (
-    id             INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    room_id        INT          NOT NULL,
-    requester_name VARCHAR(100) NOT NULL,
-    phone          VARCHAR(30)  NOT NULL,
-    email          VARCHAR(255) NOT NULL,
-    purpose        VARCHAR(255) NOT NULL,
-    attendees      INT          NOT NULL DEFAULT 1,
-    notes          TEXT         NOT NULL,
-    start_time     DATETIME     NOT NULL,
-    end_time       DATETIME     NOT NULL,
-    status         ENUM('pending','approved','changed','rejected') NOT NULL DEFAULT 'pending',
-    admin_comment  TEXT         NOT NULL,
-    repeat_type    VARCHAR(20)  NOT NULL DEFAULT 'none',  -- 'none', 'weekly', 'monthly'
-    repeat_count   INT          NOT NULL DEFAULT 1,  -- number of times to repeat
-    parent_reservation_id INT,  -- for grouping repeat instances
-    start_reminder_sent TINYINT(1) NOT NULL DEFAULT 0,
-    start_reminder_sent_at DATETIME NULL,
-    end_reminder_sent TINYINT(1) NOT NULL DEFAULT 0,
-    end_reminder_sent_at DATETIME NULL,
-    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_room FOREIGN KEY (room_id) REFERENCES rooms(id),
-    CONSTRAINT fk_parent_reservation FOREIGN KEY (parent_reservation_id) REFERENCES reservations(id)
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `members`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `members` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `phone` varchar(30) NOT NULL,
+  `family_id` int DEFAULT NULL,
+  `family_relation` varchar(50) NOT NULL,
+  `family_head_name` varchar(100) NOT NULL,
+  `gender` varchar(1) NOT NULL,
+  `birth_year` int DEFAULT NULL,
+  `birth_date` date DEFAULT NULL,
+  `title` varchar(50) NOT NULL,
+  `position_code` int DEFAULT NULL,
+  `position_order` int DEFAULT NULL,
+  `church_level_name` varchar(50) NOT NULL,
+  `church_level_code` int DEFAULT NULL,
+  `church_level_order` int DEFAULT NULL,
+  `church_level_date` date DEFAULT NULL,
+  `church_level_church` varchar(100) NOT NULL,
+  `member_category1_code` int DEFAULT NULL,
+  `member_category1_name` varchar(50) NOT NULL,
+  `member_category2_code` int DEFAULT NULL,
+  `member_category2_name` varchar(50) NOT NULL,
+  `member_category_updated_at` date DEFAULT NULL,
+  `membership_status` varchar(20) NOT NULL,
+  `group_category_name` varchar(100) NOT NULL,
+  `cell_group` varchar(100) NOT NULL,
+  `postal_code_jibun` varchar(20) NOT NULL,
+  `postal_code_road` varchar(20) NOT NULL,
+  `address` varchar(255) NOT NULL,
+  `address_detail` varchar(255) NOT NULL,
+  `address_road` varchar(255) NOT NULL,
+  `photo_url` varchar(500) NOT NULL,
+  `user_id` varchar(30) NOT NULL,
+  `permission` varchar(20) NOT NULL,
+  `accessible` int NOT NULL,
+  `created_at` datetime DEFAULT NULL,
+  `welcomed_at` date DEFAULT NULL,
+  `updated_at` datetime DEFAULT NULL,
+  `custom_1` varchar(255) NOT NULL,
+  `custom_2` varchar(255) NOT NULL,
+  `custom_3` varchar(255) NOT NULL,
+  `custom_4` varchar(255) NOT NULL,
+  `custom_5` varchar(255) NOT NULL,
+  `custom_6` varchar(255) NOT NULL,
+  `custom_7` varchar(255) NOT NULL,
+  `custom_8` varchar(255) NOT NULL,
+  `custom_9` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_members_id` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=950557 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
--- ============================================================
--- Table: cell_reports
--- ============================================================
-CREATE TABLE cell_reports (
-    id               INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    leader_member_id INT          NOT NULL,
-    cell_group       VARCHAR(20)  NOT NULL,
-    meeting_date     DATE         NOT NULL,
-    meeting_time     VARCHAR(20)  NOT NULL DEFAULT '',
-    meeting_place    VARCHAR(255) NOT NULL DEFAULT '',
-    overall_prayer   TEXT         NOT NULL,
-    leader_comment   TEXT,
-    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_cell_report_leader FOREIGN KEY (leader_member_id) REFERENCES members(id)
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+--
+-- Table structure for table `otp_codes`
+--
 
--- ============================================================
--- Table: cell_report_member_entries
--- ============================================================
-CREATE TABLE cell_report_member_entries (
-    id               INT         NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    report_id        INT         NOT NULL,
-    member_id        INT         NOT NULL,
-    attended         TINYINT(1)  NOT NULL DEFAULT 0,
-    attendance_type  ENUM('present', 'absent', 'long_absence') NOT NULL DEFAULT 'absent',
-    prayer           TEXT        NOT NULL,
-    remarks          TEXT,
-    CONSTRAINT fk_cell_report_entry_report FOREIGN KEY (report_id) REFERENCES cell_reports(id),
-    CONSTRAINT fk_cell_report_entry_member FOREIGN KEY (member_id) REFERENCES members(id)
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `otp_codes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `otp_codes` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `member_id` int NOT NULL,
+  `code` varchar(4) NOT NULL,
+  `contact` varchar(255) NOT NULL,
+  `expires_at` datetime NOT NULL,
+  `used` tinyint(1) NOT NULL,
+  `created_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `member_id` (`member_id`),
+  KEY `ix_otp_codes_id` (`id`),
+  CONSTRAINT `otp_codes_ibfk_1` FOREIGN KEY (`member_id`) REFERENCES `members` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
--- ============================================================
--- Seed Data: Rooms
--- ============================================================
-SET NAMES utf8mb4;
-INSERT INTO rooms (name, capacity, description, floor, is_active) VALUES 
-('새가족실',20,'큰 테이블 2',1,1),
-('청년부실',12,'청년부 전용',1,1),
-('유치부실',25,'아이들 보호 매트, TV',1,1),
-('부트캠프실',30,'작은 책상 10개, TV, 자체 음향시설',1,1),
-('스튜디오',15,'찬양팀 악기, 음향',1,1),
-('영유아부실',30,'보호매트, 어린이 책상 4개',1,1),
-('친교실',150,'TV, 둥근테이블, 의자, 음향',1,1),
-('주방',15,'조리시설',1,1),
-('아동부 예배실',50,'어린이의자, 테이블 6개, 음향, TV',1,1),
-('아동부-1',8,'어린이 테이블/의자, 화이트보드',1,1),
-('아동부-2',8,'어린이 테이블/의자, 화이트보드',1,1),
-('아동부-3',8,'어린이 테이블/의자, 화이트보드',1,1),
-('아동부-4',8,'어린이 테이블/의자, 화이트보드',1,1),
-('아동부-5',8,'어린이 테이블/의자, 화이트보드',1,1),
-('아동부-6',8,'어린이 테이블/의자, 화이트보드',1,1),
-('아동부-7',8,'어린이 테이블/의자, 화이트보드',1,1),
-('아동부-8',8,'테이블',1,1),
-('중보기도실-1',8,'테이블2, 화이트보드',1,1),
-('중보기도실-2',15,'원형테이블2',1,1),
-('간이회의실',10,'긴테이블2',1,1),
-('자모실',10,'보호매트, 테이블없음',1,1),
-('예배당',700,'예배시설',1,1),
-('청소년부 예배실',100,'예배시설',2,1),
-('챔버연습실',30,'테이블, 의자, 보면대',2,1),
-('찬양대연습실-1',100,'피아노, 보면대, 의자',2,1),
-('찬양대 연습실-2',100,'피아노, 보면대, 의자',2,1),
-('카페테리아',150,'테이블, 싱크',2,1),
-('소그룹모임-1',7,'원형테이블',2,1),
-('소그룹모임-2',16,'원형테이블, TV',2,1),
-('소그룹모임-3',10,'긴테이블',2,1),
-('소그룹모임-4',8,'원형테이블, 화이트보드',2,1),
-('소그룹모임-5',8,'원형테이블, 화이트보드',2,1),
-('소그룹모임-6',8,'원형테이블, 화이트보드',2,1),
-('소그룹모임-7',8,'원형테이블',2,1),
-('소그룹모임-8',10,'긴테이블, 화이트보드',2,1),
-('소예배실',50,'오픈공간, 예배시설',2,1);
+--
+-- Table structure for table `reservation_rules`
+--
+
+DROP TABLE IF EXISTS `reservation_rules`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `reservation_rules` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `room_id` int NOT NULL,
+  `rule_type` enum('day_of_week','specific_date') NOT NULL,
+  `day_of_week` int DEFAULT NULL,
+  `specific_date` date DEFAULT NULL,
+  `membership_category` enum('youth','adult') DEFAULT NULL,
+  `applies_all_day` tinyint(1) NOT NULL,
+  `start_time` time DEFAULT NULL,
+  `end_time` time DEFAULT NULL,
+  `is_allowed` tinyint(1) NOT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `room_id` (`room_id`),
+  KEY `ix_reservation_rules_id` (`id`),
+  CONSTRAINT `reservation_rules_ibfk_1` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `reservations`
+--
+
+DROP TABLE IF EXISTS `reservations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `reservations` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `room_id` int NOT NULL,
+  `requester_name` varchar(100) NOT NULL,
+  `phone` varchar(30) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `purpose` varchar(255) NOT NULL,
+  `attendees` int NOT NULL,
+  `notes` text NOT NULL,
+  `start_time` datetime NOT NULL,
+  `end_time` datetime NOT NULL,
+  `status` enum('pending','approved','changed','rejected') NOT NULL,
+  `admin_comment` text NOT NULL,
+  `repeat_type` varchar(20) NOT NULL,
+  `repeat_count` int NOT NULL,
+  `parent_reservation_id` int DEFAULT NULL,
+  `start_reminder_sent` tinyint(1) NOT NULL,
+  `start_reminder_sent_at` datetime DEFAULT NULL,
+  `end_reminder_sent` tinyint(1) NOT NULL,
+  `end_reminder_sent_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `room_id` (`room_id`),
+  KEY `parent_reservation_id` (`parent_reservation_id`),
+  KEY `ix_reservations_id` (`id`),
+  CONSTRAINT `reservations_ibfk_1` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`),
+  CONSTRAINT `reservations_ibfk_2` FOREIGN KEY (`parent_reservation_id`) REFERENCES `reservations` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `room_locations`
+--
+
+DROP TABLE IF EXISTS `room_locations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `room_locations` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `room_id` int NOT NULL,
+  `x1` float NOT NULL,
+  `y1` float NOT NULL,
+  `x2` float NOT NULL,
+  `y2` float NOT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `room_id` (`room_id`),
+  KEY `ix_room_locations_id` (`id`),
+  CONSTRAINT `room_locations_ibfk_1` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `rooms`
+--
+
+DROP TABLE IF EXISTS `rooms`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `rooms` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `capacity` int NOT NULL,
+  `description` varchar(255) NOT NULL,
+  `floor` int NOT NULL,
+  `is_active` tinyint(1) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`),
+  KEY `ix_rooms_id` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `users`
+--
+
+DROP TABLE IF EXISTS `users`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `users` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `member_id` int NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `membership_category` enum('youth','adult') NOT NULL,
+  `created_at` datetime NOT NULL,
+  `is_admin` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `member_id` (`member_id`),
+  KEY `ix_users_id` (`id`),
+  CONSTRAINT `users_ibfk_1` FOREIGN KEY (`member_id`) REFERENCES `members` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2026-08-17 13:13:46
