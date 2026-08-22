@@ -59,11 +59,15 @@ export default function AdminReservationPanel({
     localReservations.filter(r => r.status === statusFilter)
   );
 
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredReservations.length / ITEMS_PER_PAGE);
-  const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIdx = startIdx + ITEMS_PER_PAGE;
+  // Calculate pagination (desktop only)
+  const DESKTOP_ITEMS_PER_PAGE = ITEMS_PER_PAGE;
+  const totalPages = Math.ceil(filteredReservations.length / DESKTOP_ITEMS_PER_PAGE);
+  const startIdx = (currentPage - 1) * DESKTOP_ITEMS_PER_PAGE;
+  const endIdx = startIdx + DESKTOP_ITEMS_PER_PAGE;
   const displayedItems = filteredReservations.slice(startIdx, endIdx);
+  
+  // Mobile: show all items (no pagination)
+  const mobileDisplayedItems = filteredReservations;
 
   // Auto-refresh pending reservations every 5 seconds
   useEffect(() => {
@@ -119,8 +123,8 @@ export default function AdminReservationPanel({
           {displayGuideText}
         </Typography>
 
-        {/* Status Filter + Pagination Info */}
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, gap: 2, flexWrap: "wrap" }}>
+        {/* Status Filter + Pagination Info (Desktop Only) */}
+        <Box sx={{ display: { xs: "none", md: "flex" }, justifyContent: "space-between", alignItems: "center", mb: 2, gap: 2, flexWrap: "wrap" }}>
           <TextField
             select
             size="small"
@@ -128,7 +132,7 @@ export default function AdminReservationPanel({
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
-              setCurrentPage(1); // Reset to first page when filter changes
+              setCurrentPage(1);
             }}
             sx={{ minWidth: 150 }}
           >
@@ -170,65 +174,144 @@ export default function AdminReservationPanel({
           </Stack>
         </Box>
 
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead sx={{ bgcolor: "#eef2f7" }}>
-              <TableRow>
-                {[t("colRoom"), t("colWhen"), t("colRequester"), t("colStatus"), ""].map((h) => (
-                  <TableCell key={h} sx={{ color: "#313b5e", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {displayedItems.length === 0 ? (
+        {/* Status Filter (Mobile Only) */}
+        <Box sx={{ display: { xs: "flex", md: "none" }, justifyContent: "space-between", alignItems: "center", mb: 2, gap: 1 }}>
+          <TextField
+            select
+            size="small"
+            label={t("colStatus")}
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            sx={{ minWidth: 120, flex: 1 }}
+          >
+            <MenuItem value="pending">{t("statusPending")}</MenuItem>
+            <MenuItem value="approved">{t("statusApproved")}</MenuItem>
+            <MenuItem value="changed">{t("statusChanged")}</MenuItem>
+            <MenuItem value="rejected">{t("statusRejected")}</MenuItem>
+          </TextField>
+          
+          <Typography variant="caption" sx={{ color: "#8486a7", fontWeight: 600, whiteSpace: "nowrap" }}>
+            {filteredReservations.length}
+          </Typography>
+        </Box>
+
+        {/* Desktop: Table View */}
+        <Box sx={{ display: { xs: "none", md: "block" } }}>
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead sx={{ bgcolor: "#eef2f7" }}>
                 <TableRow>
-                  <TableCell colSpan={5} sx={{ textAlign: "center", py: 3, color: "#8486a7" }}>
-                    <Typography variant="body2">{t("noReservationsVisible")}</Typography>
-                  </TableCell>
+                  {[t("colRoom"), t("colWhen"), t("colRequester"), t("colStatus"), ""].map((h) => (
+                    <TableCell key={h} sx={{ color: "#313b5e", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</TableCell>
+                  ))}
                 </TableRow>
-              ) : (
-                displayedItems.map((item) => (
-                  <TableRow key={item.id} hover>
-                    <TableCell>
-                      <Typography sx={{ color: "#3b522e", fontWeight: 600 }}>
-                        <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
-                          <span>{item.room_name}</span>
-                        </FloorPlanTooltip>
-                      </Typography>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      {formatDateTime(item.start_time)}<br />
-                      {formatDateTime(item.end_time)}
-                    </TableCell>
-                    <TableCell>
-                      {item.requester_name}
-                      <Typography variant="caption" display="block" color="text.secondary">
-                        {item.phone}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={statusLabel[item.status] || item.status}
-                        color={STATUS_COLOR[item.status] || "default"}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleEditClick(item)}
-                        sx={{ color: "#3b522e", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.1)" } }}
-                        title={t("edit")}
-                      >
-                        ✎
-                      </IconButton>
+              </TableHead>
+              <TableBody>
+                {displayedItems.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} sx={{ textAlign: "center", py: 3, color: "#8486a7" }}>
+                      <Typography variant="body2">{t("noReservationsVisible")}</Typography>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                ) : (
+                  displayedItems.map((item) => (
+                    <TableRow key={item.id} hover>
+                      <TableCell>
+                        <Typography sx={{ color: "#3b522e", fontWeight: 600 }}>
+                          <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
+                            <span>{item.room_name}</span>
+                          </FloorPlanTooltip>
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
+                        {formatDateTime(item.start_time)}<br />
+                        {formatDateTime(item.end_time)}
+                      </TableCell>
+                      <TableCell>
+                        {item.requester_name}
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {item.phone}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={statusLabel[item.status] || item.status}
+                          color={STATUS_COLOR[item.status] || "default"}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEditClick(item)}
+                          sx={{ color: "#3b522e", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.1)" } }}
+                          title={t("edit")}
+                        >
+                          ✎
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+
+        {/* Mobile: Simple List View */}
+        <Box sx={{ display: { xs: "block", md: "none" }, maxHeight: "600px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+          {mobileDisplayedItems.length === 0 ? (
+            <Typography variant="body2" sx={{ textAlign: "center", py: 3, color: "#8486a7" }}>
+              {t("noReservationsVisible")}
+            </Typography>
+          ) : (
+            <Stack spacing={1}>
+              {mobileDisplayedItems.map((item) => (
+                <Box
+                  key={item.id}
+                  onClick={() => handleEditClick(item)}
+                  sx={{
+                    p: 2,
+                    border: "1px solid #dde2ee",
+                    borderRadius: "8px",
+                    bgcolor: "#fafbfc",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    "&:hover": {
+                      bgcolor: "#eef2f7",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                    },
+                  }}
+                >
+                  <Stack spacing={1}>
+                    {/* Room Name */}
+                    <Typography sx={{ fontWeight: 700, color: "#3b522e", fontSize: "14px" }}>
+                      <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
+                        <span>{item.room_name}</span>
+                      </FloorPlanTooltip>
+                    </Typography>
+                    
+                    {/* Requester Name */}
+                    <Typography sx={{ fontSize: "13px", color: "#5d7186" }}>
+                      {item.requester_name}
+                    </Typography>
+                    
+                    {/* Status Chip */}
+                    <Chip
+                      label={statusLabel[item.status] || item.status}
+                      color={STATUS_COLOR[item.status] || "default"}
+                      size="small"
+                      sx={{ width: "fit-content" }}
+                    />
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          )}
+        </Box>
 
         {selectedReservation && (
           <AdminReservationEditModal

@@ -70,12 +70,22 @@ def assess_reservation_eligibility(
         return False, "종료 시간은 시작 시간 이후여야 합니다."
 
     app_tz = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
-    now_local = datetime.now(app_tz).replace(tzinfo=None)  # Convert to timezone-naive for comparison
+    now_local = datetime.now(app_tz)
+    
+    # Ensure start_time and end_time are timezone-aware
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=app_tz)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=app_tz)
 
     if start_time < now_local:
         return False, "과거 시간은 예약할 수 없습니다."
 
-    cutoff = _add_months(now_local, months_ahead_limit)
+    # Calculate cutoff as naive datetime first, then localize to same timezone
+    now_local_naive = now_local.replace(tzinfo=None)
+    cutoff_naive = _add_months(now_local_naive, months_ahead_limit)
+    cutoff = cutoff_naive.replace(tzinfo=app_tz)
+    
     if start_time > cutoff:
         return False, "현재 시각 기준 1개월 이후 일정은 예약할 수 없습니다."
 

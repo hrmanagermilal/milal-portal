@@ -127,9 +127,9 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
                 x={room.x} y={room.y}
                 width={room.width} height={room.height}
                 rx={3} ry={3}
-                fill={isActive ? "rgba(59,82,46,0.18)" : "rgba(232, 237, 245, 0.5)"}
-                stroke={isActive ? "#3b522e" : isCustomLocation ? "#ff9800" : "#a8b8cc"}
-                strokeWidth={isActive ? 1.2 : isCustomLocation ? 1.2 : 0.7}
+                fill={isActive ? "rgba(255,68,68,0.25)" : "rgba(232, 237, 245, 0.5)"}
+                stroke={isActive ? "#cc0000" : isCustomLocation ? "#ff9800" : "#a8b8cc"}
+                strokeWidth={isActive ? 2.5 : isCustomLocation ? 1.2 : 0.7}
                 style={{ transition: "all 0.2s", pointerEvents: "auto" }}
                 onMouseEnter={(e) => {
                   if (isSelectable) {
@@ -139,9 +139,9 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.fill = isActive ? "rgba(59,82,46,0.18)" : "rgba(232, 237, 245, 0.5)";
-                  e.currentTarget.style.stroke = isActive ? "#3b522e" : isCustomLocation ? "#ff9800" : "#a8b8cc";
-                  e.currentTarget.style.strokeWidth = isActive ? "1.2" : isCustomLocation ? "1.2" : "0.7";
+                  e.currentTarget.style.fill = isActive ? "rgba(255,68,68,0.25)" : "rgba(232, 237, 245, 0.5)";
+                  e.currentTarget.style.stroke = isActive ? "#cc0000" : isCustomLocation ? "#ff9800" : "#a8b8cc";
+                  e.currentTarget.style.strokeWidth = isActive ? "2.5" : isCustomLocation ? "1.2" : "0.7";
                 }}
               />
               {/* Room label – split on \n */}
@@ -154,7 +154,7 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
                   dominantBaseline="middle"
                   fontSize={isActive ? activeLabelFontSize : labelFontSize}
                   fontWeight={isSelectable ? "700" : isActive ? "700" : "500"}
-                  fill={isActive ? "#0f4aa1" : isSelectable ? "#31445a" : "#5d7186"}
+                  fill={isActive ? "#cc0000" : isSelectable ? "#31445a" : "#5d7186"}
                   fontFamily="inherit"
                   style={{
                     pointerEvents: "none",
@@ -173,7 +173,7 @@ function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelec
                   cx={room.x + room.width - 8}
                   cy={room.y + 8}
                   r={4}
-                  fill="#3b522e"
+                  fill="#cc0000"
                 />
               )}
               {/* Custom location indicator */}

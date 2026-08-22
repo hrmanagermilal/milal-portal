@@ -227,16 +227,18 @@ export default function DayViewCalendar({
       </Box>
 
       {/* Day Grid – wrapped for horizontal scroll with sticky room column */}
-      <Box sx={{ overflowX: "auto", WebkitOverflowScrolling: "touch", mb: 2, border: "2px solid #dde2ee", borderRadius: "4px" }}>
       <Box
         className="calendar-day-grid"
         sx={{
           display: 'grid',
           gridTemplateColumns: '140px repeat(16, 1fr)',
           gap: 0,
-          minWidth: "max-content",
           bgcolor: 'white',
-          overflow: 'visible',
+          overflow: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          mb: 2,
+          border: '2px solid #dde2ee',
+          borderRadius: '4px',
         }}
       >
         {/* Hour Headers */}
@@ -255,22 +257,14 @@ export default function DayViewCalendar({
           return (
             <Fragment key={room.id}>
               {/* Room Name - First Column */}
-              <FloorPlanTooltip roomId={room.id} roomName={room.name}>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontWeight: 600,
-                    color: isAvailable ? "#3b522e" : "inherit",
-                    lineHeight: 1.3,
-                    fontSize: "13px",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                  className="room-cell room-name"
-                >
-                  {room.name}
-                </Typography>
-              </FloorPlanTooltip>
+              <div 
+                className="calendar-grid-cell room-col room-name"
+                style={{ color: isAvailable ? "#3b522e" : "inherit" }}
+              >
+                <FloorPlanTooltip roomId={room.id} roomName={room.name}>
+                  <span>{room.name}</span>
+                </FloorPlanTooltip>
+              </div>
 
               {/* Hours Area - Spans all hour columns */}
               <Box
@@ -339,7 +333,6 @@ export default function DayViewCalendar({
             </Fragment>
           );
         })}
-      </Box>
       </Box>
 
       {/* New Reservation Modal */}

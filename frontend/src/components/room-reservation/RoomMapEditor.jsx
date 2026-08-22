@@ -243,16 +243,16 @@ export default function RoomMapEditor({ open, room, onClose, onSave }) {
                   y={rectY1}
                   width={rectWidth}
                   height={rectHeight}
-                  fill="#3b522e"
-                  fillOpacity="0.2"
-                  stroke="#3b522e"
-                  strokeWidth="2"
+                  fill="#ff4444"
+                  fillOpacity="0.3"
+                  stroke="#cc0000"
+                  strokeWidth="3"
                 />
                 {/* Corner indicators */}
-                <circle cx={rectX1} cy={rectY1} r="3" fill="#3b522e" />
-                <circle cx={rectX2} cy={rectY1} r="3" fill="#3b522e" />
-                <circle cx={rectX1} cy={rectY2} r="3" fill="#3b522e" />
-                <circle cx={rectX2} cy={rectY2} r="3" fill="#3b522e" />
+                <circle cx={rectX1} cy={rectY1} r="4" fill="#cc0000" />
+                <circle cx={rectX2} cy={rectY1} r="4" fill="#cc0000" />
+                <circle cx={rectX1} cy={rectY2} r="4" fill="#cc0000" />
+                <circle cx={rectX2} cy={rectY2} r="4" fill="#cc0000" />
               </>
             )}
 
@@ -263,17 +263,18 @@ export default function RoomMapEditor({ open, room, onClose, onSave }) {
                   x={(rectX1 + rectX2) / 2}
                   y={rectY1 - 5}
                   textAnchor="middle"
-                  fontSize="10"
-                  fill="#3b522e"
+                  fontSize="11"
+                  fill="#cc0000"
                   fontWeight="bold"
+                  backgroundColor="#ffffff"
                 >
                   {rectWidth.toFixed(1)}
                 </text>
                 <text
                   x={rectX2 + 5}
                   y={(rectY1 + rectY2) / 2}
-                  fontSize="10"
-                  fill="#3b522e"
+                  fontSize="11"
+                  fill="#cc0000"
                   fontWeight="bold"
                 >
                   {rectHeight.toFixed(1)}
