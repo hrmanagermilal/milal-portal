@@ -144,6 +144,10 @@ body {
   grid-template-columns: 140px repeat(16, 1fr);
   gap: 0;
   background: white;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 2px solid #dde2ee;
+  border-radius: 4px;
 }
 
 .calendar-day-head {
@@ -168,7 +172,16 @@ body {
   border-right: none;
 }
 
-.room-cell {
+.calendar-grid-cell {
+  border-right: 1px solid #dde2ee;
+  border-bottom: 1px solid #dde2ee;
+  padding: 8px;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+}
+
+.room-col {
   position: sticky;
   left: 0;
   z-index: 2;
@@ -177,6 +190,19 @@ body {
 
 .room-name { 
   font-weight: 700; 
+}
+
+.room-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #f8fbff;
+  border-right: 1px solid #dde2ee;
+  border-bottom: 1px solid #dde2ee;
+  padding: 8px;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
 }
 
 .event-track {
@@ -598,29 +624,7 @@ button.primary {
   gap: 10px;
 }
 
-.calendar-day-grid {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  overflow: visible;
-  margin-bottom: 14px;
-}
-
-.calendar-day-head {
-  background: #f3f7ff;
-  border-bottom: 1px solid var(--line);
-  padding: 8px;
-  font-weight: 700;
-}
-
-.room-cell {
-  background: #f8fbff;
-  border-bottom: 1px solid var(--line);
-  border-right: 1px solid var(--line);
-  padding: 10px;
-  font-weight: 700;
-}
+/* Removed duplicate calendar-day-grid definition - consolidated with main definition above */
 
 .time-axis {
   display: grid;
