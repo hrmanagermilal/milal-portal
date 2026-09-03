@@ -176,12 +176,21 @@ class ReceiptExtractionOut(BaseModel):
 
 class ExpenseCreate(BaseModel):
     request_date: date
+    english_name: str = Field(min_length=1, max_length=100)
     title: str = Field(min_length=1, max_length=255)
     memo: str = Field(min_length=1, max_length=5000)
     hst_amount: float = Field(default=0, ge=0)
     account_id: int = Field(gt=0)
     items: list[ExpenseItemCreate] = Field(min_length=1)
     attachments: list[ExpenseAttachmentCreate] = Field(min_length=1)
+
+    @field_validator("english_name")
+    @classmethod
+    def validate_english_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("English name is required")
+        return value
 
 
 class ExpenseUpdate(ExpenseCreate):

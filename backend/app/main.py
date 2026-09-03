@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import contextlib
+import html
 import json
 import logging
 import os
@@ -415,6 +416,23 @@ def save_expense_attachments(expense_id: int, request_date: date, attachments: l
     return stored_attachments
 
 
+def get_expense_email_attachments(expense: Expense) -> list[dict]:
+    root_dir = EXPENSE_UPLOAD_DIR.resolve()
+    email_attachments = []
+    for attachment in expense.attachments:
+        url = str(attachment.get("url", ""))
+        if not url.startswith("/uploads/expenses/"):
+            continue
+        file_path = (EXPENSE_UPLOAD_DIR / url.removeprefix("/uploads/expenses/")).resolve()
+        try:
+            file_path.relative_to(root_dir)
+        except ValueError:
+            continue
+        if file_path.is_file():
+            email_attachments.append({"path": str(file_path), "name": str(attachment.get("name") or file_path.name)})
+    return email_attachments
+
+
 def send_expense_notification(
     db: Session,
     expense: Expense,
@@ -422,12 +440,12 @@ def send_expense_notification(
     recipients: list[Member],
     action: str,
     comment: str = "",
+    attachment_recipient_ids: set[int] | None = None,
 ) -> None:
     if not any(member.email.strip() for member in recipients):
         logger.warning("Expense request %s has no notification recipients", expense.id)
         return
 
-    item_lines = "\n".join(f"- {item['description']}: CAD {item['amount']:.2f}" for item in expense.items)
     action_label = {
         "created": "등록",
         "updated": "수정",
@@ -437,20 +455,9 @@ def send_expense_notification(
         "second_rejected": "2차 반려",
     }[action]
     subject = f"[비용처리] 비용 요청 {action_label}: {expense.title}"
-    comment_line = f"\n결재 의견: {comment}\n" if comment.strip() else ""
-    body = f"""비용 요청이 {action_label}되었습니다.
-
-요청자: {requester.name}
-요청일: {expense.request_date.isoformat()}
-제목: {expense.title}
-비용 항목:
-{item_lines}
-HST: CAD {expense.hst_amount:.2f}
-총 비용: CAD {expense.total_amount:.2f}
-메모: {expense.memo}
-
-결재 상태: {action_label}
-{comment_line}"""
+    requester_user = db.scalar(select(User).where(User.member_id == requester.id))
+    requester_english_name = requester_user.english_name.strip() if requester_user else ""
+    requester_display_name = f"{requester.name} ({requester_english_name})" if requester_english_name else requester.name
     requester_url = f"{PORTAL_BASE_URL}/?{urlencode({'tab': 'expense', 'expenseId': expense.id})}"
     approval_url = f"{PORTAL_BASE_URL}/?{urlencode({'tab': 'expense-approval', 'expenseId': expense.id})}"
     sent_emails = set()
@@ -462,7 +469,54 @@ HST: CAD {expense.hst_amount:.2f}
         is_requester = recipient.id == requester.id
         link_label = "요청 상세 보기" if is_requester else "결재하기"
         link_url = requester_url if is_requester else approval_url
-        queue_email(db, recipient_email, subject, f"{body}\n{link_label}:\n{link_url}\n")
+        item_rows = "".join(
+            f"<tr><td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{html.escape(str(item['description']))}</td>"
+            f"<td style=\"padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap;\">CAD {float(item['amount']):,.2f}</td></tr>"
+            for item in expense.items
+        )
+        completed_approval_rows = "".join(
+            f"<tr><td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{html.escape(str(approval.get('roleKo') or approval.get('role', '결재자')))}</td>"
+            f"<td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{html.escape(str(approval.get('name', '')))}</td>"
+            f"<td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{'승인' if approval.get('state') == 'done' else '반려'}</td>"
+            f"<td style=\"padding:10px;border-bottom:1px solid #e5e7eb;white-space:pre-wrap;\">{html.escape(str(approval.get('comment') or '-'))}</td></tr>"
+            for approval in expense.approvals
+            if approval.get('role') != 'Requester' and approval.get('state') in ('done', 'rejected')
+        )
+        approval_history = f"""
+        <h2 style=\"font-size:16px;margin:26px 0 10px;\">결재 정보</h2>
+        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;font-size:14px;\">
+          <tr style=\"background:#f8fafc;\"><th style=\"padding:10px;text-align:left;\">단계</th><th style=\"padding:10px;text-align:left;\">결재자</th><th style=\"padding:10px;text-align:left;\">결과</th><th style=\"padding:10px;text-align:left;\">결재 의견</th></tr>
+          {completed_approval_rows}
+        </table>""" if completed_approval_rows else ""
+        body = f"""<!doctype html>
+<html lang=\"ko\"><body style=\"margin:0;padding:24px;background:#f4f6f8;font-family:Arial,sans-serif;color:#243044;\">
+    <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr><td align=\"center\">
+        <table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #dbe3ea;\">
+            <tr><td style=\"padding:24px 28px;background:#314b2b;color:#ffffff;\"><strong style=\"font-size:20px;\">비용 요청 {html.escape(action_label)}</strong></td></tr>
+            <tr><td style=\"padding:28px;\">
+                <p style=\"margin:0 0 20px;\">비용 요청이 {html.escape(action_label)}되었습니다.</p>
+                <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;font-size:14px;\">
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;width:120px;\">요청자</th><td style=\"padding:10px;\">{html.escape(requester_display_name)}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">요청일</th><td style=\"padding:10px;\">{expense.request_date.isoformat()}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">제목</th><td style=\"padding:10px;\">{html.escape(expense.title)}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">결재 상태</th><td style=\"padding:10px;\">{html.escape(action_label)}</td></tr>
+                </table>
+                {approval_history}
+                <h2 style=\"font-size:16px;margin:26px 0 10px;\">비용 항목</h2>
+                <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;font-size:14px;\">
+                    <tr style=\"background:#f8fafc;\"><th style=\"padding:10px;text-align:left;\">항목</th><th style=\"padding:10px;text-align:right;\">금액</th></tr>
+                    {item_rows}
+                    <tr><th style=\"padding:10px;text-align:left;\">HST</th><td style=\"padding:10px;text-align:right;\">CAD {expense.hst_amount:,.2f}</td></tr>
+                    <tr style=\"background:#edf4e9;\"><th style=\"padding:12px;text-align:left;\">총 비용</th><td style=\"padding:12px;text-align:right;font-weight:bold;\">CAD {expense.total_amount:,.2f}</td></tr>
+                </table>
+                <h2 style=\"font-size:16px;margin:26px 0 8px;\">메모</h2><p style=\"margin:0;white-space:pre-wrap;line-height:1.6;\">{html.escape(expense.memo)}</p>
+                <p style=\"margin:28px 0 0;\"><a href=\"{html.escape(link_url, quote=True)}\" style=\"display:inline-block;padding:12px 18px;background:#314b2b;color:#ffffff;text-decoration:none;font-weight:bold;\">{link_label}</a></p>
+            </td></tr>
+        </table>
+    </td></tr></table>
+</body></html>"""
+        attachments = get_expense_email_attachments(expense) if recipient.id in (attachment_recipient_ids or set()) else []
+        queue_email(db, recipient_email, subject, body, content_type="html", attachments=attachments)
 
 
 @app.on_event("startup")
@@ -480,6 +534,38 @@ async def startup() -> None:
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: preserve the English check name entered during expense requests
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN english_name VARCHAR(100) NOT NULL DEFAULT ''"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: track accounts that receive final approved expense documents.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_finance_admin BOOLEAN NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: retain queued email body format for HTML notifications.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE email_queue ADD COLUMN content_type VARCHAR(10) NOT NULL DEFAULT 'plain'"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: retain queued file attachments until the background worker sends them.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE email_queue ADD COLUMN attachments JSON NOT NULL"))
             conn.commit()
         except Exception:
             pass  # Column already exists
@@ -628,6 +714,16 @@ def get_rooms(db: Session = Depends(get_db)) -> list[Room]:
 
 
 # ── Expense request endpoints ──────────────────────────────────────────────
+@app.get("/api/expenses/requester-profile")
+def get_expense_requester_profile(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    user = db.scalar(select(User).where(User.member_id == current_user.id))
+    return {"english_name": user.english_name if user else ""}
+
+
 @app.post("/api/expenses/extract-receipt", response_model=ReceiptExtractionOut)
 def extract_expense_receipt(
     payload: ReceiptExtractionRequest,
@@ -930,8 +1026,19 @@ def decide_expense_approval(
         else:
             send_expense_notification(db, expense, requester, [requester], "first_rejected", decision_comment)
     elif approval_index == len(approvals) - 1 and requester:
+        finance_admins = db.scalars(
+            select(Member).join(User).where(User.is_finance_admin.is_(True))
+        ).all()
         if payload.action == "approve":
-            send_expense_notification(db, expense, requester, [requester], "second_approved", decision_comment)
+            send_expense_notification(
+                db,
+                expense,
+                requester,
+                [requester, *finance_admins],
+                "second_approved",
+                decision_comment,
+                attachment_recipient_ids={admin.id for admin in finance_admins},
+            )
         else:
             send_expense_notification(db, expense, requester, [requester], "second_rejected", decision_comment)
     return serialize_expense(expense, requester.name if requester else "")
@@ -1055,6 +1162,10 @@ def create_expense(
     db: Session = Depends(get_db),
 ) -> dict:
     current_user = get_current_user(token, db)
+    requester_user = db.scalar(select(User).where(User.member_id == current_user.id))
+    if not requester_user:
+        raise HTTPException(status_code=404, detail="User account not found")
+    requester_user.english_name = payload.english_name.strip()
     account, first_approver, second_approver = get_expense_account_approvers(payload.account_id, db)
     total_amount = sum(item.amount for item in payload.items) + payload.hst_amount
     first_approval_is_automatic = current_user.id == first_approver.id
@@ -1106,6 +1217,10 @@ def update_expense(
     db: Session = Depends(get_db),
 ) -> dict:
     current_user = get_current_user(token, db)
+    requester_user = db.scalar(select(User).where(User.member_id == current_user.id))
+    if not requester_user:
+        raise HTTPException(status_code=404, detail="User account not found")
+    requester_user.english_name = payload.english_name.strip()
     expense = db.get(Expense, expense_id)
     if not expense or expense.requester_member_id != current_user.id:
         raise HTTPException(status_code=404, detail="expense request not found")

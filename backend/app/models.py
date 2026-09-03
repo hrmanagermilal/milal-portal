@@ -132,6 +132,8 @@ class User(Base):
     member_id:            Mapped[int] = mapped_column(ForeignKey("members.id"), unique=True, nullable=False)
     password_hash:        Mapped[str] = mapped_column(String(255), nullable=False)
     membership_category:  Mapped[MembershipCategory] = mapped_column(Enum(MembershipCategory), default=MembershipCategory.youth, nullable=False)
+    english_name:         Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    is_finance_admin:     Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at:           Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     member: Mapped["Member"] = relationship(back_populates="user")
@@ -323,6 +325,8 @@ class EmailQueueItem(Base):
     to_email: Mapped[str] = mapped_column(String(255), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(10), default="plain", nullable=False)
+    attachments: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     status: Mapped[EmailStatus] = mapped_column(Enum(EmailStatus), default=EmailStatus.pending, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_error: Mapped[str] = mapped_column(Text, default="")

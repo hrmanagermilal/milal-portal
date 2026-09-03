@@ -345,6 +345,11 @@ export const api = {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
+  getExpenseRequesterProfile: () =>
+    request("/api/expenses/requester-profile", {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
   getExpenseApprovers: () =>
     request("/api/expenses/approvers", {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
@@ -476,6 +481,18 @@ export const api = {
       method: "PATCH",
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
       body: payload,
+    }),
+  adminUpdateUserAdmin: (userId, isAdmin) =>
+    request(`/api/auth/admin/users/${userId}/admin`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: { permission: isAdmin ? "admin" : "member" },
+    }),
+  adminUpdateUserFinanceAdmin: (userId, isFinanceAdmin) =>
+    request(`/api/auth/admin/users/${userId}/finance-admin`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: { is_finance_admin: isFinanceAdmin },
     }),
   adminResetUserPassword: (userId) =>
     request(`/api/auth/admin/users/${userId}/reset-password`, {

@@ -16,6 +16,7 @@ import { api } from "../api";
 export default function UserManagementDetail({ open, onClose, user, onUserUpdated }) {
   const { t } = useLanguage();
   const [isAdmin, setIsAdmin] = useState(user?.is_admin || false);
+  const [isFinanceAdmin, setIsFinanceAdmin] = useState(user?.is_finance_admin || false);
   const [isAccessible, setIsAccessible] = useState(user?.member_accessible || 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -58,6 +59,27 @@ export default function UserManagementDetail({ open, onClose, user, onUserUpdate
     } catch (err) {
       setError(err.message || "Failed to update accessible status");
       setIsAccessible(1 - newValue); // Revert on error
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleFinanceAdminToggle(event) {
+    const newValue = event.target.checked;
+    setIsFinanceAdmin(newValue);
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      await api.adminUpdateUserFinanceAdmin(user.id, newValue);
+      setSuccess(t("financeAdminStatusUpdated"));
+      if (onUserUpdated) {
+        setTimeout(onUserUpdated, 1500);
+      }
+    } catch (err) {
+      setError(err.message || t("financeAdminStatusUpdateError"));
+      setIsFinanceAdmin(!newValue);
     } finally {
       setLoading(false);
     }
@@ -155,6 +177,25 @@ export default function UserManagementDetail({ open, onClose, user, onUserUpdate
             <Switch
               checked={isAdmin}
               onChange={handleAdminToggle}
+              disabled={loading}
+              color="primary"
+            />
+          </Box>
+
+          <Divider />
+
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", bgcolor: "#f8f9fa", p: 1.5, borderRadius: 1 }}>
+            <Stack>
+              <Typography variant="body2" sx={{ color: "#313b5e", fontWeight: 600, fontSize: "13px" }}>
+                {t("financeAdmin")}
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#8486a7", fontSize: "12px" }}>
+                {isFinanceAdmin ? t("isFinanceAdmin") : t("notFinanceAdmin")}
+              </Typography>
+            </Stack>
+            <Switch
+              checked={isFinanceAdmin}
+              onChange={handleFinanceAdminToggle}
               disabled={loading}
               color="primary"
             />
