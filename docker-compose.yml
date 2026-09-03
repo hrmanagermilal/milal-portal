@@ -31,6 +31,8 @@ services:
         condition: service_healthy
     ports:
       - "8083:7000"
+    volumes:
+      - expense_uploads:/app/uploads
     networks:
       - milal-network
       - milal-shared
@@ -45,12 +47,14 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-AQ.Ab8RN6IjRaJny1xWFqE4FE2VbeINcE4XSVv8STPpNiX0gsUPfw}
       OHJIC_API_KEY: ${OHJIC_API_KEY}
       OHJIC_API_BASE_URL: ${OHJIC_API_BASE_URL:-https://api.ohjic.us}
     restart: unless-stopped
 
 volumes:
   mysql_data:
+  expense_uploads:
 
 networks:
   milal-network:

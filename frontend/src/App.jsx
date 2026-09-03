@@ -21,6 +21,11 @@ import RoomSettingsPanel from "./components/room-reservation/RoomSettingsPanel";
 import CellGroupInfoModal from "./components/cell_group/CellGroupInfoModal";
 import CellReportPanel from "./components/cell_group/CellReportPanel";
 import AdminSearchMembers from "./components/AdminSearchMembers";
+import ExpensePanel from "./components/expense/ExpensePanel";
+import ExpenseApproval from "./components/expense/ExpenseApproval";
+import ExpenseAccountManagement from "./components/expense/ExpenseAccountManagement";
+import ExpenseApprovalRouteManagement from "./components/expense/ExpenseApprovalRouteManagement";
+import ExpenseAccountDetail from "./components/expense/ExpenseAccountDetail";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ChatWidget from "./components/ChatWidget";
@@ -49,6 +54,9 @@ export default function App() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { t } = useLanguage();
+  const expenseLink = new URLSearchParams(window.location.search);
+  const linkedExpenseId = expenseLink.get("expenseId");
+  const linkedExpenseTab = expenseLink.get("tab");
 
   const getPageSubtitle = () => {
     switch (tab) {
@@ -56,6 +64,12 @@ export default function App() {
         return t("cellGroupGuideText");
       case "cell-report":
         return t("cellReportGuideText");
+      case "expense":
+        return t("expenseGuideText");
+      case "expense-approval":
+        return t("expenseApprovalGuideText");
+      case "expense-account-management":
+        return t("navExpenseAccountManagement");
       default:
         return t("appSubtitle");
     }
@@ -69,15 +83,23 @@ export default function App() {
     { key: "space-settings", label: t("navSettings") },
     { key: "cell-group", label: t("navCellGroupInfo") },
     { key: "cell-report", label: t("navCellReport") },
+    { key: "expense", label: t("navExpense") },
+    { key: "expense-approval", label: t("navExpenseApproval") },
+    { key: "expense-account-management", label: t("navExpenseAccountManagement") },
+    { key: "expense-approval-route-management", label: t("navExpenseApprovalRouteManagement") },
+    { key: "expense-account-detail", label: t("navExpenseAccountManagement") },
   ];
 
-  const [tab, setTab] = useState("timeline");
+  const [tab, setTab] = useState(() => linkedExpenseTab === "expense" || linkedExpenseTab === "expense-approval" ? linkedExpenseTab : "timeline");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [rooms, setRooms] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [canApproveExpenses, setCanApproveExpenses] = useState(false);
+  const [expenseApprovalCount, setExpenseApprovalCount] = useState(0);
+  const [expenseAccountDetailId, setExpenseAccountDetailId] = useState(null);
 
   const [userName, setUserName] = useState(() => sessionStorage.getItem("milal_user") || "");
   const [userPermission, setUserPermission] = useState(() => sessionStorage.getItem("milal_permission") || "member");
@@ -149,17 +171,51 @@ export default function App() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!userName) {
+      setCanApproveExpenses(false);
+      setExpenseApprovalCount(0);
+      return;
+    }
+
+    api.getExpenseApprovalSummary()
+      .then((summary) => {
+        setCanApproveExpenses(Boolean(summary.is_approver));
+        setExpenseApprovalCount(summary.pending_count || 0);
+      })
+      .catch(() => {
+        setCanApproveExpenses(false);
+        setExpenseApprovalCount(0);
+      });
+  }, [userName]);
+
+  function refreshExpenseApprovalSummary() {
+    if (!userName) return;
+    api.getExpenseApprovalSummary()
+      .then((summary) => {
+        setCanApproveExpenses(Boolean(summary.is_approver));
+        setExpenseApprovalCount(summary.pending_count || 0);
+      })
+      .catch(() => {
+        setCanApproveExpenses(false);
+        setExpenseApprovalCount(0);
+      });
+  }
+
   // ── Silent background polling ──────────────────────────────────────────
   useEffect(() => {
     if (!userName) return;
     const INTERVAL = tab === "admin" ? 5_000 : 10_000;
     const timer = setInterval(async () => {
       try {
-        const [roomData, reservationData] = await Promise.all([
+        const [roomData, reservationData, approvalSummary] = await Promise.all([
           api.getRooms(),
           api.getReservations(),
+          api.getExpenseApprovalSummary(),
         ]);
         setRooms(roomData);
+        setCanApproveExpenses(Boolean(approvalSummary.is_approver));
+        setExpenseApprovalCount(approvalSummary.pending_count || 0);
         setReservations((prev) => {
           if (userPermission === "admin") {
             const prevPending = prev.filter((r) => r.status === "pending").length;
@@ -279,6 +335,8 @@ export default function App() {
         }}
         onRefresh={loadData}
         pendingCount={pendingCount}
+        expenseApprovalCount={expenseApprovalCount}
+        canApproveExpenses={canApproveExpenses}
         mobileOpen={mobileDrawerOpen}
         onClose={() => setMobileDrawerOpen(false)}
       />
@@ -373,6 +431,24 @@ export default function App() {
           )}
           {tab === "cell-report" && (
             <CellReportPanel />
+          )}
+          {tab === "expense" && (
+            <ExpensePanel initialExpenseId={linkedExpenseId} />
+          )}
+          {tab === "expense-approval" && (
+            <ExpenseApproval initialExpenseId={linkedExpenseId} onApprovalChanged={refreshExpenseApprovalSummary} />
+          )}
+          {tab === "expense-account-management" && canApproveExpenses && (
+            <ExpenseAccountManagement onOpenDetail={(accountId) => {
+              setExpenseAccountDetailId(accountId);
+              setTab("expense-account-detail");
+            }} />
+          )}
+          {tab === "expense-account-detail" && canApproveExpenses && (
+            <ExpenseAccountDetail accountId={expenseAccountDetailId} onBack={() => setTab("expense-account-management")} />
+          )}
+          {tab === "expense-approval-route-management" && canApproveExpenses && (
+            <ExpenseApprovalRouteManagement />
           )}
         </Box>
       </Box>

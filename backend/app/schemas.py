@@ -152,6 +152,133 @@ class UserUpdateReservation(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+# ── Expense requests ───────────────────────────────────────────────────────
+class ExpenseItemCreate(BaseModel):
+    description: str = Field(min_length=1, max_length=255)
+    amount: float = Field(gt=0)
+
+
+class ExpenseAttachmentCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    type: Literal["image", "pdf"]
+    url: str = ""
+    data_url: str = Field(default="", max_length=14_000_000)
+
+
+class ReceiptExtractionRequest(BaseModel):
+    file_data_url: str = Field(min_length=32, max_length=14_000_000)
+
+
+class ReceiptExtractionOut(BaseModel):
+    items: list[ExpenseItemCreate]
+    hst_amount: float = Field(ge=0)
+
+
+class ExpenseCreate(BaseModel):
+    request_date: date
+    title: str = Field(min_length=1, max_length=255)
+    memo: str = Field(min_length=1, max_length=5000)
+    hst_amount: float = Field(default=0, ge=0)
+    first_approver_member_id: int = Field(gt=0)
+    second_approver_member_id: int = Field(gt=0)
+    items: list[ExpenseItemCreate] = Field(min_length=1)
+    attachments: list[ExpenseAttachmentCreate] = Field(min_length=1)
+
+
+class ExpenseUpdate(ExpenseCreate):
+    pass
+
+
+class ExpenseApprovalDecision(BaseModel):
+    action: Literal["approve", "reject"]
+    comment: str = Field(min_length=1, max_length=2000)
+    account_id: int | None = Field(default=None, gt=0)
+    category_id: int | None = Field(default=None, gt=0)
+
+
+class ExpenseOut(BaseModel):
+    id: int
+    request_date: date
+    title: str
+    memo: str
+    status: str
+    hst_amount: float
+    total_amount: float
+    requester_name: str
+    account_id: int | None
+    category_id: int | None
+    account_name: str = ""
+    category_name: str = ""
+    items: list[dict]
+    attachments: list[dict]
+    approvals: list[dict]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExpenseAccountCreate(BaseModel):
+    account_code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    year: int = Field(ge=2000, le=2100)
+    budget_amount: float = Field(gt=0)
+
+
+class ExpenseAccountUpdate(ExpenseAccountCreate):
+    pass
+
+
+class ExpenseAccountCategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    year: int = Field(ge=2000, le=2100)
+    budget_amount: float = Field(ge=0)
+
+
+class ExpenseAccountCategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    year: int | None = Field(default=None, ge=2000, le=2100)
+    budget_amount: float | None = Field(default=None, ge=0)
+
+
+class ExpenseAccountCategoryOut(ExpenseAccountCategoryCreate):
+    id: int
+    account_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExpenseApprovalRouteUpdate(BaseModel):
+    chairperson_member_id: int = Field(gt=0)
+    finance_elder_member_id: int = Field(gt=0)
+
+
+class ExpenseApprovalRouteOut(ExpenseApprovalRouteUpdate):
+    id: int
+    account_id: int
+    account_code: str = ""
+    account_name: str
+    department_name: str
+    chairperson_name: str
+    finance_elder_name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExpenseAccountOut(BaseModel):
+    id: int
+    account_code: str = Field(default="", max_length=100)
+    name: str
+    year: int
+    budget_amount: float
+    approved_amount: float
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExpenseAccountDetailOut(ExpenseAccountOut):
+    categories: list[ExpenseAccountCategoryOut]
+    expenses: list[ExpenseOut]
+
+
 # ── User Management schemas ────────────────────────────────────────────────
 class UserOut(BaseModel):
     """User info for admin panel"""

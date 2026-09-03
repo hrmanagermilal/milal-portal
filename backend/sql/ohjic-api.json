@@ -3,7 +3,7 @@
   "info": {
     "title": "오직 API v2",
     "description": "오직(ohjic) 교회 시스템 외부 연동 API v2. **API secret key 인증** — 발급받은 secret key(`osk_live_...`)를 `X-Api-Key` 헤더로 전달합니다(포털 로그인 계정과 무관). scope 권한. 각 region 서버는 자기 도메인으로 호출하며, 키는 발급받은 region 의 endpoint 에서만 유효합니다.\\n\\n모든 응답은 `{ \"data\": ... }`(목록은 `{ \"data\": [...], \"meta\": { \"pagination\": {...} } }`) envelope 로 감싸지며, 오류는 `{ \"error\": { \"code\", \"message\", \"detail\"? } }` 입니다.",
-    "version": "2.1.0"
+    "version": "2.2.0"
   },
   "servers": [
     {
@@ -439,6 +439,171 @@
         ]
       }
     },
+    "/v2/members/{tid}/address": {
+      "put": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도 주소 수정",
+        "description": "교적 프로그램의 설정 > 주소 방식에서 선택한 방식(한국식 주소·미국식 주소·텍스트 입력)에 따라 성도의 주소를 수정합니다. 성도 상세카드에서 ‘가족 공통’ 항목을 체크한 경우, 해당 세대주에 속한 가족의 주소도 함께 변경됩니다.",
+        "parameters": [
+          {
+            "name": "tid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호(member_id)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "country_code": {
+                    "type": "string",
+                    "enum": [
+                      "KR",
+                      "US"
+                    ],
+                    "description": "주소 국가. 소문자는 대문자로 정규화"
+                  },
+                  "address_line1": {
+                    "type": "string",
+                    "description": "기본 주소(선택)"
+                  },
+                  "address_line2": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "상세 주소(선택)"
+                  },
+                  "postal_code": {
+                    "type": "string",
+                    "description": "숫자로만 구성된 우편번호 문자열(선택)"
+                  },
+                  "city": {
+                    "type": "string",
+                    "description": "US 도시(선택)"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "US 주 코드(선택)"
+                  },
+                  "road_address_line1": {
+                    "type": "string",
+                    "description": "KR 도로명 기본주소(선택)"
+                  },
+                  "road_address_line2": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "KR 도로명 상세주소"
+                  },
+                  "road_postal_code": {
+                    "type": "string",
+                    "description": "KR 도로명 우편번호(선택)"
+                  },
+                  "jibun_address_line1": {
+                    "type": "string",
+                    "description": "KR 지번 기본주소(선택)"
+                  },
+                  "jibun_address_line2": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "KR 지번 상세주소"
+                  },
+                  "jibun_postal_code": {
+                    "type": "string",
+                    "description": "KR 지번 우편번호(선택)"
+                  }
+                },
+                "required": [
+                  "country_code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MemberAddress"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/v2/members/{id}/family": {
       "get": {
         "tags": [
@@ -610,7 +775,7 @@
         ]
       }
     },
-    "/v2/members/{id}/groups": {
+    "/v2/members/{memberId}/groups": {
       "post": {
         "tags": [
           "Members"
@@ -618,13 +783,13 @@
         "summary": "성도 소속(그룹) 등록",
         "parameters": [
           {
-            "name": "id",
+            "name": "memberId",
             "in": "path",
             "required": true,
             "schema": {
               "type": "integer"
             },
-            "description": "성도 고유번호(member_id)"
+            "description": "성도 고유번호"
           }
         ],
         "requestBody": {
@@ -711,6 +876,118 @@
           },
           "409": {
             "description": "conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "성도의 현재 그룹 소속 조회",
+        "description": "성도가 현재 속한 모든 그룹과 그룹 안에서 맡은 직책을 조회합니다. 그룹 직책은 순장·총무처럼 해당 그룹에서 맡은 역할이며 성도의 일반 직분과는 별도입니다.",
+        "parameters": [
+          {
+            "name": "memberId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "성도 고유번호"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "페이지(기본 1)"
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "페이지당 개수(기본 20, 최대 100)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GroupMembershipListItem"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal_error",
             "content": {
               "application/json": {
                 "schema": {
@@ -1052,6 +1329,120 @@
           },
           "403": {
             "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/groups/{groupId}/members": {
+      "get": {
+        "tags": [
+          "Groups"
+        ],
+        "summary": "그룹에 속한 성도 조회",
+        "description": "교적 프로그램에서 그룹을 선택했을 때 확인되는 성도 목록을 조회합니다. 선택한 그룹뿐 아니라 그 아래에 있는 그룹의 성도도 함께 표시됩니다. 한 성도가 여러 그룹에 속해 있어도 목록에는 한 번만 표시되며, 각 성도가 속한 그룹과 그 안에서 맡은 역할은 memberships 항목에서 확인할 수 있습니다. total에는 조회된 성도 수가 표시됩니다.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "조회할 그룹 고유번호"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "페이지(기본 1)"
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "페이지당 개수(기본 20, 최대 100)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GroupMemberListItem"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "$ref": "#/components/schemas/Pagination"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "validation_failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한/승인/scope 오류",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal_error",
             "content": {
               "application/json": {
                 "schema": {
@@ -1975,6 +2366,78 @@
           "member_name"
         ]
       },
+      "MemberAddress": {
+        "type": "object",
+        "properties": {
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "country_code": {
+            "type": "string",
+            "enum": [
+              "KR",
+              "US"
+            ],
+            "description": "국가 코드"
+          },
+          "address_line1": {
+            "type": "string",
+            "description": "기본 주소"
+          },
+          "address_line2": {
+            "type": "string",
+            "description": "상세 주소"
+          },
+          "postal_code": {
+            "type": "string",
+            "description": "숫자 문자열 우편번호"
+          },
+          "city": {
+            "type": "string",
+            "description": "도시. 미국식 외 응답은 빈 문자열"
+          },
+          "state": {
+            "type": "string",
+            "description": "주. 미국식 외 응답은 빈 문자열"
+          },
+          "address_jibun": {
+            "type": "string",
+            "description": "DB에 최종 저장된 지번주소"
+          },
+          "address_detail": {
+            "type": "string",
+            "description": "DB에 최종 저장된 상세주소"
+          },
+          "address_road": {
+            "type": "string",
+            "description": "DB에 최종 저장된 도로명주소"
+          },
+          "postal_code_jibun": {
+            "type": "string",
+            "description": "DB에 최종 저장된 지번 우편번호"
+          },
+          "postal_code_road": {
+            "type": "string",
+            "description": "DB에 최종 저장된 도로명 우편번호"
+          }
+        },
+        "description": "성도 주소 수정 결과. country_code 계약은 유지하며 교회 설정에 따라 한국식·미국식·텍스트 주소를 저장합니다.",
+        "required": [
+          "member_id",
+          "country_code",
+          "address_line1",
+          "address_line2",
+          "postal_code",
+          "city",
+          "state",
+          "address_jibun",
+          "address_detail",
+          "address_road",
+          "postal_code_jibun",
+          "postal_code_road"
+        ]
+      },
       "MemberFamilyItem": {
         "type": "object",
         "properties": {
@@ -2778,6 +3241,157 @@
           "membership_id",
           "member_id",
           "group_id"
+        ]
+      },
+      "GroupMembershipListItem": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "integer",
+            "description": "그룹 소속 고유번호"
+          },
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "member_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "성도 이름"
+          },
+          "group_id": {
+            "type": "integer",
+            "description": "그룹 고유번호"
+          },
+          "group_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "그룹 이름"
+          },
+          "group_category_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "그룹 분류 코드"
+          },
+          "group_category_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "그룹 분류명"
+          },
+          "year": {
+            "type": "integer",
+            "description": "소속 연도"
+          },
+          "group_role_code": {
+            "type": "integer",
+            "nullable": true,
+            "description": "그룹 안에서의 직책 코드"
+          },
+          "group_role_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "그룹 안에서의 직책명(팀장/순장/총무 등). 일반 직분 position_name과 다름."
+          },
+          "sort_order": {
+            "type": "integer",
+            "nullable": true,
+            "description": "그룹 내 정렬 순서"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "소속 시작일"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "소속 종료일"
+          },
+          "level_1_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층1 그룹 id"
+          },
+          "level_1_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층1 그룹명"
+          },
+          "level_2_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층2 그룹 id"
+          },
+          "level_2_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층2 그룹명"
+          },
+          "level_3_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층3 그룹 id"
+          },
+          "level_3_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층3 그룹명"
+          },
+          "level_4_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층4 그룹 id"
+          },
+          "level_4_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층4 그룹명"
+          },
+          "level_5_group_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "계층5 그룹 id"
+          },
+          "level_5_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "계층5 그룹명"
+          }
+        },
+        "description": "현재 유효한 성도와 그룹 사이의 소속 관계 및 그룹 직책",
+        "required": [
+          "membership_id",
+          "member_id",
+          "group_id",
+          "year"
+        ]
+      },
+      "GroupMemberListItem": {
+        "type": "object",
+        "properties": {
+          "member_id": {
+            "type": "integer",
+            "description": "성도 고유번호"
+          },
+          "member_name": {
+            "type": "string",
+            "description": "성도 이름"
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupMembershipListItem"
+            },
+            "description": "요청한 그룹과 하위 그룹 범위에서 일치한 현재 소속 목록"
+          }
+        },
+        "description": "선택한 그룹과 하위 그룹에 현재 소속된 성도. 일치한 소속은 memberships에 모두 포함됩니다.",
+        "required": [
+          "member_id",
+          "member_name",
+          "memberships"
         ]
       },
       "KeyIntrospection": {

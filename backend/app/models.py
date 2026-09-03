@@ -2,7 +2,7 @@ import enum
 from datetime import date, datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -200,6 +200,66 @@ class CellReportMemberEntry(Base):
 
     report: Mapped["CellReport"] = relationship(back_populates="entries")
     member: Mapped["Member"] = relationship(back_populates="cell_report_entries")
+
+
+# ── Expense request ────────────────────────────────────────────────────────
+class Expense(Base):
+    __tablename__ = "expenses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    requester_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False, index=True)
+    account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("expense_accounts.id"), nullable=True, index=True)
+    category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("expense_account_categories.id"), nullable=True, index=True)
+    request_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    memo: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="reviewing", nullable=False, index=True)
+    hst_amount: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    total_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    items: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    attachments: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    approvals: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+
+class ExpenseAccount(Base):
+    __tablename__ = "expense_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_code: Mapped[str] = mapped_column(String(100), nullable=False, default="", index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    budget_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ExpenseAccountCategory(Base):
+    __tablename__ = "expense_account_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("expense_accounts.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, default=lambda: datetime.utcnow().year, index=True)
+    budget_amount: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ExpenseApprovalRoute(Base):
+    __tablename__ = "expense_approval_routes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("expense_accounts.id"), nullable=False, unique=True, index=True)
+    chairperson_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    finance_elder_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ── Reservation status ──────────────────────────────────────────────────────

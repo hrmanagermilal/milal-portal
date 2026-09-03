@@ -276,6 +276,131 @@ export const api = {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
+  getExpenses: () =>
+    request("/api/expenses", {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  getExpenseApprovers: () =>
+    request("/api/expenses/approvers", {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  getExpense: (expenseId) =>
+    request(`/api/expenses/${expenseId}`, {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  createExpense: (payload) =>
+    request("/api/expenses", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
+  updateExpense: (expenseId, payload) =>
+    request(`/api/expenses/${expenseId}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
+  cancelExpense: (expenseId) =>
+    request(`/api/expenses/${expenseId}/cancel`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  extractExpenseReceipt: (fileDataUrl) =>
+    request("/api/expenses/extract-receipt", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: { file_data_url: fileDataUrl },
+    }),
+  getExpenseApprovalSummary: () =>
+    request("/api/expense-approvals/summary", {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  getExpenseApprovals: (status = "") =>
+    request(`/api/expense-approvals${status ? `?status=${encodeURIComponent(status)}` : ""}`, {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  decideExpenseApproval: (expenseId, action, comment, accountId, categoryId) =>
+    request(`/api/expense-approvals/${expenseId}/decision`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: { action, comment, account_id: accountId || null, category_id: categoryId || null },
+    }),
+
+  getExpenseAccounts: () =>
+    request("/api/expense-accounts", {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  createExpenseAccount: (payload) =>
+    request("/api/expense-accounts", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
+  updateExpenseAccount: (accountId, payload) =>
+    request(`/api/expense-accounts/${accountId}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
+  deleteExpenseAccount: (accountId) =>
+    request(`/api/expense-accounts/${accountId}`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  getExpenseAccount: (accountId) =>
+    request(`/api/expense-accounts/${accountId}`, {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  getExpenseAccountCategories: (accountId) =>
+    request(`/api/expense-accounts/${accountId}/categories`, {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  createExpenseAccountCategory: (accountId, payload) =>
+    request(`/api/expense-accounts/${accountId}/categories`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
+  updateExpenseAccountCategory: (categoryId, payload) =>
+    request(`/api/expense-account-categories/${categoryId}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
+  deleteExpenseAccountCategory: (categoryId) =>
+    request(`/api/expense-account-categories/${categoryId}`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  getExpenseApprovalRoutes: () =>
+    request("/api/expense-approval-routes", {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  saveExpenseApprovalRoute: (accountId, payload) =>
+    request(`/api/expense-accounts/${accountId}/approval-route`, {
+      method: "PUT",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
   getMember: (memberId) =>
     request(`/api/auth/member/${memberId}`, {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
