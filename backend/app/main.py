@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -32,6 +32,7 @@ from .database import Base, SessionLocal, engine, get_db
 from .models import (
     CellReport,
     CellReportMemberEntry,
+    ExternalCalendarEvent,
     Member,
     OtpCode,
     Reservation,
@@ -59,10 +60,11 @@ from .schemas import (
     RoomLocationUpdate,
     UserUpdateReservation,
 )
-from .auth_routes import router as auth_router, _send_email, get_current_user, oauth2_scheme
+from .auth_routes import router as auth_router, get_current_user, oauth2_scheme
 from .ai_chat import create_ai_chat_router
 from .reservation_eligibility import assess_reservation_eligibility
-from .sync_tasks import sync_all_members_from_ohjic
+from .email_queue import email_queue_worker, queue_email
+from .sync_tasks import maybe_sync_external_calendar_events, sync_all_members_from_ohjic
 
 app = FastAPI(title="Milal Community API", version="1.0.0")
 
@@ -81,6 +83,7 @@ FRONTEND_DIST_DIR = Path(os.getenv("FRONTEND_DIST_DIR", PROJECT_ROOT / "frontend
 REMINDER_LEAD_MINUTES = 15
 REMINDER_POLL_SECONDS = 60
 reminder_task: asyncio.Task | None = None
+email_queue_task: asyncio.Task | None = None
 EASTERN_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
 scheduler: AsyncIOScheduler | None = None
 
@@ -196,6 +199,7 @@ def _send_due_reservation_reminders_once() -> None:
                     ReservationStatus.approved,
                     ReservationStatus.changed,
                 ]),
+                Reservation.created_by_admin.is_(False),
                 Reservation.email.is_not(None),
                 Reservation.email != "",
                 Reservation.end_time > now,
@@ -224,14 +228,14 @@ def _send_due_reservation_reminders_once() -> None:
 
             if (not item.start_reminder_sent) and now < start_time <= window_end:
                 subject, body = _build_reminder_email(item, room_name, "start")
-                if _send_email(item.email, subject, body):
+                if queue_email(db, item.email, subject, body):
                     item.start_reminder_sent = True
                     item.start_reminder_sent_at = datetime.utcnow()
                     dirty = True
 
             if (not item.end_reminder_sent) and now < end_time <= window_end:
                 subject, body = _build_reminder_email(item, room_name, "end")
-                if _send_email(item.email, subject, body):
+                if queue_email(db, item.email, subject, body):
                     item.end_reminder_sent = True
                     item.end_reminder_sent_at = datetime.utcnow()
                     dirty = True
@@ -247,7 +251,9 @@ def _send_due_reservation_reminders_once() -> None:
 
 async def _reservation_reminder_worker() -> None:
     while True:
-        _send_due_reservation_reminders_once()
+        # Runs on a worker thread: this does blocking DB I/O and must not
+        # stall the shared event loop that serves all other requests.
+        await asyncio.to_thread(_send_due_reservation_reminders_once)
         await asyncio.sleep(REMINDER_POLL_SECONDS)
 
 
@@ -353,7 +359,24 @@ async def startup() -> None:
                 conn.commit()
             except Exception:
                 pass  # Column already exists
-    
+
+    # Migrate: add requester_name column to external_calendar_events if it doesn't exist yet
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE external_calendar_events ADD COLUMN requester_name VARCHAR(100) NOT NULL DEFAULT ''"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: add created_by_admin column to reservations if it doesn't exist yet
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE reservations ADD COLUMN created_by_admin BOOLEAN NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+
     db = next(get_db())
     try:
         seed_rooms(db)
@@ -362,18 +385,21 @@ async def startup() -> None:
 
     global reminder_task, scheduler
     reminder_task = asyncio.create_task(_reservation_reminder_worker())
+
+    global email_queue_task
+    email_queue_task = asyncio.create_task(email_queue_worker())
     
     # Initialize scheduler for daily member sync
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         sync_all_members_from_ohjic,
-        CronTrigger(hour=1, minute=0),  # 매일 오전 1시에 실행
+        CronTrigger(hour=12, minute=5, timezone=EASTERN_TZ),  # 매일 밤 11시 15분(ET)에 실행
         id='sync_all_members_daily',
         name='Daily sync all members from OHJIC API',
         misfire_grace_time=900  # 15분의 오차 허용
     )
     scheduler.start()
-    logger.info("✓ Scheduler started for daily member sync (01:00 UTC)")
+    logger.info("✓ Scheduler started for daily member sync (23:15 ET)")
     
     # 앱 시작 시 캐시 상태 확인 (100개 이하면 즉시 동기화)
     db = next(get_db())
@@ -393,15 +419,30 @@ async def startup() -> None:
     finally:
         db.close()
 
+    # 앱 시작 시 외부 캘린더 캐시를 한 번 채워둠 (첫 10분 공백 방지)
+    db = next(get_db())
+    try:
+        maybe_sync_external_calendar_events(db)
+    except Exception as e:
+        logger.error(f"✗ [startup] Initial external calendar sync failed: {type(e).__name__}: {e}", exc_info=True)
+    finally:
+        db.close()
+
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global reminder_task, scheduler
+    global reminder_task, scheduler, email_queue_task
     if reminder_task:
         reminder_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await reminder_task
         reminder_task = None
+
+    if email_queue_task:
+        email_queue_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await email_queue_task
+        email_queue_task = None
     
     if scheduler:
         scheduler.shutdown(wait=False)
@@ -907,11 +948,12 @@ def create_reservation(
             repeat_type=payload.repeat_type,
             repeat_count=payload.repeat_count,
             parent_reservation_id=parent_reservation_id,
+            created_by_admin=is_admin,
         )
         db.add(new_item)
         db.commit()
         db.refresh(new_item)
-        
+
         # Set parent_reservation_id for first instance
         if i == 0:
             parent_reservation_id = new_item.id
@@ -959,11 +1001,14 @@ def create_reservation(
     if calendar_link:
         email_body += f"\n\nGoogle Calendar에 추가:\n{calendar_link}\n"
 
-    # Send email to requester
-    _send_email(payload.email, email_subject, email_body)
+    # Send email to requester (skip for admin-created reservations — no
+    # completion notice needed since the admin already knows it's approved).
+    if not is_admin:
+        queue_email(db, payload.email, email_subject, email_body)
     
-    # Send notification email to admins
-    admins = db.scalars(
+    # Send notification email to admins (skip for admin-created reservations
+    # — the admin who just booked it doesn't need a notice about it).
+    admins = [] if is_admin else db.scalars(
         select(Member).where(
             Member.permission == "admin",
             Member.email != "",
@@ -993,7 +1038,7 @@ def create_reservation(
                 admin_email_body += f"  {idx}. {_format_eastern_time(res.start_time)} - {_format_eastern_time(res.end_time)}\n"
         
         for admin in admins:
-            _send_email(admin.email, admin_email_subject, admin_email_body)
+            queue_email(db, admin.email, admin_email_subject, admin_email_body)
 
     return {
         "message": "reservation created successfully",
@@ -1046,6 +1091,52 @@ def list_reservations(
     ]
 
 
+@app.get("/api/calendar/external-events")
+def get_external_calendar_events(
+    background_tasks: BackgroundTasks,
+    start: datetime = Query(...),
+    end: datetime = Query(...),
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Room bookings tagged "장소-목적" on the staff Google Calendar(s), served
+    from a local cache that's refreshed at most once every 10 minutes
+    (see sync_tasks.maybe_sync_external_calendar_events), regardless of how
+    many logged-in users' browsers request it concurrently.
+    """
+    get_current_user(token, db)
+
+    def _run_background_sync() -> None:
+        bg_db = SessionLocal()
+        try:
+            maybe_sync_external_calendar_events(bg_db)
+        finally:
+            bg_db.close()
+
+    background_tasks.add_task(_run_background_sync)
+
+    rows = db.scalars(
+        select(ExternalCalendarEvent).where(
+            ExternalCalendarEvent.start_time < end,
+            ExternalCalendarEvent.end_time > start,
+        )
+    ).all()
+    return [
+        {
+            "id": row.id,
+            "room_id": row.room_id,
+            "room_name": row.room_name,
+            "requester_name": row.requester_name,
+            "purpose": row.purpose,
+            "start_time": _as_utc_aware(row.start_time).isoformat(),
+            "end_time": _as_utc_aware(row.end_time).isoformat(),
+            "all_day": row.all_day,
+        }
+        for row in rows
+    ]
+
+
+
 @app.patch("/api/admin/reservations/{reservation_id}", response_model=ReservationOut)
 def update_reservation_by_admin(
     reservation_id: int,
@@ -1068,6 +1159,36 @@ def update_reservation_by_admin(
         raise HTTPException(status_code=404, detail="reservation not found")
 
     if payload.action == "approve":
+        if payload.room_id is not None:
+            room = db.get(Room, payload.room_id)
+            if not room:
+                raise HTTPException(status_code=404, detail="target room not found")
+            item.room_id = payload.room_id
+
+        if payload.start_time is not None:
+            item.start_time = payload.start_time
+        if payload.end_time is not None:
+            item.end_time = payload.end_time
+
+        if payload.room_id is not None or payload.start_time is not None or payload.end_time is not None:
+            validate_reservation_times(item.start_time, item.end_time)
+
+            eligible, reason = can_reserve_room(
+                item.room_id,
+                item.start_time,
+                item.end_time,
+                membership_category,
+                db,
+            )
+            if not eligible:
+                raise HTTPException(status_code=403, detail=reason)
+
+            # Re-arm reminders since the schedule changed during approval.
+            item.start_reminder_sent = False
+            item.start_reminder_sent_at = None
+            item.end_reminder_sent = False
+            item.end_reminder_sent_at = None
+
         item.status = ReservationStatus.approved
     elif payload.action == "reject":
         item.status = ReservationStatus.rejected
@@ -1104,6 +1225,7 @@ def update_reservation_by_admin(
         item.end_reminder_sent_at = None
 
     item.admin_comment = payload.admin_comment
+
     db.commit()
     db.refresh(item)
 
@@ -1158,7 +1280,10 @@ Google Calendar에 추가:
 
 밀알교회 포털팀"""
 
-        _send_email(item.email, subject_ko, body_ko)
+        # Admin-created reservations don't need a status-change notice —
+        # any action taken here (reject/change) is the admin's own doing.
+        if not item.created_by_admin:
+            queue_email(db, item.email, subject_ko, body_ko)
     
     room_name = item.room.name if item.room else (db.get(Room, item.room_id).name)
     return ReservationOut(
@@ -1259,8 +1384,8 @@ def update_reservation_by_user(
     db.commit()
     db.refresh(item)
 
-    # Send update email
-    if item.email:
+    # Send update email (skip for admin-created reservations)
+    if item.email and not item.created_by_admin:
         subject = f"[예약 변경] {item.room.name if item.room else 'N/A'}"
         body = f"""안녕하세요 {item.requester_name}님,
 
@@ -1276,7 +1401,7 @@ def update_reservation_by_user(
 - 상태: {item.status.value}
 
 밀알교회 포털팀"""
-        _send_email(item.email, subject, body)
+        queue_email(db, item.email, subject, body)
 
     room_name = item.room.name if item.room else "Unknown"
     return ReservationOut(
@@ -1330,8 +1455,8 @@ def delete_reservation_by_user(
     # Delete is allowed for all statuses
     room_name = item.room.name if item.room else "Unknown"
     
-    # Send cancellation email
-    if item.email:
+    # Send cancellation email (skip for admin-created reservations)
+    if item.email and not item.created_by_admin:
         subject = f"[예약 취소] {room_name}"
         body = f"""안녕하세요 {item.requester_name}님,
 
@@ -1345,7 +1470,7 @@ def delete_reservation_by_user(
 - 목적: {item.purpose}
 
 밀알교회 포털팀"""
-        _send_email(item.email, subject, body)
+        queue_email(db, item.email, subject, body)
 
     db.delete(item)
     db.commit()

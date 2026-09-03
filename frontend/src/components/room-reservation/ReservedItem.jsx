@@ -24,6 +24,7 @@ const STATUS_COLORS = {
   approved: { bg: "rgba(59,82,46,0.12)",   border: "#3b522e", text: "#155e2a" },
   changed:  { bg: "rgba(59,82,46,0.12)",  border: "#3b522e", text: "#0d47a1" },
   rejected: { bg: "rgba(249,92,92,0.12)",   border: "#f95c5c", text: "#b71c1c" },
+  external: { bg: "rgba(95,99,104,0.12)",   border: "#5f6368", text: "#5f6368" },
 };
 
 export default function ReservedItem({ item, startHour, endHour, hourRange, placement, compact = false, currentUser = null, onUpdate = null, onDelete = null }) {

@@ -90,6 +90,59 @@ async function request(path, options = {}) {
   );
 }
 
+// External events are already matched to a specific room (title format
+// "장소-목적") and resolved server-side, so render each as one item.
+// Callers poll getReservations() roughly every 5s; throttle the external
+// calendar fetch to 3x that interval so it doesn't hit Google that often.
+const EXTERNAL_EVENTS_CACHE_TTL_MS = 15000;
+let _externalEventsCache = { items: [], fetchedAt: 0 };
+let _externalEventsInFlight = null;
+
+async function fetchExternalReservationLikeItems() {
+  if (!sessionStorage.getItem("milal_token")) return [];
+
+  const isFresh = Date.now() - _externalEventsCache.fetchedAt < EXTERNAL_EVENTS_CACHE_TTL_MS;
+  if (isFresh) return _externalEventsCache.items;
+  if (_externalEventsInFlight) return _externalEventsInFlight;
+
+  _externalEventsInFlight = (async () => {
+    try {
+      const start = new Date();
+      start.setDate(start.getDate() - 7);
+      const end = new Date();
+      end.setDate(end.getDate() + 60);
+      const events = await request(
+        `/api/calendar/external-events?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
+        { headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` } }
+      );
+      const items = events.map((ev) => ({
+        id: ev.id,
+        room_id: ev.room_id,
+        room_name: ev.room_name,
+        requester_name: ev.requester_name,
+        phone: "",
+        email: "",
+        purpose: ev.purpose,
+        attendees: 0,
+        notes: "",
+        start_time: ev.start_time,
+        end_time: ev.end_time,
+        status: "external",
+        admin_comment: "",
+        external: true,
+      }));
+      _externalEventsCache = { items, fetchedAt: Date.now() };
+      return items;
+    } catch {
+      return []; // not logged in, or the integration isn't configured — skip silently
+    } finally {
+      _externalEventsInFlight = null;
+    }
+  })();
+
+  return _externalEventsInFlight;
+}
+
 export const api = {
   getRooms: () => request("/api/rooms"),
   getRoomRules: () => request("/api/rooms/rules"),
@@ -97,7 +150,18 @@ export const api = {
     request(
       `/api/rooms/available?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`
     ),
-  getReservations: () => request("/api/reservations"),
+  getReservations: async () => {
+    const [reservations, externalItems] = await Promise.all([
+      request("/api/reservations"),
+      fetchExternalReservationLikeItems(),
+    ]);
+    return [...reservations, ...externalItems];
+  },
+  getExternalCalendarEvents: (startIso, endIso) =>
+    request(
+      `/api/calendar/external-events?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`,
+      { headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` } }
+    ),
   adminGetRooms: () =>
     request("/api/admin/rooms", {
       headers: {

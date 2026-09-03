@@ -20,7 +20,7 @@ import { evaluateRuleForSlot, groupRulesByRoom } from "../../utils/reservationRu
 import FloorPlanTooltip from "./FloorPlanTooltip";
 
 // Default end = start + 1 hour, clamped to 23:30 of same day
-function computeEndTime(startValue) {
+export function computeEndTime(startValue) {
   if (!startValue) return "";
   
   // Parse local time string "2026-06-15T03:00"
@@ -43,7 +43,7 @@ function computeEndTime(startValue) {
 }
 
 // Minimum end time = start time + 30 min
-function minEndTime(startValue) {
+export function minEndTime(startValue) {
   if (!startValue) return "00:00";
   
   // Parse local time string "2026-06-15T03:00"
@@ -115,7 +115,11 @@ export default function NewReservationModal({
   const startDate = (form.start_time && typeof form.start_time === 'string') ? form.start_time.slice(0, 10) : "";
   const endTimeOnly = (form.end_time && typeof form.end_time === 'string') ? form.end_time.slice(11, 16) : "";
 
-  // Set floor and room when modal opens with selectedRoom
+  // Set floor and room when modal opens with selectedRoom.
+  // Deliberately excludes `rooms` from deps: parent polling gives a new
+  // `rooms` array reference every few seconds, and re-running this on that
+  // would keep overwriting the user's in-progress floor/room selection.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open && selectedRoom) {
       const room = rooms.find(r => r.id === selectedRoom);
@@ -127,20 +131,23 @@ export default function NewReservationModal({
         }));
       }
     }
-  }, [open, selectedRoom, rooms, setForm]);
+  }, [open, selectedRoom, setForm]);
 
   useEffect(() => {
     if (!form.room_id) {
       return;
     }
 
-    if (!availableRoomIds.has(Number(form.room_id))) {
+    // Only clear a selection once we have a real (non-empty) available-rooms
+    // result confirming it's gone — an empty list usually just means the
+    // time-range fetch hasn't resolved yet, not that the room is unavailable.
+    if (availableRooms.length > 0 && !availableRoomIds.has(Number(form.room_id))) {
       setForm((prev) => ({
         ...prev,
         room_id: "",
       }));
     }
-  }, [availableRoomIds, form.room_id, setForm]);
+  }, [availableRoomIds, availableRooms.length, form.room_id, setForm]);
 
   useEffect(() => {
     if (!open && !isCardMode) {
@@ -162,9 +169,8 @@ export default function NewReservationModal({
         }
       } catch (err) {
         console.error("[NewReservationModal] Failed to load available rooms:", err);
-        if (!cancelled) {
-          setAvailableRooms([]);
-        }
+        // Keep the previous list on failure instead of clearing it — a
+        // transient error shouldn't wipe out the user's current selection.
       }
     }
 
@@ -173,7 +179,10 @@ export default function NewReservationModal({
     return () => {
       cancelled = true;
     };
-  }, [form.end_time, form.start_time, hasSelectedTimeRange, isCardMode, open, rooms]);
+    // `rooms` intentionally excluded: only the selected time range should
+    // trigger a re-fetch, not the parent's unrelated polling refreshes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.end_time, form.start_time, hasSelectedTimeRange, isCardMode, open]);
 
   // Set user info when modal opens
   useEffect(() => {

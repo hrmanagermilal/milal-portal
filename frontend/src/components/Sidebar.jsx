@@ -46,8 +46,9 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
       { key: "timeline", label: t("navTimeline"), icon: MenuIcon, badge: null },
       { key: "request", label: t("navRequest"), icon: PlusIcon, badge: null },
     ];
-    
+
     if (permission === "admin") {
+      items.push({ key: "multi-request", label: t("navMultiRequest"), icon: PlusIcon, badge: null });
       items.push({ key: "admin", label: t("navAdmin"), icon: CheckIcon, badge: null });
       items.push({ key: "space-settings", label: t("navSettings"), icon: SettingsIcon, badge: null });
     }

@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import ReservationRule
+from .models import ExternalCalendarEvent, ReservationRule
 
 
 def _add_months(dt: datetime, months: int) -> datetime:
@@ -72,11 +72,16 @@ def assess_reservation_eligibility(
     app_tz = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
     now_local = datetime.now(app_tz)
     
-    # Ensure start_time and end_time are timezone-aware
+    # Normalize to app-local wall clock so rule matching (date/weekday/time)
+    # compares against the same timezone the rules were authored in.
     if start_time.tzinfo is None:
         start_time = start_time.replace(tzinfo=app_tz)
+    else:
+        start_time = start_time.astimezone(app_tz)
     if end_time.tzinfo is None:
         end_time = end_time.replace(tzinfo=app_tz)
+    else:
+        end_time = end_time.astimezone(app_tz)
 
     if start_time < now_local:
         return False, "과거 시간은 예약할 수 없습니다."
@@ -110,5 +115,18 @@ def assess_reservation_eligibility(
             f"{target_label} {denied.start_time.strftime('%H:%M')}~"
             f"{denied.end_time.strftime('%H:%M')} 시간대는 예약이 금지되어 있습니다."
         )
+
+    # Staff calendar conflicts, from the periodically-synced local cache
+    # (see sync_tasks.maybe_sync_external_calendar_events). Only events titled
+    # "장소-목적" for this room count as real bookings.
+    conflicting = db.scalar(
+        select(ExternalCalendarEvent).where(
+            ExternalCalendarEvent.room_id == room_id,
+            ExternalCalendarEvent.start_time < end_time,
+            ExternalCalendarEvent.end_time > start_time,
+        )
+    )
+    if conflicting:
+        return False, "해당 시간대는 담당자 캘린더의 다른 일정과 격쳐 예약할 수 없습니다."
 
     return True, ""

@@ -8,6 +8,7 @@ export const translations = {
     sidebarRooms: "Community",
     navTimeline: "Reservation Status",
     navRequest: "New Request",
+    navMultiRequest: "New Multi-Request",
     navAdmin: "Admin Review",
     navSettings: "Room Settings",
     navRefresh: "Refresh",
@@ -121,6 +122,7 @@ export const translations = {
     statusApproved: "Approved",
     statusChanged: "Changed",
     statusRejected: "Rejected",
+    statusExternal: "Staff Calendar",
 
     // Calendar navigation
     prev: "Prev",
@@ -154,6 +156,9 @@ export const translations = {
     repeatCount: "Repeat Count",
     repeatCountHint: "💡 %d reservations will be created %s and all auto-approved.",
     noAvailableRooms: "No available rooms for the selected time range.",
+    fieldRooms: "Rooms",
+    selected: "selected",
+    submitMultiRequest: "Submit Multi-Request",
 
     // AdminReservationEditModal
     adminEditTitle: "Edit Reservation",
@@ -173,6 +178,7 @@ export const translations = {
     adminGuideText: "Manage reservation request list.",
     timelineGuideText: "View all reservations by date and room.",
     requestGuideText: "Submit a new reservation request.",
+    multiRequestGuideText: "Submit a new reservation request for multiple rooms at once. Each room gets its own independent request.",
     settingsGuideText: "Manage room information and settings.",
     adminReview: "Admin Review",
     adminApiKey: "Admin API Key",
@@ -309,6 +315,7 @@ export const translations = {
     sidebarRooms: "포털",
     navTimeline: "예약 현황",
     navRequest: "새 예약 신청",
+    navMultiRequest: "새 다중 예약 신청",
     navAdmin: "관리자 검토",
     navSettings: "장소 설정",
     navRefresh: "새로고침",
@@ -421,6 +428,7 @@ export const translations = {
     statusApproved: "승인됨",
     statusChanged: "변경됨",
     statusRejected: "거부됨",
+    statusExternal: "담당자 캘린더",
 
     // Calendar navigation
     prev: "이전",
@@ -454,6 +462,9 @@ export const translations = {
     repeatCount: "반복 횟수",
     repeatCountHint: "💡 %d개의 예약이 %s 생성되며, 모두 자동승인됩니다.",
     noAvailableRooms: "사용 가능한 장소가 없습니다.",
+    fieldRooms: "장소",
+    selected: "개 선택됨",
+    submitMultiRequest: "다중 신청하기",
 
     // AdminReservationEditModal
     adminEditTitle: "예약 수정",
@@ -473,6 +484,7 @@ export const translations = {
     adminGuideText: "예약 요청 리스트를 관리합니다.",
     timelineGuideText: "날짜와 장소별 전체 예약 현황을 확인합니다.",
     requestGuideText: "새로운 예약 신청을 합니다.",
+    multiRequestGuideText: "여러 장소에 대해 한 번에 예약을 신청합니다. 각 장소마다 독립적인 예약이 생성됩니다.",
     settingsGuideText: "장소 정보와 설정을 관리합니다.",
     adminReview: "관리자 검토",
     adminApiKey: "관리자 API 키",

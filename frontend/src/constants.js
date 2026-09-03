@@ -3,6 +3,7 @@ export const statusLabel = {
   approved: "Approved",
   changed: "Changed",
   rejected: "Rejected",
+  external: "Staff Calendar",
 };
 
 export function statusClass(status) {

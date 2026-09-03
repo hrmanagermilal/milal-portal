@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from "react";
+import { Fragment, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
@@ -16,9 +16,6 @@ import {
 } from "../../utils/datetime";
 import { useLanguage } from "../../i18n/LanguageContext";
 import DataMart from "../../common/DataMart";
-import { api } from "../../api";
-import EventPublisher from "../../event/EventPublisher";
-import { EventDef } from "../../event/EventDef";
 import NewReservationModal from "./NewReservationModal";
 import ReservedItem from "./ReservedItem";
 import { evaluateRuleForSlot, groupRulesByRoom } from "../../utils/reservationRules";
@@ -68,8 +65,6 @@ export default function DayViewCalendar({
   const { t } = useLanguage();
   const { start: dayStart, end: dayEnd } = buildWindowForDay(date);
   const rulesByRoom = groupRulesByRoom(reservationRules);
-  
-  const [localReservations, setLocalReservations] = useState(reservations || []);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
@@ -90,53 +85,8 @@ export default function DayViewCalendar({
     repeat_count: 1,
   });
 
-  // Auto-refresh reservations every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-      } catch (err) {
-        console.error("[DayViewCalendar] Failed to refresh reservations:", err);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Subscribe to reservation creation events for immediate refresh
-  useEffect(() => {
-    const handleReservationCreated = async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-      } catch (err) {
-        console.error("[DayViewCalendar] Failed to refresh after reservation created:", err);
-      }
-    };
-
-    EventPublisher.addEventListener(EventDef.onReservationCreated, "DAYVIEW", handleReservationCreated);
-
-    return () => {
-      EventPublisher.removeEventListener(EventDef.onReservationCreated, "DAYVIEW", handleReservationCreated);
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleReservationUpdated = async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-      } catch (err) {
-        console.error("[DayViewCalendar] Failed to refresh after reservation updated:", err);
-      }
-    };
-
-    EventPublisher.addEventListener(EventDef.onReservationUpdated, "DAYVIEW_UPDATE", handleReservationUpdated);
-    return () => {
-      EventPublisher.removeEventListener(EventDef.onReservationUpdated, "DAYVIEW_UPDATE", handleReservationUpdated);
-    };
-  }, []);
+  // Reservations/rooms are polled once at the App level and passed down as
+  // props — no separate polling here to avoid stacking redundant DB requests.
 
   const handleCellClick = (roomId, cellDateTimeStart, cellDateTimeEnd) => {
     setSelectedRoomId(roomId);
@@ -251,7 +201,7 @@ export default function DayViewCalendar({
 
         {/* Room Rows */}
         {rooms.map((room) => {
-          const roomDayItems = getEventsForRoomDay(localReservations, room.id, date);
+          const roomDayItems = getEventsForRoomDay(reservations || [], room.id, date);
           const isAvailable = roomDayItems.length === 0;
 
           return (
@@ -340,7 +290,7 @@ export default function DayViewCalendar({
         open={modalOpen}
         onClose={handleModalClose}
         rooms={rooms}
-        reservations={localReservations}
+        reservations={reservations}
         reservationRules={reservationRules}
         form={form}
         setForm={setForm}

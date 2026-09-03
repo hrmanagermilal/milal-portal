@@ -506,6 +506,11 @@ th {
   color: #962039;
 }
 
+.status-external {
+  background: #e8eaed;
+  color: #5f6368;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));

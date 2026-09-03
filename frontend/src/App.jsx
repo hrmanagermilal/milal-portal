@@ -16,6 +16,7 @@ import AdminReservationPanel from "./components/room-reservation/AdminReservatio
 import UserManagement from "./components/UserManagement";
 import LoginModal from "./components/LoginModal";
 import ReservationRequestForm from "./components/room-reservation/ReservationRequestForm";
+import MultiRoomReservationRequestForm from "./components/room-reservation/MultiRoomReservationRequestForm";
 import ReservationTimeline from "./components/room-reservation/ReservationTimeline";
 import RoomSettingsPanel from "./components/room-reservation/RoomSettingsPanel";
 import CellGroupInfoModal from "./components/cell_group/CellGroupInfoModal";
@@ -64,6 +65,7 @@ export default function App() {
   const TABS = [
     { key: "timeline", label: t("navTimeline") },
     { key: "request",  label: t("navRequest") },
+    { key: "multi-request", label: t("navMultiRequest") },
     { key: "admin",    label: t("navAdmin") },
     { key: "member-search", label: "🔍 성도 검색" },
     { key: "space-settings", label: t("navSettings") },
@@ -125,6 +127,18 @@ export default function App() {
     ...defaultTimes(),
   });
 
+  const [multiForm, setMultiForm] = useState({
+    room_ids: [],
+    requester_name: "",
+    phone: "",
+    email: "",
+    purpose: "",
+    attendees: 1,
+    notes: "",
+    permission: "member",
+    ...defaultTimes(),
+  });
+
   async function loadData() {
     setLoading(true);
     setError("");
@@ -150,10 +164,14 @@ export default function App() {
   }, []);
 
   // ── Silent background polling ──────────────────────────────────────────
+  // Single source of truth for rooms/reservations: children read them via
+  // props instead of running their own polls, to avoid piling up redundant
+  // DB requests every few seconds (each open tab was previously running
+  // 3-4 independent pollers at once).
   useEffect(() => {
     if (!userName) return;
-    const INTERVAL = tab === "admin" ? 5_000 : 10_000;
-    const timer = setInterval(async () => {
+
+    async function refresh() {
       try {
         const [roomData, reservationData] = await Promise.all([
           api.getRooms(),
@@ -173,9 +191,24 @@ export default function App() {
       } catch {
         // silent — don't surface background errors
       }
-    }, INTERVAL);
-    return () => clearInterval(timer);
+    }
+
+    const INTERVAL = tab === "admin" ? 5_000 : 10_000;
+    const timer = setInterval(refresh, INTERVAL);
+
+    // Refresh immediately on any create/update anywhere (including
+    // self-service edits made directly from ReservedItem) instead of
+    // waiting for the next poll tick.
+    EventPublisher.addEventListener(EventDef.onReservationCreated, "APP_REFRESH", refresh);
+    EventPublisher.addEventListener(EventDef.onReservationUpdated, "APP_REFRESH", refresh);
+
+    return () => {
+      clearInterval(timer);
+      EventPublisher.removeEventListener(EventDef.onReservationCreated, "APP_REFRESH");
+      EventPublisher.removeEventListener(EventDef.onReservationUpdated, "APP_REFRESH");
+    };
   }, [userName, tab, userPermission]);
+
 
   async function handleCreateReservation(formData) {
     setError("");
@@ -211,6 +244,49 @@ export default function App() {
     }
   }
 
+  async function handleCreateMultiReservation(formData) {
+    setError("");
+    setSuccess("");
+
+    const { room_ids = [], ...shared } = formData;
+    try {
+      const results = await Promise.allSettled(
+        room_ids.map((roomId) =>
+          api.createReservation({
+            ...shared,
+            room_id: Number(roomId) || 0,
+            attendees: Number(shared.attendees) || 1,
+            repeat_count: Number(shared.repeat_count) || 1,
+            start_time: localISOStringToUTCISO(shared.start_time),
+            end_time: localISOStringToUTCISO(shared.end_time),
+          })
+        )
+      );
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - succeeded;
+
+      if (failed === 0) {
+        setSuccess(`${succeeded}개 장소에 대한 예약 신청이 생성되었습니다. 관리자 승인이 필요합니다.`);
+      } else {
+        setError(`${succeeded}건 성공, ${failed}건 실패했습니다.`);
+      }
+      setMultiForm((prev) => ({
+        ...prev,
+        room_ids: [],
+        requester_name: "",
+        phone: "",
+        email: "",
+        purpose: "",
+        attendees: 1,
+        notes: "",
+        ...defaultTimes(),
+      }));
+      EventPublisher.publish(EventDef.onReservationCreated, { status: "success" });
+    } catch (err) {
+      setError(err.message || "Failed to create reservations");
+    }
+  }
+
   async function handleAdminAction(id, action, updatedData = {}) {
     setError("");
     setSuccess("");
@@ -221,16 +297,16 @@ export default function App() {
         admin_comment: updatedData.admin_comment || "",
       };
 
-      if (action === "change") {
-        if (updatedData.room_id) {
-          payload.room_id = Number(updatedData.room_id);
-        }
-        if (updatedData.start_time) {
-          payload.start_time = new Date(updatedData.start_time).toISOString();
-        }
-        if (updatedData.end_time) {
-          payload.end_time = new Date(updatedData.end_time).toISOString();
-        }
+      // Room/time edits should apply regardless of the chosen status
+      // (approve/change), otherwise edits made while approving are lost.
+      if (updatedData.room_id) {
+        payload.room_id = Number(updatedData.room_id);
+      }
+      if (updatedData.start_time) {
+        payload.start_time = new Date(updatedData.start_time).toISOString();
+      }
+      if (updatedData.end_time) {
+        payload.end_time = new Date(updatedData.end_time).toISOString();
       }
 
       console.log("Admin action payload:", payload, id);
@@ -346,6 +422,16 @@ export default function App() {
               setForm={setForm}
               onSubmit={handleCreateReservation}
               guideText={t("requestGuideText")}
+            />
+          )}
+          {!loading && tab === "multi-request" && userPermission === "admin" && (
+            <MultiRoomReservationRequestForm
+              rooms={rooms}
+              form={multiForm}
+              setForm={setMultiForm}
+              onSubmit={handleCreateMultiReservation}
+              guideText={t("multiRequestGuideText")}
+              currentUser={DataMart.getCurrentUser()}
             />
           )}
           {!loading && tab === "admin" && (

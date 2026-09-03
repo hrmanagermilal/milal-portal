@@ -47,6 +47,10 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       OHJIC_API_KEY: ${OHJIC_API_KEY}
       OHJIC_API_BASE_URL: ${OHJIC_API_BASE_URL:-https://api.ohjic.us}
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-/app/backend/secrets/google-service-account.json}
+      GOOGLE_CALENDAR_IDS: ${GOOGLE_CALENDAR_IDS:-hr.manager.milal@gmail.com}
+    volumes:
+      - ./backend/secrets:/app/backend/secrets:ro
     restart: unless-stopped
 
 volumes:

@@ -14,6 +14,12 @@ class MembershipCategory(str, enum.Enum):
     adult = "adult"
 
 
+class EmailStatus(str, enum.Enum):
+    pending = "pending"
+    sent = "sent"
+    failed = "failed"
+
+
 class RuleType(str, enum.Enum):
     day_of_week = "day_of_week"
     specific_date = "specific_date"
@@ -243,6 +249,38 @@ class RoomLocation(Base):
     room: Mapped["Room"] = relationship(back_populates="location")
 
 
+class ExternalCalendarEvent(Base):
+    """Locally cached "장소-신청자" bookings synced from the staff Google Calendar(s).
+    Refreshed periodically (see sync_tasks.py) instead of hitting Google on every request.
+    """
+    __tablename__ = "external_calendar_events"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)  # "{calendar_id}:{google_event_id}"
+    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), nullable=False)
+    room_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    requester_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    purpose: Mapped[str] = mapped_column(String(255), nullable=False)
+    start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    all_day: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EmailQueueItem(Base):
+    """Outbox for background email delivery (see app/email_queue.py)."""
+    __tablename__ = "email_queue"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    to_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[EmailStatus] = mapped_column(Enum(EmailStatus), default=EmailStatus.pending, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class Reservation(Base):
     __tablename__ = "reservations"
 
@@ -266,6 +304,10 @@ class Reservation(Base):
         nullable=False,
     )
     admin_comment: Mapped[str] = mapped_column(Text, default="")
+
+    # True when an admin created this reservation directly (auto-approved);
+    # skips the requester confirmation email and start/end reminders.
+    created_by_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Repeat settings (for admin recurring reservations)
     repeat_type: Mapped[str] = mapped_column(String(20), default="none")  # "none", "weekly", "monthly"
