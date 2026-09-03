@@ -32,8 +32,6 @@ import { calendarModes } from "../../constants";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { api } from "../../api";
 import DataMart from "../../common/DataMart";
-import EventPublisher from "../../event/EventPublisher";
-import { EventDef } from "../../event/EventDef";
 import {
   addDays,
   formatDateTime,
@@ -58,6 +56,7 @@ const STATUS_COLOR = {
   approved: "success",
   changed: "info",
   rejected: "error",
+  external: "default",
 };
 
 function buildWindowForDay(date) {
@@ -79,6 +78,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
     approved: t("statusApproved"),
     changed: t("statusChanged"),
     rejected: t("statusRejected"),
+    external: t("statusExternal"),
   };
 
   const [mode, setMode] = useState("week");
@@ -88,44 +88,10 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [showList, setShowList] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
-  const [localReservations, setLocalReservations] = useState(reservations || []);
   const [reservationRules, setReservationRules] = useState([]);
 
-  // 5-second polling for reservations
-  useEffect(() => {
-    const loadReservations = async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-      } catch (err) {
-        console.error("Failed to load reservations:", err);
-      }
-    };
-
-    loadReservations();
-    const interval = setInterval(loadReservations, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Subscribe to reservation creation events
-  useEffect(() => {
-    const handleReservationCreated = async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-        console.log("[ReservationTimeline] Reservation created event received, updated reservations.", data);
-      } catch (err) {
-        console.error("Failed to refresh reservations:", err);
-      }
-    };
-
-    EventPublisher.addEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
-    EventPublisher.addEventListener(EventDef.onReservationUpdated, "TIMELINE", handleReservationCreated);
-    return () => {
-      EventPublisher.removeEventListener(EventDef.onReservationCreated, "TIMELINE", handleReservationCreated);
-      EventPublisher.removeEventListener(EventDef.onReservationUpdated, "TIMELINE", handleReservationCreated);
-    };
-  }, []);
+  // Reservations/rooms are polled once at the App level and passed down as
+  // props — no separate polling here to avoid stacking redundant DB requests.
 
   useEffect(() => {
     let cancelled = false;
@@ -166,7 +132,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   }, [floorFilteredRooms, selectedRooms]);
 
   const filteredReservations = useMemo(() => {
-    return localReservations.filter((item) => {
+    return (reservations || []).filter((item) => {
       // Always exclude rejected reservations from calendar display
       if (item.status === "rejected") return false;
       
@@ -175,7 +141,8 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
       if (selectedStatus !== "all" && item.status !== selectedStatus) return false;
       return true;
     });
-  }, [localReservations, selectedFloor, floorFilteredRooms, selectedRooms, selectedStatus]);
+  }, [reservations, selectedFloor, floorFilteredRooms, selectedRooms, selectedStatus]);
+
 
   const visibleRange = useMemo(() => {
     if (mode === "day") {

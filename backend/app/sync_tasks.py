@@ -4,19 +4,95 @@ Periodically syncs all members from OHJIC to local DB.
 """
 import asyncio
 import logging
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal
-from .models import Member
+from .google_calendar import list_external_events
+from .models import ExternalCalendarEvent, Member, Room
 from .ohjic_client import OhjicAPIClient
 
 logger = logging.getLogger(__name__)
 
 # In-memory cache for sync timestamp
 _last_sync_timestamp = None
+
+# ── External (Google) calendar cache sync ──────────────────────────────────
+EXTERNAL_CALENDAR_SYNC_MIN_INTERVAL_SECONDS = 600  # 10 minutes
+EXTERNAL_CALENDAR_SYNC_WINDOW_PAST_DAYS = 7
+EXTERNAL_CALENDAR_SYNC_WINDOW_FUTURE_DAYS = 60
+
+_last_calendar_sync_at: datetime | None = None
+_calendar_sync_lock = threading.Lock()
+
+
+def maybe_sync_external_calendar_events(db: Session) -> None:
+    """Refresh the external_calendar_events cache from Google Calendar, but at
+    most once every 10 minutes — regardless of how many logged-in users'
+    browsers trigger it concurrently.
+    """
+    global _last_calendar_sync_at
+
+    with _calendar_sync_lock:
+        now = datetime.utcnow()
+        if (
+            _last_calendar_sync_at is not None
+            and (now - _last_calendar_sync_at).total_seconds() < EXTERNAL_CALENDAR_SYNC_MIN_INTERVAL_SECONDS
+        ):
+            return
+        _last_calendar_sync_at = now
+
+    try:
+        _sync_external_calendar_events(db)
+    except Exception as exc:
+        logger.error(f"[calendar-sync] sync failed: {exc}")
+
+
+def _sync_external_calendar_events(db: Session) -> None:
+    rooms = db.scalars(select(Room).where(Room.is_active == True)).all()
+    room_by_name = {room.name: room for room in rooms}
+
+    window_start = datetime.utcnow() - timedelta(days=EXTERNAL_CALENDAR_SYNC_WINDOW_PAST_DAYS)
+    window_end = datetime.utcnow() + timedelta(days=EXTERNAL_CALENDAR_SYNC_WINDOW_FUTURE_DAYS)
+
+    events = list_external_events(window_start, window_end, valid_room_names=set(room_by_name.keys()))
+
+    seen_ids = set()
+    for ev in events:
+        room = room_by_name.get(ev["room_name"])
+        if not room:
+            continue
+        event_id = ev["id"]
+        seen_ids.add(event_id)
+        row = db.get(ExternalCalendarEvent, event_id)
+        if not row:
+            row = ExternalCalendarEvent(id=event_id)
+            db.add(row)
+        row.room_id = room.id
+        row.room_name = room.name
+        row.requester_name = ev["requester_name"]
+        row.purpose = ev["purpose"]
+        row.start_time = ev["start"]
+        row.end_time = ev["end"]
+        row.all_day = ev["all_day"]
+        row.synced_at = datetime.utcnow()
+
+    # Drop cached rows that no longer exist upstream, within the synced window.
+    stale_rows = db.scalars(
+        select(ExternalCalendarEvent).where(
+            ExternalCalendarEvent.start_time >= window_start,
+            ExternalCalendarEvent.start_time <= window_end,
+        )
+    ).all()
+    for row in stale_rows:
+        if row.id not in seen_ids:
+            db.delete(row)
+
+    db.commit()
+    logger.info(f"[calendar-sync] synced {len(seen_ids)} external event(s)")
 
 
 async def sync_all_members_from_ohjic():
@@ -80,54 +156,54 @@ async def sync_all_members_from_ohjic():
                 api_member = member_detail_response.get("data", {})
                 
                 # 기본 정보
-                member_name = api_member.get("member_name", "")
-                email = api_member.get("email", "")
-                phone = api_member.get("mobile_phone", "")
+                member_name = api_member.get("member_name") or ""
+                email = api_member.get("email") or ""
+                phone = api_member.get("mobile_phone") or ""
                 
                 # 세대/가족 정보
                 family_id = api_member.get("family_id")
-                family_relation = api_member.get("family_relation", "")
-                family_head_name = api_member.get("family_head_name", "")
+                family_relation = api_member.get("family_relation") or ""
+                family_head_name = api_member.get("family_head_name") or ""
                 
                 # 개인 정보
-                gender = api_member.get("gender", "")
+                gender = api_member.get("gender") or ""
                 birth_year = api_member.get("birth_year")
                 birth_date = api_member.get("birth_date")
                 
                 # 교회 역할
-                title = api_member.get("position_name", "")
+                title = api_member.get("position_name") or ""
                 position_code = api_member.get("position_code")
                 position_order = api_member.get("position_order")
                 
                 # 신급
-                church_level_name = api_member.get("church_level_name", "")
+                church_level_name = api_member.get("church_level_name") or ""
                 church_level_code = api_member.get("church_level_code")
                 church_level_order = api_member.get("church_level_order")
                 church_level_date = api_member.get("church_level_date")
-                church_level_church = api_member.get("church_level_church", "")
+                church_level_church = api_member.get("church_level_church") or ""
                 
                 # 교인 구분
                 member_category1_code = api_member.get("member_category1_code")
-                member_category1_name = api_member.get("member_category1_name", "")
+                member_category1_name = api_member.get("member_category1_name") or ""
                 member_category2_code = api_member.get("member_category2_code")
-                member_category2_name = api_member.get("member_category2_name", "")
+                member_category2_name = api_member.get("member_category2_name") or ""
                 member_category_updated_at = api_member.get("member_category_updated_at")
-                membership_status = api_member.get("membership_status", "")
+                membership_status = api_member.get("membership_status") or ""
                 
                 # 소속 그룹
-                group_category_name = api_member.get("group_category_name", "")
-                group_names = api_member.get("group_names", [])
+                group_category_name = api_member.get("group_category_name") or ""
+                group_names = api_member.get("group_names") or []
                 cell_group = group_names[-1] if group_names else ""
                 
                 # 주소 정보
-                postal_code_jibun = api_member.get("postal_code_jibun", "")
-                postal_code_road = api_member.get("postal_code_road", "")
-                address = api_member.get("address_jibun", "")
-                address_detail = api_member.get("address_detail", "")
-                address_road = api_member.get("address_road", "")
+                postal_code_jibun = api_member.get("postal_code_jibun") or ""
+                postal_code_road = api_member.get("postal_code_road") or ""
+                address = api_member.get("address_jibun") or ""
+                address_detail = api_member.get("address_detail") or ""
+                address_road = api_member.get("address_road") or ""
                 
                 # 추가 정보
-                photo_url = api_member.get("photo_url", "")
+                photo_url = api_member.get("photo_url") or ""
                 
                 # 타임스탬프
                 created_at = api_member.get("created_at")

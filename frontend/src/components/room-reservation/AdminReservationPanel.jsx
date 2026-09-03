@@ -19,7 +19,6 @@ import Typography from "@mui/material/Typography";
 import ButtonGroup from "@mui/material/ButtonGroup";
 import { formatDateTime, sortByStartTime } from "../../utils/datetime";
 import { useLanguage } from "../../i18n/LanguageContext";
-import { api } from "../../api";
 import EventPublisher from "../../event/EventPublisher";
 import { EventDef } from "../../event/EventDef";
 import FloorPlanTooltip from "./FloorPlanTooltip";
@@ -44,7 +43,6 @@ export default function AdminReservationPanel({
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [localReservations, setLocalReservations] = useState(reservations || []);
   const [statusFilter, setStatusFilter] = useState("pending");
 
   const statusLabel = {
@@ -56,7 +54,7 @@ export default function AdminReservationPanel({
 
   // Filter by selected status
   const filteredReservations = sortByStartTime(
-    localReservations.filter(r => r.status === statusFilter)
+    (reservations || []).filter(r => r.status === statusFilter)
   );
 
   // Calculate pagination (desktop only)
@@ -69,36 +67,16 @@ export default function AdminReservationPanel({
   // Mobile: show all items (no pagination)
   const mobileDisplayedItems = filteredReservations;
 
-  // Auto-refresh pending reservations every 5 seconds
+  // Reservations are polled once at the App level and passed down as props.
+  // Just reset back to page 1 whenever an update comes in (e.g. an item
+  // leaves the current status filter after being approved/rejected).
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-      } catch (err) {
-        console.error("[AdminReservationPanel] Failed to refresh reservations:", err);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Subscribe to reservation update events
-  useEffect(() => {
-    const handleReservationUpdated = async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-        // Reset to first page when data updates
-        setCurrentPage(1);
-      } catch (err) {
-        console.error("[AdminReservationPanel] Failed to refresh after update:", err);
-      }
-    };
+    const handleReservationUpdated = () => setCurrentPage(1);
 
     EventPublisher.addEventListener(EventDef.onReservationUpdated, "ADMIN_PANEL", handleReservationUpdated);
     return () => EventPublisher.removeEventListener(EventDef.onReservationUpdated, "ADMIN_PANEL", handleReservationUpdated);
   }, []);
+
 
   function handleEditClick(reservation) {
     setSelectedReservation(reservation);

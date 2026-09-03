@@ -10,6 +10,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import Divider from "@mui/material/Divider";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { dateToLocalISOString } from "../../utils/datetime";
 
 export default function AdminReservationEditModal({
   open,
@@ -22,8 +23,12 @@ export default function AdminReservationEditModal({
   
   // 예약 정보
   const [roomId, setRoomId] = useState(reservation?.room_id || "");
-  const [startTime, setStartTime] = useState(reservation?.start_time.slice(0, 16) || "");
-  const [endTime, setEndTime] = useState(reservation?.end_time.slice(0, 16) || "");
+  const [startTime, setStartTime] = useState(
+    reservation?.start_time ? dateToLocalISOString(new Date(reservation.start_time)) : ""
+  );
+  const [endTime, setEndTime] = useState(
+    reservation?.end_time ? dateToLocalISOString(new Date(reservation.end_time)) : ""
+  );
   const [purpose, setPurpose] = useState(reservation?.purpose || "");
   const [attendees, setAttendees] = useState(reservation?.attendees || 1);
   const [notes, setNotes] = useState(reservation?.notes || "");

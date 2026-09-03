@@ -20,7 +20,7 @@ import EventPublisher from "../event/EventPublisher";
 const SIDEBAR_W = 250;
 const MODULE = 'Sidebar';
 
-export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCount = 0, expenseApprovalCount = 0, canApproveExpenses = false, mobileOpen = false, onClose }) {
+export default function Sidebar({ activeTab, onDashboard, onTabChange, onRefresh, pendingCount = 0, expenseApprovalCount = 0, canApproveExpenses = false, mobileOpen = false, onClose }) {
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(true);
   const [expenseOpen, setExpenseOpen] = useState(true);
@@ -54,8 +54,9 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
       { key: "timeline", label: t("navTimeline"), icon: MenuIcon, badge: null },
       { key: "request", label: t("navRequest"), icon: PlusIcon, badge: null },
     ];
-    
+
     if (permission === "admin") {
+      items.push({ key: "multi-request", label: t("navMultiRequest"), icon: PlusIcon, badge: null });
       items.push({ key: "admin", label: t("navAdmin"), icon: CheckIcon, badge: null });
       items.push({ key: "space-settings", label: t("navSettings"), icon: SettingsIcon, badge: null });
     }
@@ -83,7 +84,15 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
       }}
     >
       {/* Sidebar Header - Velok Branding */}
-      <Box sx={{ p: 3, pb: 2 }}>
+      <Box
+        role="button"
+        tabIndex={0}
+        onClick={onDashboard}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") onDashboard();
+        }}
+        sx={{ p: 3, pb: 2, cursor: "pointer", "&:hover": { bgcolor: "#e8ecf2" } }}
+      >
         <Stack spacing={1.5}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {/* Milal Logo */}

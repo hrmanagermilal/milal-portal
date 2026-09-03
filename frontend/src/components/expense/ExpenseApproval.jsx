@@ -61,16 +61,14 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
   const [comment, setComment] = useState("");
   const [page, setPage] = useState(1);
   const [accounts, setAccounts] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [accountId, setAccountId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
   const [previewFile, setPreviewFile] = useState(null);
 
   const selected = requests.find((request) => request.id === selectedId) || null;
   const pageCount = Math.max(1, Math.ceil(requests.length / 10));
   const displayedRequests = requests.slice((page - 1) * 10, page * 10);
   const canDecide = selected?.approvals?.some((approval) => approval.state === "current");
-  const canApprove = canDecide && accountId && categoryId;
+  const canApprove = canDecide && accountId;
   const formatCurrency = (amount) => `CAD ${Number(amount || 0).toLocaleString(korean ? "ko-KR" : "en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const statusLabel = (status) => ({ reviewing: korean ? "1차 결재" : "First approval", approved: korean ? "2차 결재" : "Second approval", rejected: korean ? "반려" : "Rejected" })[status] || status;
 
@@ -104,26 +102,10 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
     const request = requests.find((item) => item.id === selectedId);
     const nextAccountId = request?.account_id ? String(request.account_id) : "";
     setAccountId(nextAccountId);
-    setCategoryId(request?.category_id ? String(request.category_id) : "");
-    if (!nextAccountId) {
-      setCategories([]);
-      return;
-    }
-    api.getExpenseAccountCategories(nextAccountId)
-      .then(setCategories)
-      .catch((loadError) => setError(loadError.message || "Unable to load expense categories."));
   }, [selectedId, requests]);
 
-  async function changeAccount(nextAccountId) {
+  function changeAccount(nextAccountId) {
     setAccountId(nextAccountId);
-    setCategoryId("");
-    setCategories([]);
-    if (!nextAccountId) return;
-    try {
-      setCategories(await api.getExpenseAccountCategories(nextAccountId));
-    } catch (loadError) {
-      setError(loadError.message || "Unable to load expense categories.");
-    }
   }
 
   async function decide(action) {
@@ -136,7 +118,7 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
     setProcessing(true);
     setError("");
     try {
-      await api.decideExpenseApproval(selected.id, action, comment.trim(), Number(accountId), Number(categoryId));
+      await api.decideExpenseApproval(selected.id, action, comment.trim(), Number(accountId));
       await loadRequests();
       onApprovalChanged?.();
     } catch (decisionError) {
@@ -177,12 +159,6 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
                 <InputLabel>{korean ? "계정" : "Account"}</InputLabel>
                 <Select label={korean ? "계정" : "Account"} value={accountId} onChange={(event) => changeAccount(event.target.value)}>
                   {accounts.map((account) => <MenuItem key={account.id} value={String(account.id)}>{account.year} · {account.name}</MenuItem>)}
-                </Select>
-              </FormControl>
-              <FormControl fullWidth required size="small" disabled={!accountId}>
-                <InputLabel>{korean ? "1차 카테고리" : "Category"}</InputLabel>
-                <Select label={korean ? "1차 카테고리" : "Category"} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-                  {categories.map((category) => <MenuItem key={category.id} value={String(category.id)}>{category.name}</MenuItem>)}
                 </Select>
               </FormControl>
             </Stack><TextField label={korean ? "의견" : "Comment"} value={comment} onChange={(event) => setComment(event.target.value)} multiline rows={3} required fullWidth placeholder={korean ? "승인 또는 반려 의견을 입력하세요." : "Enter an approval or rejection comment."} />

@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SaveIcon from "@mui/icons-material/Save";
+import SearchIcon from "@mui/icons-material/Search";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import ViewModuleIcon from "@mui/icons-material/ViewModule";
 import {
   Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControl, InputLabel, MenuItem, Paper,
-  Pagination, Select, Stack, TextField, Typography,
+  Select, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from "@mui/material";
 import { api } from "../../api";
 import { useLanguage } from "../../i18n/LanguageContext";
-
-const PAGE_SIZE = 6;
 
 export default function ExpenseApprovalRouteManagement() {
   const { t } = useLanguage();
@@ -20,9 +21,10 @@ export default function ExpenseApprovalRouteManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expenseGroupDialog, setExpenseGroupDialog] = useState(null);
-  const [expenseGroupForm, setExpenseGroupForm] = useState({ account_code: "", department_name: "", name: "", year: String(new Date().getFullYear()), budget_amount: "" });
+  const [expenseGroupForm, setExpenseGroupForm] = useState({ account_code: "", name: "", year: String(new Date().getFullYear()), budget_amount: "" });
   const [selectedDepartmentId, setSelectedDepartmentId] = useState(null);
-  const [page, setPage] = useState(1);
+  const [viewMode, setViewMode] = useState("card");
+  const [searchQuery, setSearchQuery] = useState("");
 
   async function load() {
     setLoading(true);
@@ -76,37 +78,21 @@ export default function ExpenseApprovalRouteManagement() {
   }
 
   function openExpenseGroupDialog() {
-    setExpenseGroupForm({ account_code: "", department_name: "", name: "", year: String(new Date().getFullYear()), budget_amount: "" });
+    setExpenseGroupForm({ account_code: "", name: "", year: String(new Date().getFullYear()), budget_amount: "" });
     setExpenseGroupDialog(true);
   }
 
   async function saveExpenseGroup() {
     const accountCode = expenseGroupForm.account_code.trim();
-    let department = departments.find((item) => item.account_code.trim().toLowerCase() === accountCode.toLowerCase());
     const year = Number(expenseGroupForm.year);
     const budgetAmount = Number(expenseGroupForm.budget_amount);
     if (!accountCode || !expenseGroupForm.name.trim() || !Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isFinite(budgetAmount) || budgetAmount < 0) {
       setError("위원회 코드, 예산항목명, 연도, 예산액을 올바르게 입력하세요.");
       return;
     }
-    if (!department && !expenseGroupForm.department_name.trim()) {
-      setError("새 위원회 코드는 위원회명을 함께 입력하세요.");
-      return;
-    }
-    if (!department && budgetAmount <= 0) {
-      setError("새 위원회의 예산액은 0보다 커야 합니다.");
-      return;
-    }
     try {
-      if (!department) {
-        department = await api.createExpenseAccount({
-          account_code: accountCode,
-          name: expenseGroupForm.department_name.trim(),
-          year,
-          budget_amount: budgetAmount,
-        });
-      }
-      await api.createExpenseAccountCategory(department.id, {
+      await api.createExpenseAccount({
+        account_code: accountCode,
         name: expenseGroupForm.name.trim(),
         year,
         budget_amount: budgetAmount,
@@ -127,11 +113,23 @@ export default function ExpenseApprovalRouteManagement() {
   }
 
   const selectedDepartment = departments.find((department) => department.id === selectedDepartmentId);
-  const pageCount = Math.max(1, Math.ceil(departments.length / PAGE_SIZE));
-  const displayedDepartments = departments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const memberName = (memberId) => {
     const member = approvers.find((item) => String(item.id) === String(memberId));
     return member ? `${member.name}${member.title ? ` (${member.title})` : ""}` : "-";
+  };
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const displayedDepartments = departments.filter((department) => {
+    if (!normalizedSearchQuery) return true;
+    const route = routes.find((item) => item.account_id === department.id);
+    return [
+      department.account_code,
+      department.name,
+      memberName(route?.chairperson_member_id),
+      memberName(route?.finance_elder_member_id),
+    ].some((value) => String(value || "").toLowerCase().includes(normalizedSearchQuery));
+  });
+  const handleViewModeChange = (_, nextViewMode) => {
+    if (nextViewMode) setViewMode(nextViewMode);
   };
 
   if (selectedDepartment) {
@@ -156,16 +154,25 @@ export default function ExpenseApprovalRouteManagement() {
 
   return <Box>
     {error && <Typography color="error" variant="body2" sx={{ mb: 2 }}>{error}</Typography>}
-    <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}><Button variant="contained" startIcon={<AddIcon />} onClick={() => openExpenseGroupDialog()} sx={{ bgcolor: "#3b522e", textTransform: "none", "&:hover": { bgcolor: "#2f4325" } }}>{t("expenseCreateExpenseGroup")}</Button></Box>
-    {loading ? <Box sx={{ py: 8, textAlign: "center" }}><CircularProgress size={24} /></Box> : <><Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 2 }}>{displayedDepartments.map((department) => {
+    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
+      <Stack direction="row" spacing={1} sx={{ flex: "1 1 320px", alignItems: "center" }}>
+        <ToggleButtonGroup value={viewMode} exclusive onChange={handleViewModeChange} size="small" aria-label="보기 옵션">
+          <Tooltip title="카드 보기"><ToggleButton value="card" aria-label="카드 보기"><ViewModuleIcon fontSize="small" /></ToggleButton></Tooltip>
+          <Tooltip title="리스트 보기"><ToggleButton value="list" aria-label="리스트 보기"><ViewListIcon fontSize="small" /></ToggleButton></Tooltip>
+        </ToggleButtonGroup>
+        <TextField value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="계정 코드, 항목 또는 결재자 검색" size="small" fullWidth InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ color: "#718096", mr: 1 }} /> }} inputProps={{ "aria-label": "계정 코드, 항목 또는 결재자 검색" }} />
+      </Stack>
+      <Button variant="contained" startIcon={<AddIcon />} onClick={() => openExpenseGroupDialog()} sx={{ bgcolor: "#3b522e", textTransform: "none", "&:hover": { bgcolor: "#2f4325" } }}>{t("expenseCreateExpenseGroup")}</Button>
+    </Box>
+    {loading ? <Box sx={{ py: 8, textAlign: "center" }}><CircularProgress size={24} /></Box> : <><Box sx={viewMode === "card" ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 2 } : { display: "grid", gap: 1 }}>{displayedDepartments.map((department) => {
       const route = routes.find((item) => item.account_id === department.id);
+      if (viewMode === "list") return <Paper key={department.id} elevation={0} onClick={() => setSelectedDepartmentId(department.id)} sx={{ border: "1px solid #e0e6ef", borderRadius: "8px", px: { xs: 2, sm: 2.5 }, py: 1.75, cursor: "pointer", transition: "border-color .2s, box-shadow .2s", "&:hover": { borderColor: "#3b522e", boxShadow: "0 3px 12px rgba(49, 59, 94, .12)" } }}><Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "90px minmax(180px, 1.6fr) minmax(130px, 1fr) minmax(130px, 1fr) 110px" }, gap: { xs: .75, sm: 2 }, alignItems: "center" }}><Typography variant="body2" sx={{ color: "#5d7186", fontWeight: 700 }}>{department.account_code || "-"}</Typography><Typography sx={{ color: "#313b5e", fontWeight: 800 }}>{department.name}</Typography><Typography variant="body2" sx={{ color: "#5d7186" }}>{t("expenseChairperson")} · {memberName(route?.chairperson_member_id)}</Typography><Typography variant="body2" sx={{ color: "#5d7186" }}>{t("expenseFinanceElder")} · {memberName(route?.finance_elder_member_id)}</Typography><Typography variant="body2" sx={{ color: "#3b522e", fontWeight: 800, textAlign: { sm: "right" } }}>CAD {Number(department.budget_amount || 0).toLocaleString()}</Typography></Box></Paper>;
       return <Paper key={department.id} elevation={0} onClick={() => setSelectedDepartmentId(department.id)} sx={{ border: "1px solid #e0e6ef", borderRadius: "8px", p: 2.25, cursor: "pointer", transition: "border-color .2s, box-shadow .2s", "&:hover": { borderColor: "#3b522e", boxShadow: "0 3px 12px rgba(49, 59, 94, .12)" } }}><Stack spacing={1.25}><Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}><Typography variant="caption" sx={{ color: "#5d7186", fontWeight: 700 }}>{department.account_code || "-"}</Typography><Typography variant="caption" sx={{ color: "#3b522e", fontWeight: 800 }}>CAD {Number(department.budget_amount || 0).toLocaleString()}</Typography></Box><Typography sx={{ color: "#313b5e", fontWeight: 800 }}>{department.name}</Typography><Box sx={{ borderTop: "1px solid #edf0f3", pt: 1.25 }}><Typography variant="caption" sx={{ display: "block", color: "#5d7186" }}>{t("expenseChairperson")} ({t("expenseFirstApproval")})</Typography><Typography variant="body2">{memberName(route?.chairperson_member_id)}</Typography></Box><Box><Typography variant="caption" sx={{ display: "block", color: "#5d7186" }}>{t("expenseFinanceElder")} ({t("expenseSecondApproval")})</Typography><Typography variant="body2">{memberName(route?.finance_elder_member_id)}</Typography></Box></Stack></Paper>;
-    })}</Box>{!displayedDepartments.length && <Typography sx={{ py: 6, textAlign: "center", color: "#8493a2" }}>{t("noData")}</Typography>}{departments.length > PAGE_SIZE && <Box sx={{ display: "flex", justifyContent: "center", pt: 3 }}><Pagination count={pageCount} page={Math.min(page, pageCount)} onChange={(_, nextPage) => setPage(nextPage)} size="small" /></Box>}</>}
+    })}</Box>{!displayedDepartments.length && <Typography sx={{ py: 6, textAlign: "center", color: "#8493a2" }}>{t("noData")}</Typography>}</>}
     <Dialog open={Boolean(expenseGroupDialog)} onClose={() => setExpenseGroupDialog(null)} maxWidth="xs" fullWidth>
       <DialogTitle>{t("expenseCreateExpenseGroup")}</DialogTitle>
       <DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
         <TextField label={t("expenseAccountCode")} value={expenseGroupForm.account_code} onChange={(event) => setExpenseGroupForm((current) => ({ ...current, account_code: event.target.value }))} required fullWidth inputProps={{ maxLength: 100 }} />
-        <TextField label={t("expenseDepartment")} value={expenseGroupForm.department_name} onChange={(event) => setExpenseGroupForm((current) => ({ ...current, department_name: event.target.value }))} required fullWidth helperText="새 위원회 코드를 입력한 경우에 사용됩니다." inputProps={{ maxLength: 255 }} />
         <TextField label={t("expenseExpenseGroupName")} value={expenseGroupForm.name} onChange={(event) => setExpenseGroupForm((current) => ({ ...current, name: event.target.value }))} required fullWidth />
         <TextField label={t("expenseYear")} type="number" value={expenseGroupForm.year} onChange={(event) => setExpenseGroupForm((current) => ({ ...current, year: event.target.value }))} required fullWidth />
         <TextField label={t("expenseBudgetAmount")} type="number" value={expenseGroupForm.budget_amount} onChange={(event) => setExpenseGroupForm((current) => ({ ...current, budget_amount: event.target.value }))} required fullWidth inputProps={{ min: 0, step: "0.01" }} />

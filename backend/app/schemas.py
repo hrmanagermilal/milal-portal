@@ -193,7 +193,6 @@ class ExpenseApprovalDecision(BaseModel):
     action: Literal["approve", "reject"]
     comment: str = Field(min_length=1, max_length=2000)
     account_id: int | None = Field(default=None, gt=0)
-    category_id: int | None = Field(default=None, gt=0)
 
 
 class ExpenseOut(BaseModel):
@@ -206,9 +205,7 @@ class ExpenseOut(BaseModel):
     total_amount: float
     requester_name: str
     account_id: int | None
-    category_id: int | None
     account_name: str = ""
-    category_name: str = ""
     items: list[dict]
     attachments: list[dict]
     approvals: list[dict]
@@ -225,25 +222,6 @@ class ExpenseAccountCreate(BaseModel):
 
 class ExpenseAccountUpdate(ExpenseAccountCreate):
     pass
-
-
-class ExpenseAccountCategoryCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
-    year: int = Field(ge=2000, le=2100)
-    budget_amount: float = Field(ge=0)
-
-
-class ExpenseAccountCategoryUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    year: int | None = Field(default=None, ge=2000, le=2100)
-    budget_amount: float | None = Field(default=None, ge=0)
-
-
-class ExpenseAccountCategoryOut(ExpenseAccountCategoryCreate):
-    id: int
-    account_id: int
-    created_at: datetime
-    updated_at: datetime
 
 
 class ExpenseApprovalRouteUpdate(BaseModel):
@@ -275,7 +253,6 @@ class ExpenseAccountOut(BaseModel):
 
 
 class ExpenseAccountDetailOut(ExpenseAccountOut):
-    categories: list[ExpenseAccountCategoryOut]
     expenses: list[ExpenseOut]
 
 

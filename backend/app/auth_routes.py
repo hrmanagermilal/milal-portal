@@ -5,11 +5,8 @@ import asyncio
 import logging
 import os
 import random
-import smtplib
 import string
 from datetime import datetime, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from tokenize import String
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +17,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
+from .email_queue import _send_email, queue_email
 from .models import Member, OtpCode, User, MemberChangeLog, MembershipCategory
 from .schemas import UserOut, ChangePasswordRequest, AdminUpdateUserRequest, ResetPasswordRequest
 from .ohjic_client import OhjicAPIClient
@@ -71,51 +69,6 @@ class MyAccountUpdateRequest(BaseModel):
 
 def _generate_otp() -> str:
     return "".join(random.choices(string.digits, k=4))
-
-
-def _send_email(to_addr: str, subject: str, body: str) -> bool:
-    """Send email via SMTP. Returns True on success."""
-    smtp_host = os.getenv("SMTP_HOST", "")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASSWORD", "")
-    smtp_from = os.getenv("SMTP_FROM", smtp_user)
-
-    # Check configuration
-    if not smtp_host or not smtp_user or not smtp_pass:
-        logger.warning(
-            "[OTP EMAIL – not configured] SMTP_HOST=%s, SMTP_USER=%s, SMTP_PASS=%s | To: %s",
-            "✓" if smtp_host else "✗",
-            "✓" if smtp_user else "✗",
-            "✓" if smtp_pass else "✗",
-            to_addr
-        )
-        return False
-
-    try:
-        logger.info("Attempting to send email to %s via %s:%d from %s", to_addr, smtp_host, smtp_port, smtp_from)
-        msg = MIMEMultipart()
-        msg["From"]    = smtp_from
-        msg["To"]      = to_addr
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-
-        # Increased timeout from 10 to 30 seconds
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-            server.ehlo()
-            logger.debug("EHLO sent")
-            server.starttls()
-            logger.debug("STARTTLS sent")
-            server.login(smtp_user, smtp_pass)
-            logger.debug("Login successful")
-            server.sendmail(smtp_from, to_addr, msg.as_string())
-            logger.info("✓ Email sent successfully to %s", to_addr)
-        return True
-    except Exception as exc:
-        logger.error("✗ Email send failed: %s | type: %s", exc, type(exc).__name__)
-        import traceback
-        logger.error("Traceback: %s", traceback.format_exc())
-        return False
 
 
 def _send_sms(phone: str, message: str) -> bool:
@@ -464,7 +417,7 @@ Best regards,
 Milal Community Team
 """
     
-    _send_email(member.email, email_subject, email_body)
+    queue_email(db, member.email, email_subject, email_body)
     
     return {"success": True, "user_id": member.user_id, "name": member.name}
 

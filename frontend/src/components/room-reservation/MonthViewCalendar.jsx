@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Box from "@mui/material/Box";
 import FloorPlanTooltip from "./FloorPlanTooltip";
 import Button from "@mui/material/Button";
@@ -26,9 +26,6 @@ import {
   toDateInputValue,
 } from "../../utils/datetime";
 import DataMart from "../../common/DataMart";
-import { api } from "../../api";
-import EventPublisher from "../../event/EventPublisher";
-import { EventDef } from "../../event/EventDef";
 import NewReservationModal from "./NewReservationModal";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { findFirstAllowedSlotForDate, groupRulesByRoom } from "../../utils/reservationRules";
@@ -49,6 +46,7 @@ function statusClass(status) {
     approved: "status-approved",
     changed: "status-changed",
     rejected: "status-rejected",
+    external: "status-external",
   };
   return statusColorMap[status] || "status-default";
 }
@@ -68,12 +66,11 @@ export default function MonthViewCalendar({
   const gridStart = startOfWeek(monthStart);
   const days = Array.from({ length: 42 }, (_, idx) => addDays(gridStart, idx));
 
-  const [localReservations, setLocalReservations] = useState(reservations || []);
-
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
+  const [dayListDialog, setDayListDialog] = useState(null); // { day, items }
   const [form, setForm] = useState({
     room_id: "",
     requester_name: "",
@@ -90,37 +87,9 @@ export default function MonthViewCalendar({
   });
   const rulesByRoom = groupRulesByRoom(reservationRules);
 
-  // Auto-refresh reservations every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-      } catch (err) {
-        console.error("[MonthViewCalendar] Failed to refresh reservations:", err);
-      }
-    }, 5000);
+  // Reservations/rooms are polled once at the App level and passed down as
+  // props — no separate polling here to avoid stacking redundant DB requests.
 
-    return () => clearInterval(interval);
-  }, []);
-
-  // Subscribe to reservation creation events for immediate refresh
-  useEffect(() => {
-    const handleReservationCreated = async () => {
-      try {
-        const data = await api.getReservations();
-        setLocalReservations(data);
-      } catch (err) {
-        console.error("[MonthViewCalendar] Failed to refresh after reservation created:", err);
-      }
-    };
-
-    EventPublisher.addEventListener(EventDef.onReservationCreated, "MONTHVIEW", handleReservationCreated);
-
-    return () => {
-      EventPublisher.removeEventListener(EventDef.onReservationCreated, "MONTHVIEW", handleReservationCreated);
-    };
-  }, []);
 
   const handleCellClick = (clickedDate) => {
     const firstAllowed = findFirstAllowedSlotForDate({
@@ -240,7 +209,7 @@ export default function MonthViewCalendar({
           const dayStart = startOfDay(day);
           const dayEnd = endOfDay(day);
           const dayItems = sortByStartTime(
-            localReservations.filter((item) => item.status !== "rejected" && overlapsPeriod(item, dayStart, dayEnd))
+            (reservations || []).filter((item) => item.status !== "rejected" && overlapsPeriod(item, dayStart, dayEnd))
           );
 
           return (
@@ -272,7 +241,14 @@ export default function MonthViewCalendar({
                     </span>
                   </div>
                 ))}
-                {dayItems.length > 3 && <small>+{dayItems.length - 3} more</small>}
+                {dayItems.length > 3 && (
+                  <small
+                    onClick={(e) => { e.stopPropagation(); setDayListDialog({ day, items: dayItems }); }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    +{dayItems.length - 3} more
+                  </small>
+                )}
               </div>
             </div>
           );
@@ -284,7 +260,7 @@ export default function MonthViewCalendar({
         open={modalOpen}
         onClose={handleModalClose}
         rooms={rooms}
-        reservations={localReservations}
+        reservations={reservations}
         reservationRules={reservationRules}
         form={form}
         setForm={setForm}
@@ -292,6 +268,67 @@ export default function MonthViewCalendar({
         selectedRoom={selectedRoomId}
         currentUser={currentUser || DataMart.getCurrentUser()}
       />
+
+      {/* Day Full List Popup (shown when clicking "+N more") */}
+      <Dialog open={!!dayListDialog} onClose={() => setDayListDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1, pr: 1, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #eef2f7" }}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box sx={{ width: 4, height: 24, bgcolor: "#3b522e", borderRadius: "2px" }} />
+            <Typography variant="h6" fontWeight={700} sx={{ color: "#313b5e" }}>
+              {dayListDialog && dateToLocalISOString(dayListDialog.day)}
+            </Typography>
+          </Stack>
+          <IconButton size="small" onClick={() => setDayListDialog(null)} sx={{ color: "#5d7186", "&:hover": { bgcolor: "#eef2f7" } }}>✕</IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {dayListDialog && (
+            <Stack sx={{ px: 2, py: 1.5 }} spacing={0.5}>
+              {dayListDialog.items.map((item) => (
+                <Box
+                  key={item.id}
+                  onClick={() => { setDetailItem(item); setDayListDialog(null); }}
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    borderRadius: "8px",
+                    border: "1px solid #eef2f7",
+                    px: 1.5,
+                    py: 1,
+                    "&:hover": { bgcolor: "rgba(59,82,46,0.06)" },
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body2" fontWeight={600} sx={{ color: "#313b5e" }}>{item.room_name}</Typography>
+                    <Typography variant="caption" sx={{ color: "#5d7186" }}>
+                      {formatDateTime(item.start_time)} → {formatDateTime(item.end_time)}
+                    </Typography>
+                  </Box>
+                  <Chip
+                    label={statusLabel[item.status] || item.status}
+                    size="small"
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: "11px",
+                      bgcolor: item.status === "approved" ? "rgba(59,82,46,0.12)" :
+                                item.status === "pending"  ? "rgba(246,197,77,0.18)" :
+                                item.status === "rejected" ? "rgba(249,92,92,0.12)" :
+                                item.status === "external" ? "rgba(95,99,104,0.12)" :
+                                "rgba(59,82,46,0.12)",
+                      color: item.status === "approved" ? "#3b522e" :
+                             item.status === "pending"  ? "#b07d00" :
+                             item.status === "rejected" ? "#f95c5c" :
+                             item.status === "external" ? "#5f6368" :
+                             "#3b522e",
+                    }}
+                  />
+                </Box>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Reservation Detail Popup */}
       <Dialog open={!!detailItem} onClose={() => setDetailItem(null)} maxWidth="xs" fullWidth>
@@ -323,10 +360,12 @@ export default function MonthViewCalendar({
                     bgcolor: detailItem.status === "approved" ? "rgba(59,82,46,0.12)" :
                               detailItem.status === "pending"  ? "rgba(246,197,77,0.18)" :
                               detailItem.status === "rejected" ? "rgba(249,92,92,0.12)" :
+                              detailItem.status === "external" ? "rgba(95,99,104,0.12)" :
                               "rgba(59,82,46,0.12)",
                     color: detailItem.status === "approved" ? "#3b522e" :
                            detailItem.status === "pending"  ? "#b07d00" :
                            detailItem.status === "rejected" ? "#f95c5c" :
+                           detailItem.status === "external" ? "#5f6368" :
                            "#3b522e",
                   }}
                 />

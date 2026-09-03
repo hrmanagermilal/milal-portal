@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,8 +40,8 @@ from .models import (
     CellReportMemberEntry,
     Expense,
     ExpenseAccount,
-    ExpenseAccountCategory,
     ExpenseApprovalRoute,
+    ExternalCalendarEvent,
     Member,
     OtpCode,
     Reservation,
@@ -59,9 +59,6 @@ from .schemas import (
     ExpenseCreate,
     ExpenseApprovalDecision,
     ExpenseAccountCreate,
-    ExpenseAccountCategoryCreate,
-    ExpenseAccountCategoryOut,
-    ExpenseAccountCategoryUpdate,
     ExpenseAccountDetailOut,
     ExpenseAccountOut,
     ExpenseAccountUpdate,
@@ -84,10 +81,11 @@ from .schemas import (
     RoomLocationUpdate,
     UserUpdateReservation,
 )
-from .auth_routes import router as auth_router, _send_email, get_current_user, oauth2_scheme
+from .auth_routes import router as auth_router, get_current_user, oauth2_scheme
 from .ai_chat import create_ai_chat_router, get_gemini_client
 from .reservation_eligibility import assess_reservation_eligibility
-from .sync_tasks import sync_all_members_from_ohjic
+from .email_queue import email_queue_worker, queue_email
+from .sync_tasks import maybe_sync_external_calendar_events, sync_all_members_from_ohjic
 
 app = FastAPI(title="Milal Community API", version="1.0.0")
 
@@ -121,7 +119,9 @@ EXPENSE_FILE_EXTENSIONS = {
 register_heif_opener()
 REMINDER_LEAD_MINUTES = 15
 REMINDER_POLL_SECONDS = 60
+EXPENSE_APPROVER_POSITION_CODES = (566, 567, 568)
 reminder_task: asyncio.Task | None = None
+email_queue_task: asyncio.Task | None = None
 EASTERN_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
 scheduler: AsyncIOScheduler | None = None
 
@@ -219,7 +219,7 @@ Google Calendar에 추가:
 {calendar_link}
 
 감사합니다.
-밀알교회 포털팀"""
+밀알교회 교회"""
     return subject, body
 
 
@@ -237,6 +237,7 @@ def _send_due_reservation_reminders_once() -> None:
                     ReservationStatus.approved,
                     ReservationStatus.changed,
                 ]),
+                Reservation.created_by_admin.is_(False),
                 Reservation.email.is_not(None),
                 Reservation.email != "",
                 Reservation.end_time > now,
@@ -265,14 +266,14 @@ def _send_due_reservation_reminders_once() -> None:
 
             if (not item.start_reminder_sent) and now < start_time <= window_end:
                 subject, body = _build_reminder_email(item, room_name, "start")
-                if _send_email(item.email, subject, body):
+                if queue_email(db, item.email, subject, body):
                     item.start_reminder_sent = True
                     item.start_reminder_sent_at = datetime.utcnow()
                     dirty = True
 
             if (not item.end_reminder_sent) and now < end_time <= window_end:
                 subject, body = _build_reminder_email(item, room_name, "end")
-                if _send_email(item.email, subject, body):
+                if queue_email(db, item.email, subject, body):
                     item.end_reminder_sent = True
                     item.end_reminder_sent_at = datetime.utcnow()
                     dirty = True
@@ -288,7 +289,9 @@ def _send_due_reservation_reminders_once() -> None:
 
 async def _reservation_reminder_worker() -> None:
     while True:
-        _send_due_reservation_reminders_once()
+        # Runs on a worker thread: this does blocking DB I/O and must not
+        # stall the shared event loop that serves all other requests.
+        await asyncio.to_thread(_send_due_reservation_reminders_once)
         await asyncio.sleep(REMINDER_POLL_SECONDS)
 
 
@@ -357,9 +360,7 @@ def serialize_expense(expense: Expense, requester_name: str) -> dict:
         "total_amount": expense.total_amount,
         "requester_name": requester_name,
         "account_id": expense.account_id,
-        "category_id": expense.category_id,
         "account_name": "",
-        "category_name": "",
         "items": expense.items,
         "attachments": expense.attachments,
         "approvals": expense.approvals,
@@ -413,6 +414,7 @@ def save_expense_attachments(expense_id: int, request_date: date, attachments: l
 
 
 def send_expense_notification(
+    db: Session,
     expense: Expense,
     requester: Member,
     recipients: list[Member],
@@ -455,7 +457,7 @@ HST: CAD {expense.hst_amount:.2f}
         is_requester = recipient.id == requester.id
         link_label = "요청 상세 보기" if is_requester else "결재하기"
         link_url = requester_url if is_requester else approval_url
-        _send_email(recipient_email, subject, f"{body}\n{link_label}:\n{link_url}\n")
+        queue_email(db, recipient_email, subject, f"{body}\n{link_label}:\n{link_url}\n")
 
 
 @app.on_event("startup")
@@ -512,17 +514,31 @@ async def startup() -> None:
         for sql in (
             "ALTER TABLE expenses ADD COLUMN hst_amount FLOAT NOT NULL DEFAULT 0",
             "ALTER TABLE expenses ADD COLUMN account_id INTEGER NULL",
-            "ALTER TABLE expenses ADD COLUMN category_id INTEGER NULL",
             "ALTER TABLE expense_accounts ADD COLUMN account_code VARCHAR(100) NOT NULL DEFAULT ''",
-            "ALTER TABLE expense_account_categories ADD COLUMN year INTEGER NOT NULL DEFAULT 2026",
-            "ALTER TABLE expense_account_categories ADD COLUMN budget_amount FLOAT NOT NULL DEFAULT 0",
         ):
             try:
                 conn.execute(text(sql))
                 conn.commit()
             except Exception:
                 pass  # Column already exists or expenses has not been created yet
-    
+
+    # Migrate: add requester_name column to external_calendar_events if it doesn't exist yet
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE external_calendar_events ADD COLUMN requester_name VARCHAR(100) NOT NULL DEFAULT ''"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: add created_by_admin column to reservations if it doesn't exist yet
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE reservations ADD COLUMN created_by_admin BOOLEAN NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+
     db = next(get_db())
     try:
         seed_rooms(db)
@@ -531,18 +547,21 @@ async def startup() -> None:
 
     global reminder_task, scheduler
     reminder_task = asyncio.create_task(_reservation_reminder_worker())
+
+    global email_queue_task
+    email_queue_task = asyncio.create_task(email_queue_worker())
     
     # Initialize scheduler for daily member sync
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         sync_all_members_from_ohjic,
-        CronTrigger(hour=1, minute=0),  # 매일 오전 1시에 실행
+        CronTrigger(hour=23, minute=15, timezone=EASTERN_TZ),  # 매일 밤 11시 15분(ET)에 실행
         id='sync_all_members_daily',
         name='Daily sync all members from OHJIC API',
         misfire_grace_time=900  # 15분의 오차 허용
     )
     scheduler.start()
-    logger.info("✓ Scheduler started for daily member sync (01:00 UTC)")
+    logger.info("✓ Scheduler started for daily member sync (23:15 ET)")
     
     # 앱 시작 시 캐시 상태 확인 (100개 이하면 즉시 동기화)
     db = next(get_db())
@@ -562,15 +581,30 @@ async def startup() -> None:
     finally:
         db.close()
 
+    # 앱 시작 시 외부 캘린더 캐시를 한 번 채워둠 (첫 10분 공백 방지)
+    db = next(get_db())
+    try:
+        maybe_sync_external_calendar_events(db)
+    except Exception as e:
+        logger.error(f"✗ [startup] Initial external calendar sync failed: {type(e).__name__}: {e}", exc_info=True)
+    finally:
+        db.close()
+
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global reminder_task, scheduler
+    global reminder_task, scheduler, email_queue_task
     if reminder_task:
         reminder_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await reminder_task
         reminder_task = None
+
+    if email_queue_task:
+        email_queue_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await email_queue_task
+        email_queue_task = None
     
     if scheduler:
         scheduler.shutdown(wait=False)
@@ -699,7 +733,7 @@ def get_expense_approvers(
     get_current_user(token, db)
     approvers = db.scalars(
         select(Member)
-        .where(Member.position_code.in_((567, 568)))
+        .where(Member.position_code.in_(EXPENSE_APPROVER_POSITION_CODES))
         .order_by(Member.name, Member.id)
     ).all()
     return [
@@ -711,11 +745,11 @@ def get_expense_approvers(
 def get_valid_expense_approvers(payload: ExpenseCreate, db: Session) -> tuple[Member, Member]:
     approver_ids = {payload.first_approver_member_id, payload.second_approver_member_id}
     approvers = db.scalars(
-        select(Member).where(Member.id.in_(approver_ids), Member.position_code.in_((567, 568)))
+        select(Member).where(Member.id.in_(approver_ids), Member.position_code.in_(EXPENSE_APPROVER_POSITION_CODES))
     ).all()
     approver_map = {approver.id: approver for approver in approvers}
     if any(approver_id not in approver_map for approver_id in approver_ids):
-        raise HTTPException(status_code=422, detail="Approvers must have position code 567 or 568.")
+        raise HTTPException(status_code=422, detail="Approvers must have position code 566, 567, or 568.")
     return approver_map[payload.first_approver_member_id], approver_map[payload.second_approver_member_id]
 
 
@@ -731,25 +765,6 @@ def get_expense_account_or_422(account_id: int | None, db: Session) -> ExpenseAc
     if not account:
         raise HTTPException(status_code=422, detail="A valid expense account must be selected.")
     return account
-
-
-def get_expense_category_or_422(account_id: int | None, category_id: int | None, db: Session) -> ExpenseAccountCategory:
-    category = db.get(ExpenseAccountCategory, category_id) if category_id else None
-    if not category or category.account_id != account_id:
-        raise HTTPException(status_code=422, detail="A valid category for the selected expense account must be selected.")
-    return category
-
-
-def serialize_expense_category(category: ExpenseAccountCategory) -> dict:
-    return {
-        "id": category.id,
-        "account_id": category.account_id,
-        "name": category.name,
-        "year": category.year,
-        "budget_amount": category.budget_amount,
-        "created_at": category.created_at,
-        "updated_at": category.updated_at,
-    }
 
 
 def serialize_expense_approval_route(route: ExpenseApprovalRoute, account: ExpenseAccount, members: dict[int, Member]) -> dict:
@@ -784,8 +799,8 @@ def serialize_expense_account(account: ExpenseAccount, approved_amount: float) -
 
 
 def require_expense_approver(member: Member) -> None:
-    if member.position_code not in (567, 568):
-        raise HTTPException(status_code=403, detail="Only members with position code 567 or 568 can approve expense requests.")
+    if member.position_code not in EXPENSE_APPROVER_POSITION_CODES:
+        raise HTTPException(status_code=403, detail="Only members with position code 566, 567, or 568 can approve expense requests.")
 
 
 def can_approve_expense(expense: Expense, member_id: int) -> bool:
@@ -806,7 +821,7 @@ def get_expense_approval_summary(
     db: Session = Depends(get_db),
 ) -> dict:
     current_user = get_current_user(token, db)
-    is_approver = current_user.position_code in (567, 568)
+    is_approver = current_user.position_code in EXPENSE_APPROVER_POSITION_CODES
     if not is_approver:
         return {"is_approver": False, "pending_count": 0}
 
@@ -873,9 +888,7 @@ def decide_expense_approval(
     approval_index = next(index for index, approval in enumerate(approvals) if approval.get("state") == "current")
     if approval_index in (1, 2) and payload.action == "approve":
         get_expense_account_or_422(payload.account_id, db)
-        get_expense_category_or_422(payload.account_id, payload.category_id, db)
         expense.account_id = payload.account_id
-        expense.category_id = payload.category_id
     approval = approvals[approval_index]
     approval["state"] = "done" if payload.action == "approve" else "rejected"
     approval["date"] = datetime.now(EASTERN_TZ).isoformat()
@@ -896,11 +909,11 @@ def decide_expense_approval(
         if payload.action == "approve":
             second_approver = db.get(Member, approvals[2]["member_id"])
             if second_approver:
-                send_expense_notification(expense, requester, [requester, second_approver], "first_approved")
+                send_expense_notification(db, expense, requester, [requester, second_approver], "first_approved")
         else:
-            send_expense_notification(expense, requester, [requester], "first_rejected")
+            send_expense_notification(db, expense, requester, [requester], "first_rejected")
     elif approval_index == len(approvals) - 1 and payload.action == "approve" and requester:
-        send_expense_notification(expense, requester, [requester], "second_approved")
+        send_expense_notification(db, expense, requester, [requester], "second_approved")
     return serialize_expense(expense, requester.name if requester else "")
 
 
@@ -910,52 +923,6 @@ def get_expense_accounts(token: str = Depends(oauth2_scheme), db: Session = Depe
     accounts = db.scalars(select(ExpenseAccount).order_by(ExpenseAccount.year.desc(), ExpenseAccount.name)).all()
     totals = dict(db.execute(select(Expense.account_id, func.coalesce(func.sum(Expense.total_amount), 0)).where(Expense.status == "paid", Expense.account_id.is_not(None)).group_by(Expense.account_id)).all())
     return [serialize_expense_account(account, totals.get(account.id, 0)) for account in accounts]
-
-
-@app.get("/api/expense-accounts/{account_id}/categories", response_model=list[ExpenseAccountCategoryOut])
-def get_expense_account_categories(account_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> list[dict]:
-    require_expense_approver(get_current_user(token, db))
-    if not db.get(ExpenseAccount, account_id):
-        raise HTTPException(status_code=404, detail="expense account not found")
-    categories = db.scalars(select(ExpenseAccountCategory).where(ExpenseAccountCategory.account_id == account_id).order_by(ExpenseAccountCategory.name)).all()
-    return [serialize_expense_category(category) for category in categories]
-
-
-@app.post("/api/expense-accounts/{account_id}/categories", response_model=ExpenseAccountCategoryOut, status_code=201)
-def create_expense_account_category(account_id: int, payload: ExpenseAccountCategoryCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
-    require_expense_approver(get_current_user(token, db))
-    if not db.get(ExpenseAccount, account_id):
-        raise HTTPException(status_code=404, detail="expense account not found")
-    category = ExpenseAccountCategory(account_id=account_id, **payload.model_dump())
-    db.add(category)
-    db.commit()
-    db.refresh(category)
-    return serialize_expense_category(category)
-
-
-@app.patch("/api/expense-account-categories/{category_id}", response_model=ExpenseAccountCategoryOut)
-def update_expense_account_category(category_id: int, payload: ExpenseAccountCategoryUpdate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
-    require_expense_approver(get_current_user(token, db))
-    category = db.get(ExpenseAccountCategory, category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="expense account category not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(category, field, value)
-    db.commit()
-    db.refresh(category)
-    return serialize_expense_category(category)
-
-
-@app.delete("/api/expense-account-categories/{category_id}", status_code=204)
-def delete_expense_account_category(category_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> None:
-    require_expense_approver(get_current_user(token, db))
-    category = db.get(ExpenseAccountCategory, category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="expense account category not found")
-    if db.scalar(select(func.count()).select_from(Expense).where(Expense.category_id == category.id)):
-        raise HTTPException(status_code=409, detail="Categories assigned to expense requests cannot be deleted.")
-    db.delete(category)
-    db.commit()
 
 
 @app.get("/api/expense-approval-routes", response_model=list[ExpenseApprovalRouteOut])
@@ -975,7 +942,7 @@ def save_expense_approval_route(account_id: int, payload: ExpenseApprovalRouteUp
     if not account:
         raise HTTPException(status_code=404, detail="department not found")
     approvers = {member.id: member for member in db.scalars(select(Member).where(Member.id.in_((payload.chairperson_member_id, payload.finance_elder_member_id)))).all()}
-    if len(approvers) != 2 or any(member.position_code not in (567, 568) for member in approvers.values()):
+    if len(approvers) != 2 or any(member.position_code not in EXPENSE_APPROVER_POSITION_CODES for member in approvers.values()):
         raise HTTPException(status_code=422, detail="Chairperson and finance elder must be eligible expense approvers.")
     route = db.scalar(select(ExpenseApprovalRoute).where(ExpenseApprovalRoute.account_id == account_id))
     if route:
@@ -1041,17 +1008,9 @@ def get_expense_account(account_id: int, token: str = Depends(oauth2_scheme), db
     expenses = db.scalars(select(Expense).where(Expense.status == "paid", Expense.account_id == account.id).order_by(Expense.request_date.desc(), Expense.id.desc())).all()
     requesters = {member.id: member.name for member in db.scalars(select(Member).where(Member.id.in_({expense.requester_member_id for expense in expenses}))).all()} if expenses else {}
     detail = serialize_expense_account(account, sum(expense.total_amount for expense in expenses))
-    categories = db.scalars(
-        select(ExpenseAccountCategory)
-        .where(ExpenseAccountCategory.account_id == account.id)
-        .order_by(ExpenseAccountCategory.name)
-    ).all()
-    detail["categories"] = [serialize_expense_category(category) for category in categories]
-    category_names = {category.id: category.name for category in categories}
     detail["expenses"] = []
     for expense in expenses:
         serialized_expense = serialize_expense(expense, requesters.get(expense.requester_member_id, ""))
-        serialized_expense["category_name"] = category_names.get(expense.category_id, "")
         detail["expenses"].append(serialized_expense)
     return detail
 
@@ -1078,6 +1037,8 @@ def create_expense(
     current_user = get_current_user(token, db)
     first_approver, second_approver = get_valid_expense_approvers(payload, db)
     total_amount = sum(item.amount for item in payload.items) + payload.hst_amount
+    first_approval_is_automatic = current_user.id == first_approver.id
+    approval_time = datetime.now(EASTERN_TZ).isoformat()
     requester_approval = {
         "role": "Requester",
         "roleKo": "요청자",
@@ -1087,8 +1048,8 @@ def create_expense(
     }
     approvals = [
         requester_approval,
-        {"role": "First Approver", "roleKo": "1차 결재자", "member_id": first_approver.id, "name": first_approver.name, "date": "", "state": "current"},
-        {"role": "Second Approver", "roleKo": "2차 결재자", "member_id": second_approver.id, "name": second_approver.name, "date": "", "state": "waiting"},
+        {"role": "First Approver", "roleKo": "1차 결재자", "member_id": first_approver.id, "name": first_approver.name, "date": approval_time if first_approval_is_automatic else "", "state": "done" if first_approval_is_automatic else "current"},
+        {"role": "Second Approver", "roleKo": "2차 결재자", "member_id": second_approver.id, "name": second_approver.name, "date": "", "state": "current" if first_approval_is_automatic else "waiting"},
     ]
     expense = Expense(
         requester_member_id=current_user.id,
@@ -1100,15 +1061,19 @@ def create_expense(
         items=[item.model_dump() for item in payload.items],
         attachments=[],
         approvals=approvals,
+        status="approved" if first_approval_is_automatic else "reviewing",
     )
     db.add(expense)
     db.flush()
-    expense.approvals[0]["date"] = datetime.now(EASTERN_TZ).isoformat()
+    expense.approvals[0]["date"] = approval_time
     flag_modified(expense, "approvals")
     expense.attachments = save_expense_attachments(expense.id, payload.request_date, payload.attachments)
     db.commit()
     db.refresh(expense)
-    send_expense_notification(expense, current_user, [first_approver], "created")
+    if first_approval_is_automatic:
+        send_expense_notification(db, expense, current_user, [current_user, second_approver], "first_approved")
+    else:
+        send_expense_notification(db, expense, current_user, [first_approver], "created")
     return serialize_expense(expense, current_user.name)
 
 
@@ -1143,7 +1108,7 @@ def update_expense(
     ]
     db.commit()
     db.refresh(expense)
-    send_expense_notification(expense, current_user, [first_approver], "updated")
+    send_expense_notification(db, expense, current_user, [first_approver], "updated")
     return serialize_expense(expense, current_user.name)
 
 
@@ -1654,11 +1619,12 @@ def create_reservation(
             repeat_type=payload.repeat_type,
             repeat_count=payload.repeat_count,
             parent_reservation_id=parent_reservation_id,
+            created_by_admin=is_admin,
         )
         db.add(new_item)
         db.commit()
         db.refresh(new_item)
-        
+
         # Set parent_reservation_id for first instance
         if i == 0:
             parent_reservation_id = new_item.id
@@ -1706,11 +1672,14 @@ def create_reservation(
     if calendar_link:
         email_body += f"\n\nGoogle Calendar에 추가:\n{calendar_link}\n"
 
-    # Send email to requester
-    _send_email(payload.email, email_subject, email_body)
+    # Send email to requester (skip for admin-created reservations — no
+    # completion notice needed since the admin already knows it's approved).
+    if not is_admin:
+        queue_email(db, payload.email, email_subject, email_body)
     
-    # Send notification email to admins
-    admins = db.scalars(
+    # Send notification email to admins (skip for admin-created reservations
+    # — the admin who just booked it doesn't need a notice about it).
+    admins = [] if is_admin else db.scalars(
         select(Member).where(
             Member.permission == "admin",
             Member.email != "",
@@ -1740,7 +1709,7 @@ def create_reservation(
                 admin_email_body += f"  {idx}. {_format_eastern_time(res.start_time)} - {_format_eastern_time(res.end_time)}\n"
         
         for admin in admins:
-            _send_email(admin.email, admin_email_subject, admin_email_body)
+            queue_email(db, admin.email, admin_email_subject, admin_email_body)
 
     return {
         "message": "reservation created successfully",
@@ -1793,6 +1762,52 @@ def list_reservations(
     ]
 
 
+@app.get("/api/calendar/external-events")
+def get_external_calendar_events(
+    background_tasks: BackgroundTasks,
+    start: datetime = Query(...),
+    end: datetime = Query(...),
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Room bookings tagged "장소-목적" on the staff Google Calendar(s), served
+    from a local cache that's refreshed at most once every 10 minutes
+    (see sync_tasks.maybe_sync_external_calendar_events), regardless of how
+    many logged-in users' browsers request it concurrently.
+    """
+    get_current_user(token, db)
+
+    def _run_background_sync() -> None:
+        bg_db = SessionLocal()
+        try:
+            maybe_sync_external_calendar_events(bg_db)
+        finally:
+            bg_db.close()
+
+    background_tasks.add_task(_run_background_sync)
+
+    rows = db.scalars(
+        select(ExternalCalendarEvent).where(
+            ExternalCalendarEvent.start_time < end,
+            ExternalCalendarEvent.end_time > start,
+        )
+    ).all()
+    return [
+        {
+            "id": row.id,
+            "room_id": row.room_id,
+            "room_name": row.room_name,
+            "requester_name": row.requester_name,
+            "purpose": row.purpose,
+            "start_time": _as_utc_aware(row.start_time).isoformat(),
+            "end_time": _as_utc_aware(row.end_time).isoformat(),
+            "all_day": row.all_day,
+        }
+        for row in rows
+    ]
+
+
+
 @app.patch("/api/admin/reservations/{reservation_id}", response_model=ReservationOut)
 def update_reservation_by_admin(
     reservation_id: int,
@@ -1815,6 +1830,36 @@ def update_reservation_by_admin(
         raise HTTPException(status_code=404, detail="reservation not found")
 
     if payload.action == "approve":
+        if payload.room_id is not None:
+            room = db.get(Room, payload.room_id)
+            if not room:
+                raise HTTPException(status_code=404, detail="target room not found")
+            item.room_id = payload.room_id
+
+        if payload.start_time is not None:
+            item.start_time = payload.start_time
+        if payload.end_time is not None:
+            item.end_time = payload.end_time
+
+        if payload.room_id is not None or payload.start_time is not None or payload.end_time is not None:
+            validate_reservation_times(item.start_time, item.end_time)
+
+            eligible, reason = can_reserve_room(
+                item.room_id,
+                item.start_time,
+                item.end_time,
+                membership_category,
+                db,
+            )
+            if not eligible:
+                raise HTTPException(status_code=403, detail=reason)
+
+            # Re-arm reminders since the schedule changed during approval.
+            item.start_reminder_sent = False
+            item.start_reminder_sent_at = None
+            item.end_reminder_sent = False
+            item.end_reminder_sent_at = None
+
         item.status = ReservationStatus.approved
     elif payload.action == "reject":
         item.status = ReservationStatus.rejected
@@ -1851,6 +1896,7 @@ def update_reservation_by_admin(
         item.end_reminder_sent_at = None
 
     item.admin_comment = payload.admin_comment
+
     db.commit()
     db.refresh(item)
 
@@ -1901,11 +1947,14 @@ Google Calendar에 추가:
 - 상태: {status_ko}
 - 관리자 메모: {item.admin_comment or '없음'}
 
-자세한 내용은 포털에서 확인하실 수 있습니다.
+자세한 내용은 커뮤니티에서 확인하실 수 있습니다.
 
-밀알교회 포털팀"""
+밀알교회"""
 
-        _send_email(item.email, subject_ko, body_ko)
+        # Admin-created reservations don't need a status-change notice —
+        # any action taken here (reject/change) is the admin's own doing.
+        if not item.created_by_admin:
+            queue_email(db, item.email, subject_ko, body_ko)
     
     room_name = item.room.name if item.room else (db.get(Room, item.room_id).name)
     return ReservationOut(
@@ -2006,8 +2055,8 @@ def update_reservation_by_user(
     db.commit()
     db.refresh(item)
 
-    # Send update email
-    if item.email:
+    # Send update email (skip for admin-created reservations)
+    if item.email and not item.created_by_admin:
         subject = f"[예약 변경] {item.room.name if item.room else 'N/A'}"
         body = f"""안녕하세요 {item.requester_name}님,
 
@@ -2022,8 +2071,8 @@ def update_reservation_by_user(
 - 참석자 수: {item.attendees}
 - 상태: {item.status.value}
 
-밀알교회 포털팀"""
-        _send_email(item.email, subject, body)
+밀알교회"""
+        queue_email(db, item.email, subject, body)
 
     room_name = item.room.name if item.room else "Unknown"
     return ReservationOut(
@@ -2077,8 +2126,8 @@ def delete_reservation_by_user(
     # Delete is allowed for all statuses
     room_name = item.room.name if item.room else "Unknown"
     
-    # Send cancellation email
-    if item.email:
+    # Send cancellation email (skip for admin-created reservations)
+    if item.email and not item.created_by_admin:
         subject = f"[예약 취소] {room_name}"
         body = f"""안녕하세요 {item.requester_name}님,
 
@@ -2091,8 +2140,8 @@ def delete_reservation_by_user(
 - 종료 시간(ET): {_format_eastern_time(item.end_time)}
 - 목적: {item.purpose}
 
-밀알교회 포털팀"""
-        _send_email(item.email, subject, body)
+밀알교회"""
+        queue_email(db, item.email, subject, body)
 
     db.delete(item)
     db.commit()

@@ -33,6 +33,7 @@ services:
       - "8083:7000"
     volumes:
       - expense_uploads:/app/uploads
+      - ./backend/secrets:/app/backend/secrets:ro
     networks:
       - milal-network
       - milal-shared
@@ -50,6 +51,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-AQ.Ab8RN6IjRaJny1xWFqE4FE2VbeINcE4XSVv8STPpNiX0gsUPfw}
       OHJIC_API_KEY: ${OHJIC_API_KEY}
       OHJIC_API_BASE_URL: ${OHJIC_API_BASE_URL:-https://api.ohjic.us}
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-/app/backend/secrets/google-service-account.json}
+      GOOGLE_CALENDAR_IDS: ${GOOGLE_CALENDAR_IDS:-hr.manager.milal@gmail.com}
     restart: unless-stopped
 
 volumes:
