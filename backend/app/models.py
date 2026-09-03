@@ -231,6 +231,8 @@ class Expense(Base):
         onupdate=datetime.utcnow,
     )
 
+    account: Mapped[Optional["ExpenseAccount"]] = relationship()
+
 
 class ExpenseAccount(Base):
     __tablename__ = "expense_accounts"

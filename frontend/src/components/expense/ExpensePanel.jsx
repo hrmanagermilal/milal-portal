@@ -35,6 +35,7 @@ import {
 } from "@mui/material";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { api } from "../../api";
+import DataMart from "../../common/DataMart";
 
 const INITIAL_REQUESTS = [
   {
@@ -97,7 +98,7 @@ const INITIAL_REQUESTS = [
   },
 ];
 
-const EMPTY_FORM = { title: "", date: new Date().toISOString().slice(0, 10), memo: "", hstAmount: "", approvalRouteId: "", firstApproverMemberId: "", secondApproverMemberId: "", items: [{ description: "", amount: "" }], files: [] };
+const EMPTY_FORM = { title: "", date: new Date().toISOString().slice(0, 10), memo: "", hstAmount: "", accountId: "", items: [{ description: "", amount: "" }], files: [] };
 
 function mapExpense(expense) {
   return {
@@ -113,6 +114,10 @@ function mapExpense(expense) {
     items: expense.items.map((item) => ({ ...item, descriptionKo: item.description })),
     attachments: expense.attachments,
     approvals: expense.approvals,
+    accountId: expense.account_id,
+    accountCode: expense.account_code,
+    accountName: expense.account_name,
+    requesterName: expense.requester_name,
   };
 }
 
@@ -186,20 +191,20 @@ export default function ExpensePanel({ initialExpenseId = null }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [extractingReceipt, setExtractingReceipt] = useState(false);
-  const [approvers, setApprovers] = useState([]);
-  const [loadingApprovers, setLoadingApprovers] = useState(false);
   const [approvalRoutes, setApprovalRoutes] = useState([]);
   const [loadingApprovalRoutes, setLoadingApprovalRoutes] = useState(false);
   const [page, setPage] = useState(1);
   const inputRef = useRef(null);
   const hasSelectedExpense = requests.some((request) => request.id === selectedId);
-  const selected = requests.find((request) => request.id === selectedId) || requests[0] || { id: "-", date: "", title: "", titleKo: "", status: "reviewing", amount: 0, hstAmount: 0, memo: "", items: [], attachments: [], approvals: [] };
+  const selected = requests.find((request) => request.id === selectedId) || requests[0] || { id: "-", date: "", title: "", titleKo: "", status: "reviewing", amount: 0, hstAmount: 0, memo: "", items: [], attachments: [], approvals: [], requesterName: "" };
+  const currentUserName = DataMart.getCurrentUser()?.name || "";
+  const isOwnRequest = selected.requesterName === currentUserName;
   const formatCurrency = (amount) => `CAD ${Number(amount || 0).toLocaleString(korean ? "ko-KR" : "en-CA", { maximumFractionDigits: 2 })}`;
   const status = (value) => ({ reviewing: korean ? "승인 진행 중" : "In review", approved: korean ? "1차 승인" : "First approved", paid: korean ? "승인완료" : "Paid", rejected: korean ? "반려" : "Rejected", cancelled: korean ? "요청 취소" : "Cancelled" })[value];
   const total = useMemo(() => form.items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0), [form.items]);
   const hstAmount = Number(form.hstAmount) || 0;
   const totalWithHst = total + hstAmount;
-  const isFormComplete = form.title.trim() && form.memo.trim() && form.files.length > 0 && form.approvalRouteId && form.firstApproverMemberId && form.secondApproverMemberId && form.items.every((item) => item.description.trim() && Number(item.amount) > 0);
+  const isFormComplete = form.title.trim() && form.memo.trim() && form.files.length > 0 && form.accountId && form.items.every((item) => item.description.trim() && Number(item.amount) > 0);
   const pageCount = Math.max(1, Math.ceil(requests.length / 10));
   const displayedRequests = requests.slice((page - 1) * 10, page * 10);
 
@@ -227,17 +232,6 @@ export default function ExpensePanel({ initialExpenseId = null }) {
     setForm((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item) }));
   }
 
-  async function loadApprovers() {
-    setLoadingApprovers(true);
-    try {
-      setApprovers(await api.getExpenseApprovers());
-    } catch (approverError) {
-      setError(approverError.message || "Unable to load expense approvers.");
-    } finally {
-      setLoadingApprovers(false);
-    }
-  }
-
   async function loadApprovalRoutes() {
     setLoadingApprovalRoutes(true);
     try {
@@ -249,51 +243,35 @@ export default function ExpensePanel({ initialExpenseId = null }) {
     }
   }
 
-  function selectApprovalRoute(routeId) {
-    const route = approvalRoutes.find((candidate) => String(candidate.id) === routeId);
-    setForm((current) => ({
-      ...current,
-      approvalRouteId: routeId,
-      firstApproverMemberId: route ? String(route.chairperson_member_id) : "",
-      secondApproverMemberId: route ? String(route.finance_elder_member_id) : "",
-    }));
+  function selectAccount(accountId) {
+    setForm((current) => ({ ...current, accountId }));
   }
 
   function openCreateDialog() {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setDialogOpen(true);
-    loadApprovers();
     loadApprovalRoutes();
   }
 
   function openEditDialog() {
-    if (!hasSelectedExpense || selected.status !== "reviewing") return;
+    if (!hasSelectedExpense || selected.status !== "reviewing" || !isOwnRequest) return;
     setEditingId(selected.id);
     setForm({
       title: selected.title,
       date: selected.date,
       memo: selected.memo,
       hstAmount: String(selected.hstAmount || ""),
-      approvalRouteId: "",
-      firstApproverMemberId: String(selected.approvals[1]?.member_id || ""),
-      secondApproverMemberId: String(selected.approvals[2]?.member_id || ""),
+      accountId: selected.accountId ? String(selected.accountId) : "",
       items: selected.items.map((item) => ({ description: item.description, amount: String(item.amount) })),
       files: selected.attachments,
     });
     setDialogOpen(true);
-    loadApprovers();
-    loadApprovalRoutes().then(() => {
-      setApprovalRoutes((routes) => {
-        const route = routes.find((candidate) => candidate.chairperson_member_id === selected.approvals[1]?.member_id && candidate.finance_elder_member_id === selected.approvals[2]?.member_id);
-        if (route) setForm((current) => ({ ...current, approvalRouteId: String(route.id) }));
-        return routes;
-      });
-    });
+    loadApprovalRoutes();
   }
 
   async function cancelRequest() {
-    if (!hasSelectedExpense || selected.status !== "reviewing") return;
+    if (!hasSelectedExpense || selected.status !== "reviewing" || !isOwnRequest) return;
     if (!window.confirm(korean ? "이 비용 요청을 취소하시겠습니까?" : "Cancel this expense request?")) return;
     try {
       const updatedExpense = mapExpense(await api.cancelExpense(selected.id));
@@ -359,8 +337,7 @@ export default function ExpensePanel({ initialExpenseId = null }) {
       title: form.title.trim(),
       memo: form.memo.trim(),
       hst_amount: hstAmount,
-      first_approver_member_id: Number(form.firstApproverMemberId),
-      second_approver_member_id: Number(form.secondApproverMemberId),
+      account_id: Number(form.accountId),
       items: form.items.map((item) => ({ description: item.description.trim(), amount: Number(item.amount) })),
       attachments: form.files.map(({ name, type, url = "", dataUrl = "" }) => ({ name, type, url, data_url: dataUrl })),
     };
@@ -393,10 +370,11 @@ export default function ExpensePanel({ initialExpenseId = null }) {
           <TableContainer>
             <Table size="small" sx={{ minWidth: 400 }}>
               <TableHead><TableRow sx={{ bgcolor: "#f6f8fa" }}>
-                {[korean ? "요청일" : "Date", korean ? "제목" : "Title", korean ? "진행 상태" : "Status", korean ? "금액" : "Amount"].map((label) => <TableCell key={label} sx={{ fontSize: "12px", fontWeight: 700, color: "#5d7186", whiteSpace: "nowrap" }}>{label}</TableCell>)}
+                {[korean ? "요청일" : "Date", korean ? "요청자" : "Requester", korean ? "제목" : "Title", korean ? "진행 상태" : "Status", korean ? "금액" : "Amount"].map((label) => <TableCell key={label} sx={{ fontSize: "12px", fontWeight: 700, color: "#5d7186", whiteSpace: "nowrap" }}>{label}</TableCell>)}
               </TableRow></TableHead>
               <TableBody>{displayedRequests.map((request) => <TableRow key={request.id} hover selected={request.id === selected.id} onClick={() => setSelectedId(request.id)} sx={{ cursor: "pointer", "&.Mui-selected": { bgcolor: "rgba(59,82,46,0.08)" }, "&.Mui-selected:hover": { bgcolor: "rgba(59,82,46,0.12)" } }}>
                 <TableCell sx={{ fontSize: "12px", whiteSpace: "nowrap" }}>{formatDateTime(request.createdAt, korean)}</TableCell>
+                <TableCell sx={{ fontSize: "12px", whiteSpace: "nowrap" }}>{request.requesterName}</TableCell>
                 <TableCell sx={{ minWidth: 145, fontSize: "13px", fontWeight: 600, color: "#313b5e" }}>{korean ? request.titleKo : request.title}</TableCell>
                 <TableCell><Chip label={status(request.status)} size="small" sx={{ height: 23, fontSize: "11px", fontWeight: 700, bgcolor: request.status === "paid" ? "#e8f4ed" : request.status === "approved" ? "#e9f0ff" : "#fff4df", color: request.status === "paid" ? "#287448" : request.status === "approved" ? "#2756a5" : "#9a6500" }} /></TableCell>
                 <TableCell align="right" sx={{ fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap" }}>{formatCurrency(request.amount)}</TableCell>
@@ -408,7 +386,7 @@ export default function ExpensePanel({ initialExpenseId = null }) {
 
         <Paper elevation={0} sx={{ border: "1px solid #e0e6ef", borderRadius: "8px", overflow: "hidden" }}>
           <Box sx={{ px: { xs: 2, sm: 3 }, py: 2.5, borderBottom: "1px solid #e8edf3" }}>
-            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}><Box><Typography sx={{ fontSize: "12px", color: "#5d7186", fontWeight: 700 }}>{selected.id} · {formatDateTime(selected.createdAt, korean)}</Typography><Typography variant="h6" sx={{ color: "#313b5e", fontWeight: 800, mt: 0.4 }}>{korean ? selected.titleKo : selected.title}</Typography></Box><Stack direction="row" spacing={1} alignItems="flex-start"><Chip label={hasSelectedExpense ? status(selected.status) : "-"} sx={{ fontWeight: 700, bgcolor: "#eef2f7", color: "#3b522e" }} /><Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={openEditDialog} disabled={!hasSelectedExpense || selected.status !== "reviewing"} sx={{ textTransform: "none", borderColor: "#b8c5d1", color: "#3b522e" }}>{korean ? "수정" : "Edit"}</Button><Button size="small" variant="outlined" color="error" onClick={cancelRequest} disabled={!hasSelectedExpense || selected.status !== "reviewing"} sx={{ textTransform: "none" }}>{korean ? "요청 취소" : "Cancel Request"}</Button></Stack></Stack>
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}><Box><Typography sx={{ fontSize: "12px", color: "#5d7186", fontWeight: 700 }}>{selected.id} · {formatDateTime(selected.createdAt, korean)}</Typography><Typography variant="h6" sx={{ color: "#313b5e", fontWeight: 800, mt: 0.4 }}>{korean ? selected.titleKo : selected.title}</Typography></Box><Stack direction="row" spacing={1} alignItems="flex-start"><Chip label={hasSelectedExpense ? status(selected.status) : "-"} sx={{ fontWeight: 700, bgcolor: "#eef2f7", color: "#3b522e" }} /><Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={openEditDialog} disabled={!hasSelectedExpense || selected.status !== "reviewing" || !isOwnRequest} sx={{ textTransform: "none", borderColor: "#b8c5d1", color: "#3b522e" }}>{korean ? "수정" : "Edit"}</Button><Button size="small" variant="outlined" color="error" onClick={cancelRequest} disabled={!hasSelectedExpense || selected.status !== "reviewing" || !isOwnRequest} sx={{ textTransform: "none" }}>{korean ? "요청 취소" : "Cancel Request"}</Button></Stack></Stack>
           </Box>
           <Stack spacing={3} sx={{ p: { xs: 2, sm: 3 } }}>
             <Box><Typography variant="subtitle2" sx={{ color: "#313b5e", fontWeight: 800, mb: 1 }}>{korean ? "세부 항목" : "Expense Items"}</Typography>
@@ -426,26 +404,12 @@ export default function ExpensePanel({ initialExpenseId = null }) {
         <DialogContent dividers><Stack spacing={2.5} sx={{ pt: 0.5 }}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}><TextField label={korean ? "제목" : "Title"} value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} fullWidth required size="small" /><TextField label={korean ? "요청일" : "Request Date"} type="date" value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} InputLabelProps={{ shrink: true }} size="small" sx={{ minWidth: { sm: 180 } }} /></Stack>
           <FormControl fullWidth required size="small" disabled={loadingApprovalRoutes}>
-            <InputLabel>{korean ? "결재 경로" : "Approval Route"}</InputLabel>
-            <Select label={korean ? "결재 경로" : "Approval Route"} value={form.approvalRouteId} onChange={(event) => selectApprovalRoute(event.target.value)}>
-              <MenuItem value=""><em>{korean ? "결재 경로를 선택하세요." : "Select an approval route."}</em></MenuItem>
-              {approvalRoutes.map((route) => <MenuItem key={route.id} value={String(route.id)}>{route.account_code ? `${route.account_code} · ` : ""}{route.account_name || route.department_name} ({route.chairperson_name} → {route.finance_elder_name})</MenuItem>)}
+            <InputLabel>{korean ? "계정" : "Account"}</InputLabel>
+            <Select label={korean ? "계정" : "Account"} value={form.accountId} onChange={(event) => selectAccount(event.target.value)}>
+              <MenuItem value=""><em>{korean ? "계정을 선택하세요." : "Select an account."}</em></MenuItem>
+              {approvalRoutes.map((route) => <MenuItem key={route.account_id} value={String(route.account_id)}>{route.account_code ? `${route.account_code} · ` : ""}{route.account_name || route.department_name} ({route.chairperson_name} → {route.finance_elder_name})</MenuItem>)}
             </Select>
           </FormControl>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <FormControl fullWidth required size="small" disabled={loadingApprovers || Boolean(form.approvalRouteId)}>
-              <InputLabel>{korean ? "1차 결재자" : "First Approver"}</InputLabel>
-              <Select label={korean ? "1차 결재자" : "First Approver"} value={form.firstApproverMemberId} onChange={(event) => setForm((current) => ({ ...current, firstApproverMemberId: event.target.value }))}>
-                {approvers.map((approver) => <MenuItem key={approver.id} value={String(approver.id)}>{approver.name}{approver.title ? ` (${approver.title})` : ""}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth required size="small" disabled={loadingApprovers || Boolean(form.approvalRouteId)}>
-              <InputLabel>{korean ? "2차 결재자" : "Second Approver"}</InputLabel>
-              <Select label={korean ? "2차 결재자" : "Second Approver"} value={form.secondApproverMemberId} onChange={(event) => setForm((current) => ({ ...current, secondApproverMemberId: event.target.value }))}>
-                {approvers.map((approver) => <MenuItem key={approver.id} value={String(approver.id)}>{approver.name}{approver.title ? ` (${approver.title})` : ""}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Stack>
           <Box><Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#313b5e", mb: 0.5 }}>{korean ? "영수증 및 첨부 파일" : "Receipts and Attachments"}</Typography><Typography variant="caption" sx={{ display: "block", color: "#5d7186", mb: 1 }}>{korean ? "사진 또는 PDF를 선택하면 즉시 분석하여 영수증의 항목, 금액 및 HST를 자동으로 추가합니다." : "Selecting a receipt image or PDF analyzes it immediately and adds detected items, amounts, and HST."}</Typography><input ref={inputRef} type="file" accept="image/*,application/pdf" multiple hidden onChange={handleFiles} /><Button variant="outlined" startIcon={extractingReceipt ? <CircularProgress size={16} color="inherit" /> : <AttachFileIcon />} onClick={() => inputRef.current?.click()} disabled={extractingReceipt} sx={{ textTransform: "none", borderColor: "#b8c5d1", color: "#3b522e" }}>{extractingReceipt ? (korean ? "항목 분석 중..." : "Analyzing receipt...") : (korean ? "사진 또는 PDF 첨부" : "Attach photo or PDF")}</Button>{extractingReceipt && <Typography variant="caption" sx={{ display: "block", mt: 0.75, color: "#5d7186", fontWeight: 700 }}>{korean ? "영수증에서 비용 항목과 HST를 추출하는 중입니다. 잠시만 기다려주세요." : "Extracting expense items and HST from the receipt. Please wait."}</Typography>}<Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ mt: 1 }}>{form.files.map((file, index) => <Chip key={`${file.name}-${index}`} label={file.name} onDelete={() => setForm((current) => ({ ...current, files: current.files.filter((_, fileIndex) => fileIndex !== index) }))} size="small" />)}</Stack></Box>
           <Box><Stack direction="row" alignItems="center" sx={{ mb: 1 }}><Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#313b5e" }}>{korean ? "비용 항목" : "Expense Items"}</Typography><Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setForm((current) => ({ ...current, items: [...current.items, { description: "", amount: "" }] }))} sx={{ ml: "auto", textTransform: "none", bgcolor: "#3b522e", fontWeight: 700, "&:hover": { bgcolor: "#2f4325" } }}>{korean ? "항목 추가" : "Add item"}</Button></Stack><Stack spacing={1}>{form.items.map((item, index) => <Stack key={index} direction="row" spacing={1}><TextField label={korean ? "항목명" : "Item"} value={item.description} onChange={(event) => updateItem(index, "description", event.target.value)} fullWidth required size="small" /><TextField label={korean ? "금액 (CAD)" : "Amount (CAD)"} type="number" value={item.amount} onChange={(event) => updateItem(index, "amount", event.target.value)} required size="small" sx={{ width: 160 }} />{form.items.length > 1 && <IconButton aria-label="Remove item" onClick={() => setForm((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))}><CloseIcon /></IconButton>}</Stack>)}</Stack><Stack direction={{ xs: "column", sm: "row" }} justifyContent="flex-end" spacing={2} alignItems={{ sm: "center" }} sx={{ mt: 1 }}><TextField label="HST (CAD)" type="number" value={form.hstAmount} onChange={(event) => setForm((current) => ({ ...current, hstAmount: event.target.value }))} size="small" sx={{ width: { xs: "100%", sm: 160 } }} inputProps={{ min: 0, step: "0.01" }} /><Typography align="right" sx={{ fontWeight: 800, color: "#3b522e" }}>{korean ? "총 비용" : "Total"}: {formatCurrency(totalWithHst)}</Typography></Stack></Box>
           <TextField label={korean ? "메모" : "Memo"} value={form.memo} onChange={(event) => setForm((current) => ({ ...current, memo: event.target.value }))} multiline rows={3} fullWidth required size="small" />

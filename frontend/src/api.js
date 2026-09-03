@@ -391,11 +391,11 @@ export const api = {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
-  decideExpenseApproval: (expenseId, action, comment, accountId) =>
+  decideExpenseApproval: (expenseId, action, comment, accountId, secondApproverMemberId) =>
     request(`/api/expense-approvals/${expenseId}/decision`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
-      body: { action, comment, account_id: accountId || null },
+      body: { action, comment, account_id: accountId || null, second_approver_member_id: secondApproverMemberId || null },
     }),
 
   getExpenseAccounts: () =>
