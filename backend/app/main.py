@@ -184,6 +184,52 @@ def _format_eastern_time(dt: datetime | None) -> str:
     return dt_et.strftime("%Y-%m-%d %H:%M %Z")
 
 
+def _build_reservation_email_html(
+    reservation: Reservation,
+    room_name: str,
+    title: str,
+    message: str,
+    status: str = "",
+    admin_comment: str = "",
+    extra_rows: list[tuple[str, str]] | None = None,
+) -> str:
+    calendar_link = _build_google_calendar_link(
+        f"{room_name} 예약", reservation.start_time, reservation.end_time, room_name,
+        f"예약 ID #{reservation.id} / 신청자 {reservation.requester_name}",
+    )
+    rows = [
+        ("예약 ID", f"#{reservation.id}"), ("장소", room_name), ("신청자", reservation.requester_name),
+        ("연락처", reservation.phone), ("이메일", reservation.email), ("목적", reservation.purpose or "-"),
+        ("참석 인원", str(reservation.attendees)), ("시작 시간 (ET)", _format_eastern_time(reservation.start_time)),
+        ("종료 시간 (ET)", _format_eastern_time(reservation.end_time)), ("메모", reservation.notes or "-"), *(extra_rows or []),
+    ]
+    if status:
+        rows.append(("상태", status))
+    if admin_comment:
+        rows.append(("관리자 메모", admin_comment))
+    details = "".join(
+        f"<tr><th style=\"padding:10px;text-align:left;vertical-align:top;background:#f8fafc;width:130px;border-bottom:1px solid #e5e7eb;\">{html.escape(label)}</th>"
+        f"<td style=\"padding:10px;white-space:pre-wrap;border-bottom:1px solid #e5e7eb;\">{html.escape(value)}</td></tr>"
+        for label, value in rows
+    )
+    calendar_button = (
+        f"<p style=\"margin:28px 0 0;\"><a href=\"{html.escape(calendar_link, quote=True)}\" style=\"display:inline-block;padding:12px 18px;background:#314b2b;color:#ffffff;text-decoration:none;font-weight:bold;\">Google Calendar에 추가</a></p>"
+        if calendar_link else ""
+    )
+    return f"""<!doctype html>
+<html lang=\"ko\"><body style=\"margin:0;padding:24px;background:#f4f6f8;font-family:Arial,sans-serif;color:#243044;\">
+  <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr><td align=\"center\">
+    <table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #dbe3ea;\">
+      <tr><td style=\"padding:24px 28px;background:#314b2b;color:#ffffff;\"><strong style=\"font-size:20px;\">{html.escape(title)}</strong></td></tr>
+      <tr><td style=\"padding:28px;\"><p style=\"margin:0 0 20px;line-height:1.6;\">{html.escape(message)}</p>
+        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;font-size:14px;\">{details}</table>
+        {calendar_button}
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>"""
+
+
 def _build_reminder_email(
     reservation: Reservation,
     room_name: str,
@@ -197,30 +243,7 @@ def _build_reminder_email(
         detail = "예약 종료 15분 전입니다."
 
     subject = f"[밀알교회] 예약 {title} 안내 - {room_name}"
-    calendar_link = _build_google_calendar_link(
-        f"{room_name} 예약",
-        reservation.start_time,
-        reservation.end_time,
-        room_name,
-        f"예약 ID #{reservation.id} / 신청자 {reservation.requester_name}",
-    )
-    body = f"""안녕하세요,
-
-{detail}
-
-【 예약 정보 】
-- 예약 ID: #{reservation.id}
-- 장소: {room_name}
-- 신청자: {reservation.requester_name}
-- 시작 시간(ET): {_format_eastern_time(reservation.start_time)}
-- 종료 시간(ET): {_format_eastern_time(reservation.end_time)}
-- 목적: {reservation.purpose or 'N/A'}
-
-Google Calendar에 추가:
-{calendar_link}
-
-감사합니다.
-밀알교회 교회"""
+    body = _build_reservation_email_html(reservation, room_name, f"예약 {title} 안내", detail)
     return subject, body
 
 
@@ -267,14 +290,14 @@ def _send_due_reservation_reminders_once() -> None:
 
             if (not item.start_reminder_sent) and now < start_time <= window_end:
                 subject, body = _build_reminder_email(item, room_name, "start")
-                if queue_email(db, item.email, subject, body):
+                if queue_email(db, item.email, subject, body, content_type="html"):
                     item.start_reminder_sent = True
                     item.start_reminder_sent_at = datetime.utcnow()
                     dirty = True
 
             if (not item.end_reminder_sent) and now < end_time <= window_end:
                 subject, body = _build_reminder_email(item, room_name, "end")
-                if queue_email(db, item.email, subject, body):
+                if queue_email(db, item.email, subject, body, content_type="html"):
                     item.end_reminder_sent = True
                     item.end_reminder_sent_at = datetime.utcnow()
                     dirty = True
@@ -1774,45 +1797,20 @@ def create_reservation(
         repeat_info = f"(매{'' if payload.repeat_type == 'weekly' else '달'} {payload.repeat_count}회 반복)"
         email_subject += f" {repeat_info}"
     
-    email_body = f"""
-    새로운 예약이 접수되었습니다.
-    
-    예약자: {payload.requester_name}
-    연락처: {payload.phone}
-    이메일: {payload.email}
-    장소: {room.name}
-    목적: {payload.purpose}
-    참석인원: {payload.attendees}
-    예약 시간(ET): {_format_eastern_time(reservations[0].start_time)} - {_format_eastern_time(reservations[0].end_time)}
-    메모: {payload.notes}
-    """
-
-    calendar_link = _build_google_calendar_link(
-        f"{room.name} 예약",
-        reservations[0].start_time,
-        reservations[0].end_time,
-        room.name,
-        f"예약자: {payload.requester_name}\n예약 목적: {payload.purpose}",
-    )
-    
+    extra_rows = []
     if payload.repeat_count > 1:
         repeat_type_kr = "매주" if payload.repeat_type == "weekly" else "매달"
-        email_body += f"\n반복 예약: {repeat_type_kr} {payload.repeat_count}회\n"
-        for idx, res in enumerate(reservations, 1):
-            email_body += f"  {idx}. {_format_eastern_time(res.start_time)} - {_format_eastern_time(res.end_time)}\n"
-    
-    if is_admin:
-        email_body += "\n[자동승인] 관리자 예약으로 자동승인되었습니다."
-    else:
-        email_body += "\n[대기중] 예약이 승인 대기 중입니다."
-
-    if calendar_link:
-        email_body += f"\n\nGoogle Calendar에 추가:\n{calendar_link}\n"
+        repeat_schedule = "\n".join(f"{idx}. {_format_eastern_time(res.start_time)} - {_format_eastern_time(res.end_time)}" for idx, res in enumerate(reservations, 1))
+        extra_rows.append(("반복 예약", f"{repeat_type_kr} {payload.repeat_count}회\n{repeat_schedule}"))
+    reservation_status = "자동 승인 (관리자 예약)" if is_admin else "승인 대기 중"
+    email_body = _build_reservation_email_html(
+        reservations[0], room.name, "새 예약 신청", "새로운 장소 예약이 접수되었습니다.", reservation_status, extra_rows=extra_rows
+    )
 
     # Send email to requester (skip for admin-created reservations — no
     # completion notice needed since the admin already knows it's approved).
     if not is_admin:
-        queue_email(db, payload.email, email_subject, email_body)
+        queue_email(db, payload.email, email_subject, email_body, content_type="html")
     
     # Send notification email to admins (skip for admin-created reservations
     # — the admin who just booked it doesn't need a notice about it).
@@ -1825,28 +1823,12 @@ def create_reservation(
     
     if admins:
         admin_email_subject = f"[관리자 알림] {room.name} - 새로운 예약 신청"
-        admin_email_body = f"""
-새로운 예약이 신청되었습니다.
-
-예약자: {payload.requester_name}
-연락처: {payload.phone}
-이메일: {payload.email}
-장소: {room.name}
-목적: {payload.purpose}
-참석인원: {payload.attendees}
-예약 시간(ET): {_format_eastern_time(reservations[0].start_time)} - {_format_eastern_time(reservations[0].end_time)}
-메모: {payload.notes}
-상태: {'자동승인 (관리자 예약)' if is_admin else '승인 대기중'}
-"""
-        
-        if payload.repeat_count > 1:
-            repeat_type_kr = "매주" if payload.repeat_type == "weekly" else "매달"
-            admin_email_body += f"\n반복 예약: {repeat_type_kr} {payload.repeat_count}회\n"
-            for idx, res in enumerate(reservations, 1):
-                admin_email_body += f"  {idx}. {_format_eastern_time(res.start_time)} - {_format_eastern_time(res.end_time)}\n"
+        admin_email_body = _build_reservation_email_html(
+            reservations[0], room.name, "관리자 예약 알림", "새로운 장소 예약이 신청되었습니다.", reservation_status, extra_rows=extra_rows
+        )
         
         for admin in admins:
-            queue_email(db, admin.email, admin_email_subject, admin_email_body)
+            queue_email(db, admin.email, admin_email_subject, admin_email_body, content_type="html")
 
     return {
         "message": "reservation created successfully",
@@ -2054,44 +2036,20 @@ def update_reservation_by_admin(
     status_en = status_text_en.get(action, "Processed")
     
     if item.email:
-        calendar_link = _build_google_calendar_link(
-            f"{item.room.name if item.room else '장소'} 예약",
-            item.start_time,
-            item.end_time,
-            item.room.name if item.room else "N/A",
-            f"예약 ID #{item.id} / 신청자 {item.requester_name}",
-        )
-
-        # Korean email
         subject_ko = f"[밀알교회] 예약 {status_ko} - {item.room.name if item.room else 'N/A'}"
-        body_ko = f"""안녕하세요,
-
-귀하의 장소 예약 신청이 {status_ko}.
-
-【 예약 정보 】
-- 예약 ID: #{item.id}
-- 장소: {item.room.name if item.room else 'N/A'}
-- 신청자: {item.requester_name}
-- 시작 시간(ET): {_format_eastern_time(item.start_time)}
-- 종료 시간(ET): {_format_eastern_time(item.end_time)}
-- 목적: {item.purpose or 'N/A'}
-- 참석자 수: {item.attendees}
-
-Google Calendar에 추가:
-{calendar_link}
-
-【 처리 결과 】
-- 상태: {status_ko}
-- 관리자 메모: {item.admin_comment or '없음'}
-
-자세한 내용은 커뮤니티에서 확인하실 수 있습니다.
-
-밀알교회"""
+        body_ko = _build_reservation_email_html(
+            item,
+            item.room.name if item.room else "N/A",
+            f"예약 {status_ko}",
+            f"귀하의 장소 예약 신청이 {status_ko}.",
+            status_ko,
+            item.admin_comment or "없음",
+        )
 
         # Admin-created reservations don't need a status-change notice —
         # any action taken here (reject/change) is the admin's own doing.
         if not item.created_by_admin:
-            queue_email(db, item.email, subject_ko, body_ko)
+            queue_email(db, item.email, subject_ko, body_ko, content_type="html")
     
     room_name = item.room.name if item.room else (db.get(Room, item.room_id).name)
     return ReservationOut(
@@ -2195,21 +2153,14 @@ def update_reservation_by_user(
     # Send update email (skip for admin-created reservations)
     if item.email and not item.created_by_admin:
         subject = f"[예약 변경] {item.room.name if item.room else 'N/A'}"
-        body = f"""안녕하세요 {item.requester_name}님,
-
-귀하의 예약이 수정되었습니다.
-
-【 예약 정보 】
-- 예약 ID: #{item.id}
-- 장소: {item.room.name if item.room else 'N/A'}
-- 시작 시간(ET): {_format_eastern_time(item.start_time)}
-- 종료 시간(ET): {_format_eastern_time(item.end_time)}
-- 목적: {item.purpose}
-- 참석자 수: {item.attendees}
-- 상태: {item.status.value}
-
-밀알교회"""
-        queue_email(db, item.email, subject, body)
+        body = _build_reservation_email_html(
+            item,
+            item.room.name if item.room else "N/A",
+            "예약 변경",
+            "귀하의 예약이 수정되었습니다.",
+            item.status.value,
+        )
+        queue_email(db, item.email, subject, body, content_type="html")
 
     room_name = item.room.name if item.room else "Unknown"
     return ReservationOut(
@@ -2266,19 +2217,8 @@ def delete_reservation_by_user(
     # Send cancellation email (skip for admin-created reservations)
     if item.email and not item.created_by_admin:
         subject = f"[예약 취소] {room_name}"
-        body = f"""안녕하세요 {item.requester_name}님,
-
-귀하의 예약이 취소되었습니다.
-
-【 예약 정보 】
-- 예약 ID: #{item.id}
-- 장소: {room_name}
-- 시작 시간(ET): {_format_eastern_time(item.start_time)}
-- 종료 시간(ET): {_format_eastern_time(item.end_time)}
-- 목적: {item.purpose}
-
-밀알교회"""
-        queue_email(db, item.email, subject, body)
+        body = _build_reservation_email_html(item, room_name, "예약 취소", "귀하의 예약이 취소되었습니다.", "취소")
+        queue_email(db, item.email, subject, body, content_type="html")
 
     db.delete(item)
     db.commit()
