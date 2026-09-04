@@ -489,6 +489,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         "name": member.name,
         "member_id": member.id,
         "permission": member.permission,
+        "custom_8": member.custom_8,
         "membership_category": user.membership_category.value if user and user.membership_category else "adult",
         "title": member.title,
         "cell_group": member.cell_group,

@@ -28,7 +28,7 @@ export default function CellGroupInfoModal() {
   const currentCellGroup = sessionStorage.getItem("milal_cell_group") || "";
   const cellLeader = members.find((member) => member.permission === "manager" );
   const cellGroupDisplay = currentCellGroup
-    ? `${currentCellGroup}${cellLeader?.name ? `(${cellLeader.name} 순장)` : ""}`
+    ? `${currentCellGroup}`
     : "";
 
   useEffect(() => {

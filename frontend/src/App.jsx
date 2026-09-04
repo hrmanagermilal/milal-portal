@@ -107,6 +107,7 @@ export default function App() {
 
   const [userName, setUserName] = useState(() => sessionStorage.getItem("milal_user") || "");
   const [userPermission, setUserPermission] = useState(() => sessionStorage.getItem("milal_permission") || "member");
+  const [userCustom8, setUserCustom8] = useState(() => sessionStorage.getItem("milal_custom_8") || "");
   const [userTitle, setUserTitle] = useState(() => sessionStorage.getItem("milal_title") || "");
   const [userCellGroup, setUserCellGroup] = useState(() => sessionStorage.getItem("milal_cell_group") || "");
 
@@ -115,8 +116,10 @@ export default function App() {
     sessionStorage.setItem("milal_permission", permission);
     sessionStorage.setItem("milal_title", title || "");
     sessionStorage.setItem("milal_cell_group", cellGroup || "");
+    sessionStorage.setItem("milal_custom_8", fullUserInfo?.custom_8 || "");
     setUserName(name);
     setUserPermission(permission);
+    setUserCustom8(fullUserInfo?.custom_8 || "");
     setUserTitle(title || "");
     setUserCellGroup(cellGroup || "");
     setTab("dashboard");
@@ -134,8 +137,10 @@ export default function App() {
     sessionStorage.removeItem("milal_permission");
     sessionStorage.removeItem("milal_title");
     sessionStorage.removeItem("milal_cell_group");
+    sessionStorage.removeItem("milal_custom_8");
     setUserName("");
     setUserPermission("member");
+    setUserCustom8("");
     setUserTitle("");
     setUserCellGroup("");
     DataMart.clearCurrentUser();
@@ -420,6 +425,7 @@ export default function App() {
         pendingCount={pendingCount}
         expenseApprovalCount={expenseApprovalCount}
         canApproveExpenses={canApproveExpenses}
+        canManageExpenseSettings={userCustom8 === "manager" || userCustom8 === "admin"}
         mobileOpen={mobileDrawerOpen}
         onClose={() => setMobileDrawerOpen(false)}
       />
@@ -540,16 +546,16 @@ export default function App() {
           {tab === "expense-approval" && (
             <ExpenseApproval initialExpenseId={linkedExpenseId} onApprovalChanged={refreshExpenseApprovalSummary} />
           )}
-          {tab === "expense-account-management" && canApproveExpenses && (
+          {tab === "expense-account-management" && (userCustom8 === "manager" || userCustom8 === "admin") && (
             <ExpenseAccountManagement onOpenDetail={(accountId) => {
               setExpenseAccountDetailId(accountId);
               setTab("expense-account-detail");
             }} />
           )}
-          {tab === "expense-account-detail" && canApproveExpenses && (
+          {tab === "expense-account-detail" && (userCustom8 === "manager" || userCustom8 === "admin") && (
             <ExpenseAccountDetail accountId={expenseAccountDetailId} onBack={() => setTab("expense-account-management")} />
           )}
-          {tab === "expense-approval-route-management" && canApproveExpenses && (
+          {tab === "expense-approval-route-management" && (userCustom8 === "manager" || userCustom8 === "admin") && (
             <ExpenseApprovalRouteManagement />
           )}
         </Box>

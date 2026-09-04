@@ -24,6 +24,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TableSortLabel from "@mui/material/TableSortLabel";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -89,6 +90,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   const [showList, setShowList] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [reservationRules, setReservationRules] = useState([]);
+  const [listSort, setListSort] = useState({ field: "start_time", direction: "asc" });
 
   // Reservations/rooms are polled once at the App level and passed down as
   // props — no separate polling here to avoid stacking redundant DB requests.
@@ -159,13 +161,34 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
     };
   }, [mode, anchorDate]);
 
-  const visibleList = useMemo(
-    () => {
-      const list = sortByStartTime(filteredReservations.filter((item) => overlapsPeriod(item, visibleRange.start, visibleRange.end)));
-      return list;
-    },
-    [filteredReservations, visibleRange]
-  );
+  const visibleList = useMemo(() => {
+    const list = filteredReservations
+      .filter((item) => overlapsPeriod(item, visibleRange.start, visibleRange.end))
+      .slice();
+
+    list.sort((left, right) => {
+      const leftValue = listSort.field === "start_time"
+        ? new Date(left.start_time).getTime()
+        : left[listSort.field] ?? "";
+      const rightValue = listSort.field === "start_time"
+        ? new Date(right.start_time).getTime()
+        : right[listSort.field] ?? "";
+      const comparison = typeof leftValue === "number" && typeof rightValue === "number"
+        ? leftValue - rightValue
+        : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" });
+
+      return listSort.direction === "asc" ? comparison : -comparison;
+    });
+
+    return list;
+  }, [filteredReservations, visibleRange, listSort]);
+
+  function handleListSort(field) {
+    setListSort((current) => ({
+      field,
+      direction: current.field === field && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }
 
   function handleNavigate(direction) {
     if (direction === 0) {
@@ -431,15 +454,34 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                 <Table size="small">
                   <TableHead sx={{ bgcolor: "#eef2f7" }}>
                     <TableRow>
-                      {[t("colId"), t("colRoom"), t("colTime"), t("colRequester"), t("colPurpose"), t("colStatus"), t("colAdminNote")].map((h) => (
-                        <TableCell key={h} sx={{ color: "#313b5e", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</TableCell>
+                      {[
+                        { field: "id", label: t("colId") },
+                        { field: "room_name", label: t("colRoom") },
+                        { field: "start_time", label: t("colTime") },
+                        { field: "requester_name", label: t("colRequester") },
+                        { field: "purpose", label: t("colPurpose") },
+                        { field: "status", label: t("colStatus") },
+                        { field: "admin_comment", label: t("colAdminNote") },
+                      ].map(({ field, label }) => (
+                        <TableCell key={field} sx={{ color: "#313b5e", fontWeight: 700, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                          <TableSortLabel
+                            active={listSort.field === field}
+                            direction={listSort.field === field ? listSort.direction : "asc"}
+                            onClick={() => handleListSort(field)}
+                            sx={{ color: "inherit", "&.Mui-active": { color: "inherit" } }}
+                          >
+                            {label}
+                          </TableSortLabel>
+                        </TableCell>
                       ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {visibleList.map((item) => (
                       <TableRow key={item.id} hover sx={{ cursor: "pointer" }} onClick={() => setSelectedItem(item)}>
-                        <TableCell>{item.id}</TableCell>
+                        <TableCell title={item.id}>
+                          {item.id.length > 20 ? `${item.id.slice(0, 17)}...` : item.id}
+                        </TableCell>
                         <TableCell>
                           <FloorPlanTooltip roomId={item.room_id} roomName={item.room_name}>
                             <span>{item.room_name}</span>

@@ -905,7 +905,7 @@ def serialize_expense_account(account: ExpenseAccount, approved_amount: float) -
 
 
 def require_expense_approver(member: Member) -> None:
-    if member.position_code not in EXPENSE_APPROVER_POSITION_CODES:
+    if member.permission != "admin" and member.position_code not in EXPENSE_APPROVER_POSITION_CODES:
         raise HTTPException(status_code=403, detail="Only members with position code 566, 567, or 568 can approve expense requests.")
 
 
