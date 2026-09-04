@@ -30,6 +30,41 @@ AnalyzeCellReportByDateFn = Callable[[Session, str, date], dict]
 AnalyzeMemberPrayerTrendFn = Callable[[Session, str, str, int], dict]
 
 
+def get_gemini_client() -> tuple[object | None, dict | None]:
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None, {"message": "openai 패키지가 설치되지 않았습니다. requirements.txt를 확인하세요.", "error": True}
+
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        return None, {
+            "message": (
+                "AI 채팅 기능을 사용하려면 .env 파일에 GEMINI_API_KEY를 설정해야 합니다.\n"
+                "무료 발급: https://aistudio.google.com/apikey"
+            ),
+            "error": True,
+        }
+
+    return OpenAI(
+        api_key=gemini_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    ), None
+
+
+def get_gemini_interactions_client() -> tuple[object | None, dict | None]:
+    try:
+        from google import genai
+    except ImportError:
+        return None, {"message": "google-genai 패키지가 설치되지 않았습니다. requirements.txt를 확인하세요.", "error": True}
+
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        return None, {"message": "AI 채팅 기능을 사용하려면 GEMINI_API_KEY를 설정해야 합니다.", "error": True}
+
+    return genai.Client(api_key=gemini_key), None
+
+
 def create_ai_chat_router(
     analyze_cell_reports: AnalyzeCellReportsFn,
     analyze_cell_report_by_date: AnalyzeCellReportByDateFn,
@@ -39,26 +74,7 @@ def create_ai_chat_router(
     app_tz = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
 
     def _get_gemini_client() -> tuple[object | None, dict | None]:
-        try:
-            from openai import OpenAI
-        except ImportError:
-            return None, {"message": "openai 패키지가 설치되지 않았습니다. requirements.txt를 확인하세요.", "error": True}
-
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        if not gemini_key:
-            return None, {
-                "message": (
-                    "AI 채팅 기능을 사용하려면 .env 파일에 GEMINI_API_KEY를 설정해야 합니다.\n"
-                    "무료 발급: https://aistudio.google.com/apikey"
-                ),
-                "error": True,
-            }
-
-        client = OpenAI(
-            api_key=gemini_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-        )
-        return client, None
+        return get_gemini_client()
 
     chat_tools = [
         {
@@ -261,7 +277,7 @@ def create_ai_chat_router(
             return {"verse": random.choice(fallback), "source": "fallback"}
 
         try:
-            model_name = os.getenv("OPENAI_MODEL", "gemini-2.5-flash")
+            model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
             lang_instruction = "Korean" if is_ko else "English"
             response = client.chat.completions.create(
                 model=model_name,
@@ -296,10 +312,10 @@ def create_ai_chat_router(
         db: Session = Depends(get_db),
     ) -> dict:
         """AI-powered natural language chat endpoint (Gemini)"""
-        client, error_payload = _get_gemini_client()
+        client, error_payload = get_gemini_interactions_client()
         if error_payload:
             return error_payload
-        default_model = "gemini-2.5-flash"
+        default_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
         rooms = db.scalars(select(Room).where(Room.is_active.is_(True)).order_by(Room.id)).all()
         rooms_info = "\n".join(
@@ -896,45 +912,41 @@ Important rules:
             except Exception as exc:
                 return {"error": f"도구 실행 중 오류: {type(exc).__name__}: {exc}"}
 
-        model_name = os.getenv("OPENAI_MODEL", default_model)
+        model_name = os.getenv("GEMINI_MODEL", default_model)
+        gemini_tools = [tool["function"] | {"type": "function"} for tool in chat_tools]
+        conversation = "\n\n".join(
+            [system_prompt]
+            + [f"{message.role}: {message.content}" for message in payload.history[-12:]]
+            + [f"user: {payload.message}"]
+        )
         try:
+            response = client.interactions.create(
+                model=model_name,
+                input=conversation,
+                tools=gemini_tools,
+            )
             for _ in range(6):
-                response = client.chat.completions.create(
+                function_calls = [step for step in response.steps if step.type == "function_call"]
+                if not function_calls:
+                    return {"message": response.output_text or ""}
+
+                function_results = [
+                    {
+                        "type": "function_result",
+                        "name": function_call.name,
+                        "call_id": function_call.id,
+                        "result": [{"type": "text", "text": json.dumps(_dispatch(function_call.name, function_call.arguments or {}), ensure_ascii=False, default=str)}],
+                    }
+                    for function_call in function_calls
+                ]
+                response = client.interactions.create(
                     model=model_name,
-                    messages=messages,
-                    tools=chat_tools,
-                    tool_choice="auto",
+                    previous_interaction_id=response.id,
+                    input=function_results,
+                    tools=gemini_tools,
                 )
-                choice = response.choices[0]
-                msg = choice.message
-
-                assistant_msg: dict = {"role": "assistant"}
-                if msg.content:
-                    assistant_msg["content"] = msg.content
-                if msg.tool_calls:
-                    assistant_msg["tool_calls"] = [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                        }
-                        for tc in msg.tool_calls
-                    ]
-                messages.append(assistant_msg)
-
-                if choice.finish_reason == "tool_calls" and msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        tool_args = json.loads(tc.function.arguments)
-                        result = _dispatch(tc.function.name, tool_args)
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tc.id,
-                                "content": json.dumps(result, ensure_ascii=False, default=str),
-                            }
-                        )
-                else:
-                    return {"message": msg.content or ""}
+                if not any(step.type == "function_call" for step in response.steps):
+                    return {"message": response.output_text or ""}
 
             return {"message": "처리 시간이 초과되었습니다. 다시 시도해주세요."}
         except Exception as exc:

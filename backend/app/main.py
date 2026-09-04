@@ -1,7 +1,11 @@
-import os
 import asyncio
+import base64
 import contextlib
+import html
+import json
 import logging
+import os
+from io import BytesIO
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 import re
@@ -13,8 +17,11 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Qu
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
+from pillow_heif import register_heif_opener
 from sqlalchemy import and_, or_, select, text, func
 from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -32,6 +39,9 @@ from .database import Base, SessionLocal, engine, get_db
 from .models import (
     CellReport,
     CellReportMemberEntry,
+    Expense,
+    ExpenseAccount,
+    ExpenseApprovalRoute,
     ExternalCalendarEvent,
     Member,
     OtpCode,
@@ -47,6 +57,18 @@ from .schemas import (
     CellReportCreate,
     CellReportDetailOut,
     CellReportListItem,
+    ExpenseCreate,
+    ExpenseApprovalDecision,
+    ExpenseAccountCreate,
+    ExpenseAccountDetailOut,
+    ExpenseAccountOut,
+    ExpenseAccountUpdate,
+    ExpenseApprovalRouteOut,
+    ExpenseApprovalRouteUpdate,
+    ExpenseOut,
+    ExpenseUpdate,
+    ReceiptExtractionOut,
+    ReceiptExtractionRequest,
     ReservationCreate,
     ReservationOut,
     ReservationRuleCreate,
@@ -61,7 +83,7 @@ from .schemas import (
     UserUpdateReservation,
 )
 from .auth_routes import router as auth_router, get_current_user, oauth2_scheme
-from .ai_chat import create_ai_chat_router
+from .ai_chat import create_ai_chat_router, get_gemini_client
 from .reservation_eligibility import assess_reservation_eligibility
 from .email_queue import email_queue_worker, queue_email
 from .sync_tasks import maybe_sync_external_calendar_events, sync_all_members_from_ohjic
@@ -80,8 +102,25 @@ app.include_router(auth_router)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST_DIR = Path(os.getenv("FRONTEND_DIST_DIR", PROJECT_ROOT / "frontend" / "dist"))
+EXPENSE_UPLOAD_DIR = Path(os.getenv("EXPENSE_UPLOAD_DIR", PROJECT_ROOT / "uploads" / "expenses"))
+EXPENSE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "https://www.milalchurch.ca:83").rstrip("/")
+EXPENSE_DATA_URL_PATTERN = re.compile(
+    r"^data:(image/jpeg|image/png|image/gif|image/webp|image/heic|image/heif|application/pdf);base64,([A-Za-z0-9+/=\s]+)$"
+)
+EXPENSE_FILE_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/heic": ".jpg",
+    "image/heif": ".jpg",
+    "application/pdf": ".pdf",
+}
+register_heif_opener()
 REMINDER_LEAD_MINUTES = 15
 REMINDER_POLL_SECONDS = 60
+EXPENSE_APPROVER_POSITION_CODES = (566, 567, 568)
 reminder_task: asyncio.Task | None = None
 email_queue_task: asyncio.Task | None = None
 EASTERN_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
@@ -181,7 +220,7 @@ Google Calendar에 추가:
 {calendar_link}
 
 감사합니다.
-밀알교회 포털팀"""
+밀알교회 교회"""
     return subject, body
 
 
@@ -311,6 +350,175 @@ def get_available_rooms_query(start_time: datetime, end_time: datetime):
     )
 
 
+def serialize_expense(expense: Expense, requester_name: str) -> dict:
+    account = expense.account
+    return {
+        "id": expense.id,
+        "request_date": expense.request_date,
+        "title": expense.title,
+        "memo": expense.memo,
+        "status": expense.status,
+        "hst_amount": expense.hst_amount,
+        "total_amount": expense.total_amount,
+        "requester_name": requester_name,
+        "account_id": expense.account_id,
+        "account_code": account.account_code if account else "",
+        "account_name": account.name if account else "",
+        "items": expense.items,
+        "attachments": expense.attachments,
+        "approvals": expense.approvals,
+        "created_at": expense.created_at.replace(tzinfo=timezone.utc).isoformat(),
+        "updated_at": expense.updated_at.replace(tzinfo=timezone.utc).isoformat(),
+    }
+
+
+def save_expense_attachments(expense_id: int, request_date: date, attachments: list) -> list[dict]:
+    upload_date_dir = EXPENSE_UPLOAD_DIR / request_date.isoformat()
+    stored_attachments = []
+
+    for sequence, attachment in enumerate(attachments, start=1):
+        attachment_data = attachment.model_dump()
+        data_url = attachment_data.pop("data_url", "")
+        if not data_url:
+            if attachment_data.get("url", "").startswith("/uploads/expenses/"):
+                stored_attachments.append(attachment_data)
+                continue
+            raise HTTPException(status_code=422, detail="Each attachment must include file data.")
+
+        data_url_match = EXPENSE_DATA_URL_PATTERN.fullmatch(data_url)
+        if not data_url_match:
+            raise HTTPException(status_code=422, detail="Attachments must be JPEG, PNG, GIF, WebP, HEIC, or PDF files.")
+
+        mime_type, encoded_content = data_url_match.groups()
+        try:
+            file_content = base64.b64decode(encoded_content, validate=True)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail="Attachment file data is invalid.") from error
+        if not file_content:
+            raise HTTPException(status_code=422, detail="Attachment file is empty.")
+
+        if mime_type in ("image/heic", "image/heif"):
+            try:
+                converted_image = Image.open(BytesIO(file_content)).convert("RGB")
+                jpeg_data = BytesIO()
+                converted_image.save(jpeg_data, format="JPEG", quality=92)
+                file_content = jpeg_data.getvalue()
+                attachment_data["type"] = "image"
+            except Exception as error:
+                raise HTTPException(status_code=422, detail="Unable to process the HEIC attachment.") from error
+
+        upload_date_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{expense_id}_{sequence}{EXPENSE_FILE_EXTENSIONS[mime_type]}"
+        (upload_date_dir / filename).write_bytes(file_content)
+        attachment_data["url"] = f"/uploads/expenses/{request_date.isoformat()}/{filename}"
+        stored_attachments.append(attachment_data)
+
+    return stored_attachments
+
+
+def get_expense_email_attachments(expense: Expense) -> list[dict]:
+    root_dir = EXPENSE_UPLOAD_DIR.resolve()
+    email_attachments = []
+    for attachment in expense.attachments:
+        url = str(attachment.get("url", ""))
+        if not url.startswith("/uploads/expenses/"):
+            continue
+        file_path = (EXPENSE_UPLOAD_DIR / url.removeprefix("/uploads/expenses/")).resolve()
+        try:
+            file_path.relative_to(root_dir)
+        except ValueError:
+            continue
+        if file_path.is_file():
+            email_attachments.append({"path": str(file_path), "name": str(attachment.get("name") or file_path.name)})
+    return email_attachments
+
+
+def send_expense_notification(
+    db: Session,
+    expense: Expense,
+    requester: Member,
+    recipients: list[Member],
+    action: str,
+    comment: str = "",
+    attachment_recipient_ids: set[int] | None = None,
+) -> None:
+    if not any(member.email.strip() for member in recipients):
+        logger.warning("Expense request %s has no notification recipients", expense.id)
+        return
+
+    action_label = {
+        "created": "등록",
+        "updated": "수정",
+        "first_approved": "1차 승인",
+        "first_rejected": "1차 반려",
+        "second_approved": "2차 승인",
+        "second_rejected": "2차 반려",
+    }[action]
+    subject = f"[비용처리] 비용 요청 {action_label}: {expense.title}"
+    requester_user = db.scalar(select(User).where(User.member_id == requester.id))
+    requester_english_name = requester_user.english_name.strip() if requester_user else ""
+    requester_display_name = f"{requester.name} ({requester_english_name})" if requester_english_name else requester.name
+    requester_url = f"{PORTAL_BASE_URL}/?{urlencode({'tab': 'expense', 'expenseId': expense.id})}"
+    approval_url = f"{PORTAL_BASE_URL}/?{urlencode({'tab': 'expense-approval', 'expenseId': expense.id})}"
+    sent_emails = set()
+    for recipient in recipients:
+        recipient_email = recipient.email.strip()
+        if not recipient_email or recipient_email in sent_emails:
+            continue
+        sent_emails.add(recipient_email)
+        is_requester = recipient.id == requester.id
+        link_label = "요청 상세 보기" if is_requester else "결재하기"
+        link_url = requester_url if is_requester else approval_url
+        item_rows = "".join(
+            f"<tr><td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{html.escape(str(item['description']))}</td>"
+            f"<td style=\"padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap;\">CAD {float(item['amount']):,.2f}</td></tr>"
+            for item in expense.items
+        )
+        completed_approval_rows = "".join(
+            f"<tr><td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{html.escape(str(approval.get('roleKo') or approval.get('role', '결재자')))}</td>"
+            f"<td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{html.escape(str(approval.get('name', '')))}</td>"
+            f"<td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{'승인' if approval.get('state') == 'done' else '반려'}</td>"
+            f"<td style=\"padding:10px;border-bottom:1px solid #e5e7eb;white-space:pre-wrap;\">{html.escape(str(approval.get('comment') or '-'))}</td></tr>"
+            for approval in expense.approvals
+            if approval.get('role') != 'Requester' and approval.get('state') in ('done', 'rejected')
+        )
+        approval_history = f"""
+        <h2 style=\"font-size:16px;margin:26px 0 10px;\">결재 정보</h2>
+        <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;font-size:14px;\">
+          <tr style=\"background:#f8fafc;\"><th style=\"padding:10px;text-align:left;\">단계</th><th style=\"padding:10px;text-align:left;\">결재자</th><th style=\"padding:10px;text-align:left;\">결과</th><th style=\"padding:10px;text-align:left;\">결재 의견</th></tr>
+          {completed_approval_rows}
+        </table>""" if completed_approval_rows else ""
+        body = f"""<!doctype html>
+<html lang=\"ko\"><body style=\"margin:0;padding:24px;background:#f4f6f8;font-family:Arial,sans-serif;color:#243044;\">
+    <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr><td align=\"center\">
+        <table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #dbe3ea;\">
+            <tr><td style=\"padding:24px 28px;background:#314b2b;color:#ffffff;\"><strong style=\"font-size:20px;\">비용 요청 {html.escape(action_label)}</strong></td></tr>
+            <tr><td style=\"padding:28px;\">
+                <p style=\"margin:0 0 20px;\">비용 요청이 {html.escape(action_label)}되었습니다.</p>
+                <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;font-size:14px;\">
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;width:120px;\">요청자</th><td style=\"padding:10px;\">{html.escape(requester_display_name)}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">요청일</th><td style=\"padding:10px;\">{expense.request_date.isoformat()}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">제목</th><td style=\"padding:10px;\">{html.escape(expense.title)}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">결재 상태</th><td style=\"padding:10px;\">{html.escape(action_label)}</td></tr>
+                </table>
+                {approval_history}
+                <h2 style=\"font-size:16px;margin:26px 0 10px;\">비용 항목</h2>
+                <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;font-size:14px;\">
+                    <tr style=\"background:#f8fafc;\"><th style=\"padding:10px;text-align:left;\">항목</th><th style=\"padding:10px;text-align:right;\">금액</th></tr>
+                    {item_rows}
+                    <tr><th style=\"padding:10px;text-align:left;\">HST</th><td style=\"padding:10px;text-align:right;\">CAD {expense.hst_amount:,.2f}</td></tr>
+                    <tr style=\"background:#edf4e9;\"><th style=\"padding:12px;text-align:left;\">총 비용</th><td style=\"padding:12px;text-align:right;font-weight:bold;\">CAD {expense.total_amount:,.2f}</td></tr>
+                </table>
+                <h2 style=\"font-size:16px;margin:26px 0 8px;\">메모</h2><p style=\"margin:0;white-space:pre-wrap;line-height:1.6;\">{html.escape(expense.memo)}</p>
+                <p style=\"margin:28px 0 0;\"><a href=\"{html.escape(link_url, quote=True)}\" style=\"display:inline-block;padding:12px 18px;background:#314b2b;color:#ffffff;text-decoration:none;font-weight:bold;\">{link_label}</a></p>
+            </td></tr>
+        </table>
+    </td></tr></table>
+</body></html>"""
+        attachments = get_expense_email_attachments(expense) if recipient.id in (attachment_recipient_ids or set()) else []
+        queue_email(db, recipient_email, subject, body, content_type="html", attachments=attachments)
+
+
 @app.on_event("startup")
 async def startup() -> None:
     Base.metadata.create_all(bind=engine)
@@ -326,6 +534,38 @@ async def startup() -> None:
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: preserve the English check name entered during expense requests
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN english_name VARCHAR(100) NOT NULL DEFAULT ''"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: track accounts that receive final approved expense documents.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_finance_admin BOOLEAN NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: retain queued email body format for HTML notifications.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE email_queue ADD COLUMN content_type VARCHAR(10) NOT NULL DEFAULT 'plain'"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
+
+    # Migrate: retain queued file attachments until the background worker sends them.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE email_queue ADD COLUMN attachments JSON NOT NULL"))
             conn.commit()
         except Exception:
             pass  # Column already exists
@@ -360,6 +600,19 @@ async def startup() -> None:
             except Exception:
                 pass  # Column already exists
 
+    # Migrate: add expense fields to existing databases
+    with engine.connect() as conn:
+        for sql in (
+            "ALTER TABLE expenses ADD COLUMN hst_amount FLOAT NOT NULL DEFAULT 0",
+            "ALTER TABLE expenses ADD COLUMN account_id INTEGER NULL",
+            "ALTER TABLE expense_accounts ADD COLUMN account_code VARCHAR(100) NOT NULL DEFAULT ''",
+        ):
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists or expenses has not been created yet
+
     # Migrate: add requester_name column to external_calendar_events if it doesn't exist yet
     with engine.connect() as conn:
         try:
@@ -393,7 +646,7 @@ async def startup() -> None:
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         sync_all_members_from_ohjic,
-        CronTrigger(hour=12, minute=5, timezone=EASTERN_TZ),  # 매일 밤 11시 15분(ET)에 실행
+        CronTrigger(hour=23, minute=15, timezone=EASTERN_TZ),  # 매일 밤 11시 15분(ET)에 실행
         id='sync_all_members_daily',
         name='Daily sync all members from OHJIC API',
         misfire_grace_time=900  # 15분의 오차 허용
@@ -458,6 +711,561 @@ def health() -> dict[str, str]:
 def get_rooms(db: Session = Depends(get_db)) -> list[Room]:
     rooms = db.scalars(select(Room).where(Room.is_active.is_(True)).order_by(Room.id)).all()
     return list(rooms)
+
+
+# ── Expense request endpoints ──────────────────────────────────────────────
+@app.get("/api/expenses/requester-profile")
+def get_expense_requester_profile(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    user = db.scalar(select(User).where(User.member_id == current_user.id))
+    return {"english_name": user.english_name if user else ""}
+
+
+@app.post("/api/expenses/extract-receipt", response_model=ReceiptExtractionOut)
+def extract_expense_receipt(
+    payload: ReceiptExtractionRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    get_current_user(token, db)
+    data_url = payload.file_data_url
+    if not (data_url.startswith("data:image/") or data_url.startswith("data:application/pdf")) or ";base64," not in data_url:
+        raise HTTPException(status_code=422, detail="An image or PDF file is required for receipt extraction.")
+
+    try:
+        encoded_image = data_url.split(",", 1)[1]
+        file_bytes = base64.b64decode(encoded_image, validate=True)
+        if len(file_bytes) > 8 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Receipt files must be 8 MB or smaller.")
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="The receipt file is not valid base64 data.") from exc
+
+    receipt_images = [data_url]
+    if data_url.startswith("data:application/pdf"):
+        try:
+            import fitz
+
+            document = fitz.open(stream=file_bytes, filetype="pdf")
+            if document.page_count == 0:
+                raise ValueError("empty PDF")
+            receipt_images = [
+                "data:image/png;base64," + base64.b64encode(document.load_page(page_number).get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False).tobytes("png")).decode("ascii")
+                for page_number in range(min(document.page_count, 5))
+            ]
+            document.close()
+        except Exception as exc:
+            logger.warning("Unable to render receipt PDF: %s", exc)
+            raise HTTPException(status_code=422, detail="Unable to read this receipt PDF.") from exc
+
+    client, error_payload = get_gemini_client()
+    if error_payload:
+        raise HTTPException(status_code=503, detail=error_payload["message"])
+
+    try:
+        response = client.chat.completions.create(
+            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Extract expense line items from a receipt image. Return JSON only with this exact shape: "
+                        "{\"items\":[{\"description\":string,\"amount\":number}],\"hst_amount\":number}. "
+                        "Use the printed currency values. Exclude HST/tax from items and put its value in hst_amount. "
+                        "If no tax is shown, use 0. Do not invent unreadable items or amounts."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Read this receipt and extract its expense items."},
+                        *[{"type": "image_url", "image_url": {"url": image_url}} for image_url in receipt_images],
+                    ],
+                },
+            ],
+        )
+        content = (response.choices[0].message.content or "").strip()
+        result = json.loads(content)
+        items = [
+            {"description": str(item["description"]).strip(), "amount": float(item["amount"])}
+            for item in result.get("items", [])
+            if str(item.get("description", "")).strip() and float(item.get("amount", 0)) > 0
+        ]
+        return {"items": items, "hst_amount": max(0, float(result.get("hst_amount", 0)))}
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("Receipt extraction returned an invalid Gemini response: %s", exc)
+        raise HTTPException(status_code=502, detail="Unable to read expense items from this receipt image.") from exc
+    except Exception as exc:
+        if getattr(exc, "status_code", None) in (400, 401):
+            logger.warning("Gemini receipt extraction authentication failed")
+            raise HTTPException(
+                status_code=503,
+                detail="Gemini receipt extraction is not configured with a valid API key.",
+            ) from exc
+        logger.exception("Receipt extraction failed")
+        raise HTTPException(status_code=502, detail="Receipt extraction is temporarily unavailable. Please try again.") from exc
+
+
+@app.get("/api/expenses", response_model=list[ExpenseOut])
+def get_expenses(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    current_user = get_current_user(token, db)
+    stmt = select(Expense).order_by(Expense.request_date.desc(), Expense.id.desc())
+    if current_user.permission != "admin":
+        stmt = stmt.where(Expense.requester_member_id == current_user.id)
+    expenses = db.scalars(stmt).all()
+    requester_ids = {expense.requester_member_id for expense in expenses}
+    requester_names = {member.id: member.name for member in db.scalars(select(Member).where(Member.id.in_(requester_ids))).all()} if requester_ids else {}
+    return [serialize_expense(expense, requester_names.get(expense.requester_member_id, "")) for expense in expenses]
+
+
+@app.get("/api/expenses/approvers")
+def get_expense_approvers(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    get_current_user(token, db)
+    approvers = db.scalars(
+        select(Member)
+        .where(Member.position_code.in_(EXPENSE_APPROVER_POSITION_CODES))
+        .order_by(Member.name, Member.id)
+    ).all()
+    return [
+        {"id": approver.id, "name": approver.name, "title": approver.title, "position_code": approver.position_code}
+        for approver in approvers
+    ]
+
+
+def get_expense_account_approvers(account_id: int, db: Session) -> tuple[ExpenseAccount, Member, Member]:
+    account = get_expense_account_or_422(account_id, db)
+    route = db.scalar(select(ExpenseApprovalRoute).where(ExpenseApprovalRoute.account_id == account.id))
+    if not route:
+        raise HTTPException(status_code=422, detail="The selected expense account has no approval route.")
+    approver_ids = {route.chairperson_member_id, route.finance_elder_member_id}
+    approvers = db.scalars(
+        select(Member).where(Member.id.in_(approver_ids), Member.position_code.in_(EXPENSE_APPROVER_POSITION_CODES))
+    ).all()
+    approver_map = {approver.id: approver for approver in approvers}
+    if any(approver_id not in approver_map for approver_id in approver_ids):
+        raise HTTPException(status_code=422, detail="Approvers must have position code 566, 567, or 568.")
+    return account, approver_map[route.chairperson_member_id], approver_map[route.finance_elder_member_id]
+
+
+def get_current_expense_approval(expense: Expense) -> tuple[int, dict] | None:
+    for index, approval in enumerate(expense.approvals):
+        if approval.get("state") == "current":
+            return index, approval
+    return None
+
+
+def get_expense_account_or_422(account_id: int | None, db: Session) -> ExpenseAccount:
+    account = db.get(ExpenseAccount, account_id) if account_id else None
+    if not account:
+        raise HTTPException(status_code=422, detail="A valid expense account must be selected.")
+    return account
+
+
+def serialize_expense_approval_route(route: ExpenseApprovalRoute, account: ExpenseAccount, members: dict[int, Member]) -> dict:
+    chairperson = members.get(route.chairperson_member_id)
+    finance_elder = members.get(route.finance_elder_member_id)
+    return {
+        "id": route.id,
+        "account_id": route.account_id,
+        "account_code": account.account_code,
+        "account_name": account.name,
+        "department_name": account.name,
+        "chairperson_member_id": route.chairperson_member_id,
+        "finance_elder_member_id": route.finance_elder_member_id,
+        "chairperson_name": chairperson.name if chairperson else "",
+        "finance_elder_name": finance_elder.name if finance_elder else "",
+        "created_at": route.created_at,
+        "updated_at": route.updated_at,
+    }
+
+
+def serialize_expense_account(account: ExpenseAccount, approved_amount: float) -> dict:
+    return {
+        "id": account.id,
+        "account_code": account.account_code,
+        "name": account.name,
+        "year": account.year,
+        "budget_amount": account.budget_amount,
+        "approved_amount": approved_amount,
+        "created_at": account.created_at,
+        "updated_at": account.updated_at,
+    }
+
+
+def require_expense_approver(member: Member) -> None:
+    if member.position_code not in EXPENSE_APPROVER_POSITION_CODES:
+        raise HTTPException(status_code=403, detail="Only members with position code 566, 567, or 568 can approve expense requests.")
+
+
+def can_approve_expense(expense: Expense, member_id: int) -> bool:
+    current_approval = get_current_expense_approval(expense)
+    return bool(current_approval and current_approval[1].get("member_id") == member_id)
+
+
+def can_view_expense_approval(expense: Expense, member_id: int) -> bool:
+    return any(approval.get("member_id") == member_id for approval in expense.approvals)
+
+
+@app.get("/api/expense-approvals/summary")
+def get_expense_approval_summary(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    is_approver = current_user.position_code in EXPENSE_APPROVER_POSITION_CODES or current_user.permission == "admin"
+    if not is_approver:
+        return {"is_approver": False, "pending_count": 0}
+
+    candidates = db.scalars(select(Expense).where(Expense.status.in_(("reviewing", "approved")))).all()
+    return {
+        "is_approver": True,
+        "pending_count": sum(can_approve_expense(expense, current_user.id) for expense in candidates),
+    }
+
+
+@app.get("/api/expense-approvals", response_model=list[ExpenseOut])
+def get_expense_approvals(
+    status: str | None = Query(default=None),
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    current_user = get_current_user(token, db)
+    is_admin = current_user.permission == "admin"
+    if not is_admin:
+        require_expense_approver(current_user)
+    candidates = db.scalars(
+        select(Expense)
+        .where(Expense.status.in_(("reviewing", "approved", "rejected", "paid")))
+        .order_by(Expense.request_date.desc(), Expense.id.desc())
+    ).all()
+    approval_expenses = candidates if is_admin else [expense for expense in candidates if can_view_expense_approval(expense, current_user.id)]
+    if status:
+        approval_expenses = [expense for expense in approval_expenses if expense.status == status]
+
+    requester_ids = {expense.requester_member_id for expense in approval_expenses}
+    requesters = db.scalars(select(Member).where(Member.id.in_(requester_ids))).all() if requester_ids else []
+    requester_names = {requester.id: requester.name for requester in requesters}
+    return [serialize_expense(expense, requester_names.get(expense.requester_member_id, "")) for expense in approval_expenses]
+
+
+@app.get("/api/expense-approvals/{expense_id}", response_model=ExpenseOut)
+def get_expense_approval_detail(
+    expense_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    is_admin = current_user.permission == "admin"
+    if not is_admin:
+        require_expense_approver(current_user)
+    expense = db.get(Expense, expense_id)
+    if not expense or (not is_admin and not can_view_expense_approval(expense, current_user.id)):
+        raise HTTPException(status_code=404, detail="expense approval request not found")
+    requester = db.get(Member, expense.requester_member_id)
+    return serialize_expense(expense, requester.name if requester else "")
+
+
+@app.post("/api/expense-approvals/{expense_id}/decision", response_model=ExpenseOut)
+def decide_expense_approval(
+    expense_id: int,
+    payload: ExpenseApprovalDecision,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    require_expense_approver(current_user)
+    expense = db.get(Expense, expense_id)
+    current_approval = get_current_expense_approval(expense) if expense else None
+    if not expense or not current_approval or current_approval[1].get("member_id") != current_user.id:
+        raise HTTPException(status_code=409, detail="This expense request is not awaiting your approval.")
+
+    approvals = [dict(approval) for approval in expense.approvals]
+    approval_index = next(index for index, approval in enumerate(approvals) if approval.get("state") == "current")
+    if payload.account_id:
+        expense.account_id = get_expense_account_or_422(payload.account_id, db).id
+    if approval_index == 1 and payload.action == "approve" and payload.second_approver_member_id:
+        second_approver = db.get(Member, payload.second_approver_member_id)
+        if not second_approver or second_approver.position_code not in EXPENSE_APPROVER_POSITION_CODES:
+            raise HTTPException(status_code=422, detail="Second approver must have position code 566, 567, or 568.")
+        approvals[2]["member_id"] = second_approver.id
+        approvals[2]["name"] = second_approver.name
+    approval = approvals[approval_index]
+    approval["state"] = "done" if payload.action == "approve" else "rejected"
+    approval["date"] = datetime.now(EASTERN_TZ).isoformat()
+    approval["comment"] = payload.comment.strip()
+    if payload.action == "reject":
+        expense.status = "rejected"
+    elif approval_index == len(expense.approvals) - 1:
+        expense.status = "paid"
+    else:
+        expense.status = "approved"
+        approvals[approval_index + 1]["state"] = "current"
+    expense.approvals = approvals
+    flag_modified(expense, "approvals")
+    db.commit()
+    db.refresh(expense)
+    requester = db.get(Member, expense.requester_member_id)
+    decision_comment = payload.comment.strip()
+    if approval_index == 1 and requester:
+        if payload.action == "approve":
+            second_approver = db.get(Member, approvals[2]["member_id"])
+            if second_approver:
+                send_expense_notification(db, expense, requester, [requester, second_approver], "first_approved", decision_comment)
+        else:
+            send_expense_notification(db, expense, requester, [requester], "first_rejected", decision_comment)
+    elif approval_index == len(approvals) - 1 and requester:
+        finance_admins = db.scalars(
+            select(Member).join(User).where(User.is_finance_admin.is_(True))
+        ).all()
+        if payload.action == "approve":
+            send_expense_notification(
+                db,
+                expense,
+                requester,
+                [requester, *finance_admins],
+                "second_approved",
+                decision_comment,
+                attachment_recipient_ids={admin.id for admin in finance_admins},
+            )
+        else:
+            send_expense_notification(db, expense, requester, [requester], "second_rejected", decision_comment)
+    return serialize_expense(expense, requester.name if requester else "")
+
+
+@app.get("/api/expense-accounts", response_model=list[ExpenseAccountOut])
+def get_expense_accounts(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> list[dict]:
+    require_expense_approver(get_current_user(token, db))
+    accounts = db.scalars(select(ExpenseAccount).order_by(ExpenseAccount.year.desc(), ExpenseAccount.name)).all()
+    totals = dict(db.execute(select(Expense.account_id, func.coalesce(func.sum(Expense.total_amount), 0)).where(Expense.status == "paid", Expense.account_id.is_not(None)).group_by(Expense.account_id)).all())
+    return [serialize_expense_account(account, totals.get(account.id, 0)) for account in accounts]
+
+
+@app.get("/api/expense-approval-routes", response_model=list[ExpenseApprovalRouteOut])
+def get_expense_approval_routes(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> list[dict]:
+    get_current_user(token, db)
+    routes = db.scalars(select(ExpenseApprovalRoute).order_by(ExpenseApprovalRoute.account_id)).all()
+    accounts = {account.id: account for account in db.scalars(select(ExpenseAccount).where(ExpenseAccount.id.in_({route.account_id for route in routes}))).all()} if routes else {}
+    member_ids = {member_id for route in routes for member_id in (route.chairperson_member_id, route.finance_elder_member_id)}
+    members = {member.id: member for member in db.scalars(select(Member).where(Member.id.in_(member_ids))).all()} if member_ids else {}
+    return [serialize_expense_approval_route(route, accounts[route.account_id], members) for route in routes if route.account_id in accounts]
+
+
+@app.put("/api/expense-accounts/{account_id}/approval-route", response_model=ExpenseApprovalRouteOut)
+def save_expense_approval_route(account_id: int, payload: ExpenseApprovalRouteUpdate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
+    require_expense_approver(get_current_user(token, db))
+    account = db.get(ExpenseAccount, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="department not found")
+    approvers = {member.id: member for member in db.scalars(select(Member).where(Member.id.in_((payload.chairperson_member_id, payload.finance_elder_member_id)))).all()}
+    if len(approvers) != 2 or any(member.position_code not in EXPENSE_APPROVER_POSITION_CODES for member in approvers.values()):
+        raise HTTPException(status_code=422, detail="Chairperson and finance elder must be eligible expense approvers.")
+    route = db.scalar(select(ExpenseApprovalRoute).where(ExpenseApprovalRoute.account_id == account_id))
+    if route:
+        route.chairperson_member_id = payload.chairperson_member_id
+        route.finance_elder_member_id = payload.finance_elder_member_id
+    else:
+        route = ExpenseApprovalRoute(account_id=account_id, **payload.model_dump())
+        db.add(route)
+    db.commit()
+    db.refresh(route)
+    return serialize_expense_approval_route(route, account, approvers)
+
+
+@app.post("/api/expense-accounts", response_model=ExpenseAccountOut, status_code=201)
+def create_expense_account(payload: ExpenseAccountCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
+    require_expense_approver(get_current_user(token, db))
+    account_code = payload.account_code.strip()
+    if db.scalar(select(ExpenseAccount).where(ExpenseAccount.account_code == account_code)):
+        raise HTTPException(status_code=409, detail="An expense account with this code already exists.")
+    account = ExpenseAccount(**{**payload.model_dump(), "account_code": account_code})
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return serialize_expense_account(account, 0)
+
+
+@app.patch("/api/expense-accounts/{account_id}", response_model=ExpenseAccountOut)
+def update_expense_account(account_id: int, payload: ExpenseAccountUpdate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
+    require_expense_approver(get_current_user(token, db))
+    account = db.get(ExpenseAccount, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="expense account not found")
+    account_code = payload.account_code.strip()
+    duplicate = db.scalar(select(ExpenseAccount).where(ExpenseAccount.account_code == account_code, ExpenseAccount.id != account_id))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="An expense account with this code already exists.")
+    for field, value in {**payload.model_dump(), "account_code": account_code}.items():
+        setattr(account, field, value)
+    db.commit()
+    db.refresh(account)
+    approved_amount = db.scalar(select(func.coalesce(func.sum(Expense.total_amount), 0)).where(Expense.status == "paid", Expense.account_id == account.id))
+    return serialize_expense_account(account, approved_amount or 0)
+
+
+@app.delete("/api/expense-accounts/{account_id}", status_code=204)
+def delete_expense_account(account_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> None:
+    require_expense_approver(get_current_user(token, db))
+    account = db.get(ExpenseAccount, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="department not found")
+    if db.scalar(select(func.count()).select_from(Expense).where(Expense.account_id == account_id)):
+        raise HTTPException(status_code=409, detail="Departments assigned to expense requests cannot be deleted.")
+    db.delete(account)
+    db.commit()
+
+
+@app.get("/api/expense-accounts/{account_id}", response_model=ExpenseAccountDetailOut)
+def get_expense_account(account_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
+    require_expense_approver(get_current_user(token, db))
+    account = db.get(ExpenseAccount, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="expense account not found")
+    expenses = db.scalars(select(Expense).where(Expense.status == "paid", Expense.account_id == account.id).order_by(Expense.request_date.desc(), Expense.id.desc())).all()
+    requesters = {member.id: member.name for member in db.scalars(select(Member).where(Member.id.in_({expense.requester_member_id for expense in expenses}))).all()} if expenses else {}
+    detail = serialize_expense_account(account, sum(expense.total_amount for expense in expenses))
+    detail["expenses"] = []
+    for expense in expenses:
+        serialized_expense = serialize_expense(expense, requesters.get(expense.requester_member_id, ""))
+        detail["expenses"].append(serialized_expense)
+    return detail
+
+
+@app.get("/api/expenses/{expense_id}", response_model=ExpenseOut)
+def get_expense(
+    expense_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    expense = db.get(Expense, expense_id)
+    if not expense or expense.requester_member_id != current_user.id:
+        raise HTTPException(status_code=404, detail="expense request not found")
+    return serialize_expense(expense, current_user.name)
+
+
+@app.post("/api/expenses", response_model=ExpenseOut, status_code=201)
+def create_expense(
+    payload: ExpenseCreate,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    requester_user = db.scalar(select(User).where(User.member_id == current_user.id))
+    if not requester_user:
+        raise HTTPException(status_code=404, detail="User account not found")
+    requester_user.english_name = payload.english_name.strip()
+    account, first_approver, second_approver = get_expense_account_approvers(payload.account_id, db)
+    total_amount = sum(item.amount for item in payload.items) + payload.hst_amount
+    first_approval_is_automatic = current_user.id == first_approver.id
+    approval_time = datetime.now(EASTERN_TZ).isoformat()
+    requester_approval = {
+        "role": "Requester",
+        "roleKo": "요청자",
+        "name": current_user.name,
+        "date": "",
+        "state": "done",
+    }
+    approvals = [
+        requester_approval,
+        {"role": "First Approver", "roleKo": "1차 결재자", "member_id": first_approver.id, "name": first_approver.name, "date": approval_time if first_approval_is_automatic else "", "state": "done" if first_approval_is_automatic else "current"},
+        {"role": "Second Approver", "roleKo": "2차 결재자", "member_id": second_approver.id, "name": second_approver.name, "date": "", "state": "current" if first_approval_is_automatic else "waiting"},
+    ]
+    expense = Expense(
+        requester_member_id=current_user.id,
+        account_id=account.id,
+        request_date=payload.request_date,
+        title=payload.title,
+        memo=payload.memo,
+        hst_amount=payload.hst_amount,
+        total_amount=total_amount,
+        items=[item.model_dump() for item in payload.items],
+        attachments=[],
+        approvals=approvals,
+        status="approved" if first_approval_is_automatic else "reviewing",
+    )
+    db.add(expense)
+    db.flush()
+    expense.approvals[0]["date"] = approval_time
+    flag_modified(expense, "approvals")
+    expense.attachments = save_expense_attachments(expense.id, payload.request_date, payload.attachments)
+    db.commit()
+    db.refresh(expense)
+    if first_approval_is_automatic:
+        send_expense_notification(db, expense, current_user, [current_user, second_approver], "first_approved")
+    else:
+        send_expense_notification(db, expense, current_user, [first_approver], "created")
+    return serialize_expense(expense, current_user.name)
+
+
+@app.patch("/api/expenses/{expense_id}", response_model=ExpenseOut)
+def update_expense(
+    expense_id: int,
+    payload: ExpenseUpdate,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    requester_user = db.scalar(select(User).where(User.member_id == current_user.id))
+    if not requester_user:
+        raise HTTPException(status_code=404, detail="User account not found")
+    requester_user.english_name = payload.english_name.strip()
+    expense = db.get(Expense, expense_id)
+    if not expense or expense.requester_member_id != current_user.id:
+        raise HTTPException(status_code=404, detail="expense request not found")
+    if expense.status != "reviewing":
+        raise HTTPException(status_code=409, detail="Expense requests cannot be edited after chairperson approval.")
+    account, first_approver, second_approver = get_expense_account_approvers(payload.account_id, db)
+
+    expense.request_date = payload.request_date
+    expense.title = payload.title
+    expense.memo = payload.memo
+    expense.account_id = account.id
+    expense.hst_amount = payload.hst_amount
+    expense.total_amount = sum(item.amount for item in payload.items) + payload.hst_amount
+    expense.items = [item.model_dump() for item in payload.items]
+    expense.attachments = save_expense_attachments(expense.id, payload.request_date, payload.attachments)
+    requester_approval = expense.approvals[0] if expense.approvals else {}
+    requester_approval.update({"name": current_user.name, "state": "done"})
+    expense.approvals = [
+        requester_approval,
+        {"role": "First Approver", "roleKo": "1차 결재자", "member_id": first_approver.id, "name": first_approver.name, "date": "", "state": "current"},
+        {"role": "Second Approver", "roleKo": "2차 결재자", "member_id": second_approver.id, "name": second_approver.name, "date": "", "state": "waiting"},
+    ]
+    db.commit()
+    db.refresh(expense)
+    send_expense_notification(db, expense, current_user, [first_approver], "updated")
+    return serialize_expense(expense, current_user.name)
+
+
+@app.post("/api/expenses/{expense_id}/cancel", response_model=ExpenseOut)
+def cancel_expense(
+    expense_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> dict:
+    current_user = get_current_user(token, db)
+    expense = db.get(Expense, expense_id)
+    if not expense or expense.requester_member_id != current_user.id:
+        raise HTTPException(status_code=404, detail="expense request not found")
+    if expense.status != "reviewing":
+        raise HTTPException(status_code=409, detail="Expense requests cannot be cancelled after approval has started.")
+
+    expense.status = "cancelled"
+    db.commit()
+    db.refresh(expense)
+    return serialize_expense(expense, current_user.name)
 
 
 @app.get("/api/rooms/rules", response_model=list[ReservationRuleOut])
@@ -1276,9 +2084,9 @@ Google Calendar에 추가:
 - 상태: {status_ko}
 - 관리자 메모: {item.admin_comment or '없음'}
 
-자세한 내용은 포털에서 확인하실 수 있습니다.
+자세한 내용은 커뮤니티에서 확인하실 수 있습니다.
 
-밀알교회 포털팀"""
+밀알교회"""
 
         # Admin-created reservations don't need a status-change notice —
         # any action taken here (reject/change) is the admin's own doing.
@@ -1400,7 +2208,7 @@ def update_reservation_by_user(
 - 참석자 수: {item.attendees}
 - 상태: {item.status.value}
 
-밀알교회 포털팀"""
+밀알교회"""
         queue_email(db, item.email, subject, body)
 
     room_name = item.room.name if item.room else "Unknown"
@@ -1469,7 +2277,7 @@ def delete_reservation_by_user(
 - 종료 시간(ET): {_format_eastern_time(item.end_time)}
 - 목적: {item.purpose}
 
-밀알교회 포털팀"""
+밀알교회"""
         queue_email(db, item.email, subject, body)
 
     db.delete(item)
@@ -2032,6 +2840,8 @@ if FRONTEND_DIST_DIR.exists():
     assets_dir = FRONTEND_DIST_DIR / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    app.mount("/uploads/expenses", StaticFiles(directory=str(EXPENSE_UPLOAD_DIR)), name="expense-uploads")
 
 
 @app.get("/", include_in_schema=False)

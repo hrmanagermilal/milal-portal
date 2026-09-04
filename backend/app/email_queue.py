@@ -12,9 +12,12 @@ _send_email directly so their result can drive the HTTP response.
 """
 import asyncio
 import logging
+import mimetypes
 import os
 import smtplib
 from datetime import datetime
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -30,7 +33,7 @@ MAX_ATTEMPTS = 3
 POLL_INTERVAL_SECONDS = 5
 
 
-def _send_email(to_addr: str, subject: str, body: str) -> bool:
+def _send_email(to_addr: str, subject: str, body: str, content_type: str = "plain", attachments: list[dict] | None = None) -> bool:
     """Send email via SMTP right now. Returns True on success."""
     smtp_host = os.getenv("SMTP_HOST", "")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
@@ -53,7 +56,21 @@ def _send_email(to_addr: str, subject: str, body: str) -> bool:
         msg["From"] = smtp_from
         msg["To"] = to_addr
         msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(MIMEText(body, content_type if content_type in ("plain", "html") else "plain", "utf-8"))
+        for attachment in attachments or []:
+            file_path = attachment.get("path", "")
+            filename = attachment.get("name", "")
+            if not file_path or not filename or not os.path.isfile(file_path):
+                logger.warning("[email-queue] skipping unavailable attachment: %s", filename or file_path)
+                continue
+            mime_type, _ = mimetypes.guess_type(filename)
+            main_type, sub_type = (mime_type or "application/octet-stream").split("/", 1)
+            with open(file_path, "rb") as file:
+                part = MIMEBase(main_type, sub_type)
+                part.set_payload(file.read())
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(part)
 
         with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
             server.ehlo()
@@ -67,10 +84,10 @@ def _send_email(to_addr: str, subject: str, body: str) -> bool:
         return False
 
 
-def queue_email(db: Session, to_addr: str, subject: str, body: str) -> bool:
+def queue_email(db: Session, to_addr: str, subject: str, body: str, content_type: str = "plain", attachments: list[dict] | None = None) -> bool:
     """Queue an email for background delivery. Returns True once it's queued."""
     try:
-        db.add(EmailQueueItem(to_email=to_addr, subject=subject, body=body))
+        db.add(EmailQueueItem(to_email=to_addr, subject=subject, body=body, content_type=content_type, attachments=attachments or []))
         db.commit()
         return True
     except Exception as exc:
@@ -93,7 +110,7 @@ def process_email_queue_once() -> int:
         ).all()
 
         for item in pending:
-            ok = _send_email(item.to_email, item.subject, item.body)
+            ok = _send_email(item.to_email, item.subject, item.body, item.content_type, item.attachments)
             item.attempts += 1
             if ok:
                 item.status = EmailStatus.sent

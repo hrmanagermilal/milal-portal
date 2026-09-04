@@ -36,6 +36,11 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 class AdminUpdateAccessibleRequest(BaseModel):
     accessible: int  # 0 or 1
 
+
+class AdminUpdateFinanceAdminRequest(BaseModel):
+    is_finance_admin: bool
+
+
 class FindMemberRequest(BaseModel):
     name: str
 
@@ -834,6 +839,7 @@ def list_users(
             "user_id": member.user_id,
             "created_at": user.created_at,
             "is_admin": member.permission == "admin",
+            "is_finance_admin": user.is_finance_admin,
         })
     
     return result
@@ -892,6 +898,7 @@ def get_user_detail(
         "member_email": member.email,
         "member_phone": member.phone,
         "member_permission": member.permission,
+        "is_finance_admin": user.is_finance_admin,
         "user_id": member.user_id,
         "created_at": user.created_at,
     }
@@ -925,6 +932,25 @@ def update_user_admin_status(
         "member_name": member.name,
         "member_permission": member.permission,
     }
+
+
+@router.patch("/admin/users/{user_id}/finance-admin")
+def update_user_finance_admin_status(
+    user_id: int,
+    body: AdminUpdateFinanceAdminRequest,
+    current_user: Member = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Designate whether the user receives final approved expense requests."""
+    _get_admin_or_403(current_user, db)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    user.is_finance_admin = body.is_finance_admin
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "is_finance_admin": user.is_finance_admin}
 
 
 @router.patch("/admin/members/{member_id}/accessible")

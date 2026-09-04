@@ -288,6 +288,8 @@ CREATE TABLE `users` (
   `member_id` int NOT NULL,
   `password_hash` varchar(255) NOT NULL,
   `membership_category` enum('youth','adult') NOT NULL,
+  `english_name` varchar(100) NOT NULL DEFAULT '',
+  `is_finance_admin` tinyint(1) NOT NULL DEFAULT '0',
   `created_at` datetime NOT NULL,
   `is_admin` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),

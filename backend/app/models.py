@@ -2,7 +2,7 @@ import enum
 from datetime import date, datetime, time
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -132,6 +132,8 @@ class User(Base):
     member_id:            Mapped[int] = mapped_column(ForeignKey("members.id"), unique=True, nullable=False)
     password_hash:        Mapped[str] = mapped_column(String(255), nullable=False)
     membership_category:  Mapped[MembershipCategory] = mapped_column(Enum(MembershipCategory), default=MembershipCategory.youth, nullable=False)
+    english_name:         Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    is_finance_admin:     Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at:           Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     member: Mapped["Member"] = relationship(back_populates="user")
@@ -208,6 +210,55 @@ class CellReportMemberEntry(Base):
     member: Mapped["Member"] = relationship(back_populates="cell_report_entries")
 
 
+# ── Expense request ────────────────────────────────────────────────────────
+class Expense(Base):
+    __tablename__ = "expenses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    requester_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False, index=True)
+    account_id: Mapped[Optional[int]] = mapped_column(ForeignKey("expense_accounts.id"), nullable=True, index=True)
+    request_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    memo: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="reviewing", nullable=False, index=True)
+    hst_amount: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    total_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    items: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    attachments: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    approvals: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    account: Mapped[Optional["ExpenseAccount"]] = relationship()
+
+
+class ExpenseAccount(Base):
+    __tablename__ = "expense_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_code: Mapped[str] = mapped_column(String(100), nullable=False, default="", index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    budget_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ExpenseApprovalRoute(Base):
+    __tablename__ = "expense_approval_routes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("expense_accounts.id"), nullable=False, unique=True, index=True)
+    chairperson_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    finance_elder_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # ── Reservation status ──────────────────────────────────────────────────────
 class ReservationStatus(str, enum.Enum):
     pending = "pending"
@@ -274,6 +325,8 @@ class EmailQueueItem(Base):
     to_email: Mapped[str] = mapped_column(String(255), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(10), default="plain", nullable=False)
+    attachments: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     status: Mapped[EmailStatus] = mapped_column(Enum(EmailStatus), default=EmailStatus.pending, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_error: Mapped[str] = mapped_column(Text, default="")

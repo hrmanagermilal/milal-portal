@@ -8,19 +8,23 @@ import Drawer from "@mui/material/Drawer";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import Badge from "@mui/material/Badge";
-import Tooltip from "@mui/material/Tooltip";
 import { useLanguage } from "../i18n/LanguageContext";
 import {MenuIcon, PlusIcon, CheckIcon, SettingsIcon, RefreshIcon, CalendarIcon, ChevronDownIcon, PeopleIcon, CellGroupInfoIcon, CellReportIcon} from "./common/SideBarIcons";
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import {EventDef} from "../event/EventDef";
 import EventPublisher from "../event/EventPublisher";
 
 const SIDEBAR_W = 250;
 const MODULE = 'Sidebar';
 
-export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCount = 0, mobileOpen = false, onClose }) {
+export default function Sidebar({ activeTab, onDashboard, onTabChange, onRefresh, pendingCount = 0, expenseApprovalCount = 0, canApproveExpenses = false, mobileOpen = false, onClose }) {
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(true);
+  const [expenseOpen, setExpenseOpen] = useState(true);
+  const [expenseSettingsOpen, setExpenseSettingsOpen] = useState(true);
   const [cellMeetingOpen, setCellMeetingOpen] = useState(true);
   const [permission, setPermission] = useState(sessionStorage.getItem("milal_permission") || "");
   const [title, setTitle] = useState(sessionStorage.getItem("milal_title") || "");
@@ -31,6 +35,10 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
     if (activeTab === "cell-group" || activeTab === "cell-report") {
       setCellMeetingOpen(true);
     }
+    if (activeTab === "expense" || activeTab === "expense-approval" || activeTab === "expense-account-management" || activeTab === "expense-approval-route-management") {
+      setExpenseOpen(true);
+    }
+    if (activeTab === "expense-account-management" || activeTab === "expense-approval-route-management") setExpenseSettingsOpen(true);
   }, [activeTab]);
 
   useEffect(() => {
@@ -76,7 +84,15 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
       }}
     >
       {/* Sidebar Header - Velok Branding */}
-      <Box sx={{ p: 3, pb: 2 }}>
+      <Box
+        role="button"
+        tabIndex={0}
+        onClick={onDashboard}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") onDashboard();
+        }}
+        sx={{ p: 3, pb: 2, cursor: "pointer", "&:hover": { bgcolor: "#e8ecf2" } }}
+      >
         <Stack spacing={1.5}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {/* Milal Logo */}
@@ -165,8 +181,8 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                       { key: "cell-group", label: t("navCellGroupInfo"), icon: CellGroupInfoIcon },
                       { key: "cell-report", label: t("navCellReport"), icon: CellReportIcon },
                     ].map((item) => (
-                      <Tooltip key={item.key} title={item.label} placement="right">
-                        <Button
+                      <Button
+                        key={item.key}
                           onClick={() => onTabChange(item.key)}
                           startIcon={item.icon}
                           sx={{
@@ -199,8 +215,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                           }}
                         >
                           <Box sx={{ flexGrow: 1, textAlign: "left" }}>{item.label}</Box>
-                        </Button>
-                      </Tooltip>
+                      </Button>
                     ))}
                   </Stack>
                 </Box>
@@ -210,8 +225,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
         )}
 
         {permission === "admin" && (
-          <Tooltip title={t("navUserManagement")} placement="right">
-            <Button
+          <Button
               onClick={() => onTabChange("users")}
               startIcon={<AdminPanelSettingsIcon />}
               sx={{
@@ -244,9 +258,42 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
               }}
             >
               <Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navUserManagement")}</Box>
-            </Button>
-          </Tooltip>
+          </Button>
         )}
+
+        <Button
+          onClick={() => setExpenseOpen((prev) => !prev)}
+          startIcon={<ReceiptLongIcon />}
+          sx={{
+            justifyContent: "flex-start",
+            textTransform: "none",
+            fontSize: "14px",
+            fontWeight: 700,
+            color: (activeTab === "expense" || activeTab === "expense-approval" || activeTab === "expense-account-management" || activeTab === "expense-approval-route-management") ? "#3b522e" : "#313b5e",
+            borderRadius: "8px",
+            px: 1.5,
+            py: 1.1,
+            transition: "all 0.2s ease",
+            "&:hover": { bgcolor: "#e8ecf2" },
+          }}
+        >
+          <Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navExpense")}</Box>
+          <Box sx={{ transform: expenseOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.2s ease", display: "flex", alignItems: "center", opacity: 0.5 }}>
+            {ChevronDownIcon}
+          </Box>
+        </Button>
+        <Collapse in={expenseOpen}>
+          <Stack spacing={0.25} sx={{ pl: 1.5, mt: 0.25, mb: 0.5 }}>
+            <Box sx={{ position: "relative" }}>
+              <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 8, width: "1.5px", bgcolor: "#d8dfe7" }} />
+              <Stack spacing={0.25}>
+                {canApproveExpenses && <Button onClick={() => onTabChange("expense-approval")} startIcon={<FactCheckIcon />} sx={{ justifyContent: "flex-start", color: activeTab === "expense-approval" ? "#3b522e" : "#5d7186", textTransform: "none", fontSize: "13px", fontWeight: activeTab === "expense-approval" ? 700 : 500, bgcolor: activeTab === "expense-approval" ? "rgba(59, 82, 46, 0.08)" : "transparent", borderRadius: "8px", pl: 2, pr: 1.5, py: 1, position: "relative", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", color: "#3b522e" } }}><Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navExpenseApproval")}</Box>{expenseApprovalCount > 0 && <Badge badgeContent={expenseApprovalCount} color="error" sx={{ "& .MuiBadge-badge": { fontSize: "10px", height: 16, minWidth: 16 } }} />}</Button>}
+                <Button onClick={() => onTabChange("expense")} startIcon={<ReceiptLongIcon />} sx={{ justifyContent: "flex-start", color: activeTab === "expense" ? "#3b522e" : "#5d7186", textTransform: "none", fontSize: "13px", fontWeight: activeTab === "expense" ? 700 : 500, bgcolor: activeTab === "expense" ? "rgba(59, 82, 46, 0.08)" : "transparent", borderRadius: "8px", pl: 2, pr: 1.5, py: 1, position: "relative", "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", color: "#3b522e" } }}><Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navExpenseRequest")}</Box></Button>
+                {canApproveExpenses && <><Button onClick={() => setExpenseSettingsOpen((open) => !open)} startIcon={SettingsIcon} sx={{ justifyContent: "flex-start", color: (activeTab === "expense-account-management" || activeTab === "expense-approval-route-management") ? "#3b522e" : "#5d7186", textTransform: "none", fontSize: "13px", fontWeight: 700, borderRadius: "8px", pl: 2, pr: 1.5, py: 1, "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)" } }}><Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navExpenseSettings")}</Box><Box sx={{ transform: expenseSettingsOpen ? "rotate(0deg)" : "rotate(-90deg)", display: "flex", opacity: 0.5 }}>{ChevronDownIcon}</Box></Button><Collapse in={expenseSettingsOpen}><Stack spacing={0.25} sx={{ pl: 1.5, mt: 0.25 }}><Button onClick={() => onTabChange("expense-account-management")} startIcon={<AccountBalanceWalletIcon />} sx={{ justifyContent: "flex-start", color: activeTab === "expense-account-management" ? "#3b522e" : "#5d7186", textTransform: "none", fontSize: "13px", fontWeight: activeTab === "expense-account-management" ? 700 : 500, bgcolor: activeTab === "expense-account-management" ? "rgba(59, 82, 46, 0.08)" : "transparent", borderRadius: "8px", pl: 2, pr: 1.5, py: 1 }}><Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navExpenseAccountManagement")}</Box></Button><Button onClick={() => onTabChange("expense-approval-route-management")} startIcon={<FactCheckIcon />} sx={{ justifyContent: "flex-start", color: activeTab === "expense-approval-route-management" ? "#3b522e" : "#5d7186", textTransform: "none", fontSize: "13px", fontWeight: activeTab === "expense-approval-route-management" ? 700 : 500, bgcolor: activeTab === "expense-approval-route-management" ? "rgba(59, 82, 46, 0.08)" : "transparent", borderRadius: "8px", pl: 2, pr: 1.5, py: 1 }}><Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navExpenseApprovalRouteManagement")}</Box></Button></Stack></Collapse></>}
+              </Stack>
+            </Box>
+          </Stack>
+        </Collapse>
 
         {/* Root: Milal Community */}
         <Button
@@ -285,8 +332,8 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
               <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 8, width: "1.5px", bgcolor: "#d8dfe7" }} />
               <Stack spacing={0.25}>
                 {navItems.map((item) => (
-                  <Tooltip key={item.key} title={item.label} placement="right">
-                    <Button
+                  <Button
+                    key={item.key}
                       onClick={() => onTabChange(item.key)}
                       startIcon={item.icon}
                       sx={{
@@ -322,8 +369,7 @@ export default function Sidebar({ activeTab, onTabChange, onRefresh, pendingCoun
                       {item.key === "admin" && pendingCount > 0 && (
                         <Badge badgeContent={pendingCount} color="error" sx={{ "& .MuiBadge-badge": { fontSize: "10px", height: 16, minWidth: 16 } }} />
                       )}
-                    </Button>
-                  </Tooltip>
+                  </Button>
                 ))}
               </Stack>
             </Box>
@@ -405,6 +451,8 @@ Sidebar.propTypes = {
   onTabChange: PropTypes.func.isRequired,
   onRefresh: PropTypes.func.isRequired,
   pendingCount: PropTypes.number,
+  expenseApprovalCount: PropTypes.number,
+  canApproveExpenses: PropTypes.bool,
   mobileOpen: PropTypes.bool,
   onClose: PropTypes.func,
 };
