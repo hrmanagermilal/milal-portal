@@ -13,7 +13,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../../api";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 import { getReservationMaxDateInputValue, isPastTime, isTooFarFuture } from "../../utils/datetime";
 import { computeEndTime, minEndTime } from "./NewReservationModal";
 

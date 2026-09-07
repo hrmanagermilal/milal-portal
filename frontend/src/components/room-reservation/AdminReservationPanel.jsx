@@ -18,7 +18,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import ButtonGroup from "@mui/material/ButtonGroup";
 import { formatDateTime, sortByStartTime } from "../../utils/datetime";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 import EventPublisher from "../../event/EventPublisher";
 import { EventDef } from "../../event/EventDef";
 import FloorPlanTooltip from "./FloorPlanTooltip";

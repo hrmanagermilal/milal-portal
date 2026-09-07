@@ -11,7 +11,7 @@ import Typography from "@mui/material/Typography";
 import Paper from "@mui/material/Paper";
 import Divider from "@mui/material/Divider";
 import Alert from "@mui/material/Alert";
-import { useLanguage } from "../i18n/LanguageContext";
+import { useLanguage } from "../lang/LanguageContext";
 import { api } from "../api";
 
 export default function MyAccountModal({ open, onClose, targetMemberId = null, isEditingOther = false }) {

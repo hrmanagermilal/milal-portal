@@ -8,7 +8,7 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import { api } from "../../api";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 
 /**
  * Floor plan layout by floor number

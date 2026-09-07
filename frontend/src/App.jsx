@@ -26,12 +26,13 @@ import ExpensePanel from "./components/expense/ExpensePanel";
 import ExpenseApproval from "./components/expense/ExpenseApproval";
 import ExpenseAccountManagement from "./components/expense/ExpenseAccountManagement";
 import ExpenseApprovalRouteManagement from "./components/expense/ExpenseApprovalRouteManagement";
+import ExpenseAgreementManagement from "./components/expense/ExpenseAgreementManagement";
 import ExpenseAccountDetail from "./components/expense/ExpenseAccountDetail";
 import Dashboard from "./components/Dashboard";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ChatWidget from "./components/ChatWidget";
-import { useLanguage } from "./i18n/LanguageContext";
+import { useLanguage } from "./lang/LanguageContext";
 import EventPublisher from "./event/EventPublisher";
 import {EventDef} from "./event/EventDef";
 import { dateToLocalISOString, localISOStringToUTCISO } from "./utils/datetime";
@@ -91,6 +92,7 @@ export default function App() {
     { key: "expense-approval", label: t("navExpenseApproval") },
     { key: "expense-account-management", label: t("navExpenseAccountManagement") },
     { key: "expense-approval-route-management", label: t("navExpenseApprovalRouteManagement") },
+    { key: "expense-agreement", label: t("navExpenseAgreement") },
     { key: "expense-account-detail", label: t("navExpenseAccountManagement") },
   ];
 
@@ -557,6 +559,9 @@ export default function App() {
           )}
           {tab === "expense-approval-route-management" && (userCustom8 === "manager" || userCustom8 === "admin") && (
             <ExpenseApprovalRouteManagement />
+          )}
+          {tab === "expense-agreement" && (userCustom8 === "manager" || userCustom8 === "admin") && (
+            <ExpenseAgreementManagement />
           )}
         </Box>
       </Box>

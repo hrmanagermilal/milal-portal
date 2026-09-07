@@ -10,7 +10,7 @@ import {
   Select, Stack, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from "@mui/material";
 import { api } from "../../api";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 
 export default function ExpenseApprovalRouteManagement() {
   const { t } = useLanguage();

@@ -7,7 +7,7 @@ import {
   TableRow, TableSortLabel, TextField, Typography,
 } from "@mui/material";
 import { api } from "../../api";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 
 const EMPTY_ACCOUNT = { account_code: "", name: "", year: String(new Date().getFullYear()), budget_amount: "" };
 

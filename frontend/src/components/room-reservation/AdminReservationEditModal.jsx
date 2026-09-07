@@ -9,7 +9,7 @@ import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import Divider from "@mui/material/Divider";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 import { dateToLocalISOString } from "../../utils/datetime";
 
 export default function AdminReservationEditModal({

@@ -5,7 +5,7 @@ import {
   TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Typography,
 } from "@mui/material";
 import { api } from "../../api";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 
 function formatCurrency(amount, korean) {
   return `CAD ${Number(amount || 0).toLocaleString(korean ? "ko-KR" : "en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

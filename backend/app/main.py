@@ -41,6 +41,7 @@ from .models import (
     CellReportMemberEntry,
     Expense,
     ExpenseAccount,
+    ExpenseAgreement,
     ExpenseApprovalRoute,
     ExternalCalendarEvent,
     Member,
@@ -65,6 +66,8 @@ from .schemas import (
     ExpenseAccountUpdate,
     ExpenseApprovalRouteOut,
     ExpenseApprovalRouteUpdate,
+    ExpenseAgreementOut,
+    ExpenseAgreementUpdate,
     ExpenseOut,
     ExpenseUpdate,
     ReceiptExtractionOut,
@@ -87,6 +90,7 @@ from .ai_chat import create_ai_chat_router, get_gemini_client
 from .reservation_eligibility import assess_reservation_eligibility
 from .email_queue import email_queue_worker, queue_email
 from .sync_tasks import maybe_sync_external_calendar_events, sync_all_members_from_ohjic
+from .expense_routes import router as expense_router
 
 app = FastAPI(title="Milal Community API", version="1.0.0")
 
@@ -99,6 +103,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(expense_router)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST_DIR = Path(os.getenv("FRONTEND_DIST_DIR", PROJECT_ROOT / "frontend" / "dist"))
@@ -350,8 +355,107 @@ def get_available_rooms_query(start_time: datetime, end_time: datetime):
     )
 
 
-def serialize_expense(expense: Expense, requester_name: str) -> dict:
+def build_approvals_from_columns(expense: Expense, requester_name: str, requester_member_id: int, db: Session | None = None) -> list:
+    """Build approvals array from normalized database columns."""
+    # Collect all approver member IDs
+    approver_ids = {
+        expense.first_approval_member_id,
+        expense.second_approval_member_id,
+        expense.review_member_id,
+        expense.first_agreement_member_id,
+        expense.second_agreement_member_id,
+    }
+    approver_ids.discard(None)
+    
+    logger.info(f"[APPROVAL DEBUG] expense_id={expense.id}, approver_ids={approver_ids}, db={db is not None}")
+    
+    # Load member names from database if db is provided
+    member_names = {}
+    if db and approver_ids:
+        members = db.scalars(select(Member).where(Member.id.in_(approver_ids))).all()
+        member_names = {member.id: member.name for member in members}
+        logger.info(f"[APPROVAL DEBUG] Loaded members: {member_names}")
+    
+    approvals = [
+        {
+            "role": "Requester",
+            "roleKo": "요청자",
+            "member_id": requester_member_id,
+            "name": requester_name,
+            "date": expense.created_at.isoformat() if expense.created_at else "",
+            "state": "done",
+            "comment": "",
+        }
+    ]
+    
+    # First Approval
+    if expense.first_approval_member_id:
+        approvals.append({
+            "role": "First Approver",
+            "roleKo": "1차 결재자",
+            "member_id": expense.first_approval_member_id,
+            "name": member_names.get(expense.first_approval_member_id, ""),
+            "date": expense.first_approval_date.isoformat() if expense.first_approval_date else "",
+            "state": expense.first_approval_state,
+            "comment": expense.first_approval_comment,
+        })
+    
+    # Second Approval
+    if expense.second_approval_member_id:
+        approvals.append({
+            "role": "Second Approver",
+            "roleKo": "2차 결재자",
+            "member_id": expense.second_approval_member_id,
+            "name": member_names.get(expense.second_approval_member_id, ""),
+            "date": expense.second_approval_date.isoformat() if expense.second_approval_date else "",
+            "state": expense.second_approval_state,
+            "comment": expense.second_approval_comment,
+        })
+    
+    # Review
+    if expense.review_member_id:
+        approvals.append({
+            "role": "Expense Reviewer",
+            "roleKo": "지출 검토",
+            "member_id": expense.review_member_id,
+            "name": member_names.get(expense.review_member_id, ""),
+            "date": expense.review_date.isoformat() if expense.review_date else "",
+            "state": expense.review_state,
+            "comment": expense.review_comment,
+        })
+    
+    # First Agreement
+    if expense.first_agreement_member_id:
+        approvals.append({
+            "role": "First Agreement",
+            "roleKo": "1차 합의",
+            "member_id": expense.first_agreement_member_id,
+            "name": member_names.get(expense.first_agreement_member_id, ""),
+            "date": expense.first_agreement_date.isoformat() if expense.first_agreement_date else "",
+            "state": expense.first_agreement_state,
+            "comment": expense.first_agreement_comment,
+        })
+    
+    # Second Agreement
+    if expense.second_agreement_member_id:
+        approvals.append({
+            "role": "Second Agreement",
+            "roleKo": "2차 합의",
+            "member_id": expense.second_agreement_member_id,
+            "name": member_names.get(expense.second_agreement_member_id, ""),
+            "date": expense.second_agreement_date.isoformat() if expense.second_agreement_date else "",
+            "state": expense.second_agreement_state,
+            "comment": expense.second_agreement_comment,
+        })
+    
+    return approvals
+
+
+def serialize_expense(expense: Expense, requester_name: str, db: Session | None = None) -> dict:
     account = expense.account
+    logger.info(f"[SERIALIZE DEBUG] expense_id={expense.id}, db={db is not None}, requester_name={requester_name}")
+    approvals = build_approvals_from_columns(expense, requester_name, expense.requester_member_id, db)
+    logger.info(f"[SERIALIZE DEBUG] Generated approvals: {[{k: v for k, v in a.items() if k != 'comment'} for a in approvals]}")
     return {
         "id": expense.id,
         "request_date": expense.request_date,
@@ -366,7 +470,7 @@ def serialize_expense(expense: Expense, requester_name: str) -> dict:
         "account_name": account.name if account else "",
         "items": expense.items,
         "attachments": expense.attachments,
-        "approvals": expense.approvals,
+        "approvals": approvals,
         "created_at": expense.created_at.replace(tzinfo=timezone.utc).isoformat(),
         "updated_at": expense.updated_at.replace(tzinfo=timezone.utc).isoformat(),
     }
@@ -449,9 +553,9 @@ def send_expense_notification(
     action_label = {
         "created": "등록",
         "updated": "수정",
-        "first_approved": "1차 승인",
+        "first_approve": "1차 승인",
         "first_rejected": "1차 반려",
-        "second_approved": "2차 승인",
+        "second_approve": "2차 승인",
         "second_rejected": "2차 반려",
     }[action]
     subject = f"[비용처리] 비용 요청 {action_label}: {expense.title}"
@@ -824,7 +928,7 @@ def get_expenses(
     expenses = db.scalars(stmt).all()
     requester_ids = {expense.requester_member_id for expense in expenses}
     requester_names = {member.id: member.name for member in db.scalars(select(Member).where(Member.id.in_(requester_ids))).all()} if requester_ids else {}
-    return [serialize_expense(expense, requester_names.get(expense.requester_member_id, "")) for expense in expenses]
+    return [serialize_expense(expense, requester_names.get(expense.requester_member_id, ""), db) for expense in expenses]
 
 
 @app.get("/api/expenses/approvers")
@@ -891,6 +995,23 @@ def serialize_expense_approval_route(route: ExpenseApprovalRoute, account: Expen
     }
 
 
+def serialize_expense_agreement(agreement: ExpenseAgreement, members: dict[int, Member]) -> dict:
+    reviewer = members.get(agreement.reviewer_member_id)
+    first_approver = members.get(agreement.first_approver_member_id)
+    second_approver = members.get(agreement.second_approver_member_id)
+    return {
+        "id": agreement.id,
+        "reviewer_member_id": agreement.reviewer_member_id,
+        "first_approver_member_id": agreement.first_approver_member_id,
+        "second_approver_member_id": agreement.second_approver_member_id,
+        "reviewer_name": reviewer.name if reviewer else "",
+        "first_approver_name": first_approver.name if first_approver else "",
+        "second_approver_name": second_approver.name if second_approver else "",
+        "created_at": agreement.created_at,
+        "updated_at": agreement.updated_at,
+    }
+
+
 def serialize_expense_account(account: ExpenseAccount, approved_amount: float) -> dict:
     return {
         "id": account.id,
@@ -915,6 +1036,21 @@ def can_approve_expense(expense: Expense, member_id: int) -> bool:
 
 
 def can_view_expense_approval(expense: Expense, member_id: int) -> bool:
+    # Show expense if:
+    # 1. User is the requester
+    # 2. User is one of the approval/review/agreement participants
+    # Check new normalized columns first (after DB migration)
+    if (
+        expense.requester_member_id == member_id
+        or expense.first_approval_member_id == member_id
+        or expense.second_approval_member_id == member_id
+        or expense.review_member_id == member_id
+        or expense.first_agreement_member_id == member_id
+        or expense.second_agreement_member_id == member_id
+    ):
+        return True
+    
+    # Fallback to approvals JSON for backward compatibility (before DB migration)
     return any(approval.get("member_id") == member_id for approval in expense.approvals)
 
 
@@ -928,7 +1064,7 @@ def get_expense_approval_summary(
     if not is_approver:
         return {"is_approver": False, "pending_count": 0}
 
-    candidates = db.scalars(select(Expense).where(Expense.status.in_(("reviewing", "approved")))).all()
+    candidates = db.scalars(select(Expense).where(Expense.status.in_(("first_approve", "second_approve", "reviewing", "first_agreed", "second_agreed")))).all()
     return {
         "is_approver": True,
         "pending_count": sum(can_approve_expense(expense, current_user.id) for expense in candidates),
@@ -947,7 +1083,7 @@ def get_expense_approvals(
         require_expense_approver(current_user)
     candidates = db.scalars(
         select(Expense)
-        .where(Expense.status.in_(("reviewing", "approved", "rejected", "paid")))
+        .where(Expense.status.in_(("first_approve", "second_approve", "reviewing", "first_agreed", "second_agreed", "rejected", "paid")))
         .order_by(Expense.request_date.desc(), Expense.id.desc())
     ).all()
     approval_expenses = candidates if is_admin else [expense for expense in candidates if can_view_expense_approval(expense, current_user.id)]
@@ -957,7 +1093,7 @@ def get_expense_approvals(
     requester_ids = {expense.requester_member_id for expense in approval_expenses}
     requesters = db.scalars(select(Member).where(Member.id.in_(requester_ids))).all() if requester_ids else []
     requester_names = {requester.id: requester.name for requester in requesters}
-    return [serialize_expense(expense, requester_names.get(expense.requester_member_id, "")) for expense in approval_expenses]
+    return [serialize_expense(expense, requester_names.get(expense.requester_member_id, ""), db) for expense in approval_expenses]
 
 
 @app.get("/api/expense-approvals/{expense_id}", response_model=ExpenseOut)
@@ -974,7 +1110,7 @@ def get_expense_approval_detail(
     if not expense or (not is_admin and not can_view_expense_approval(expense, current_user.id)):
         raise HTTPException(status_code=404, detail="expense approval request not found")
     requester = db.get(Member, expense.requester_member_id)
-    return serialize_expense(expense, requester.name if requester else "")
+    return serialize_expense(expense, requester.name if requester else "", db)
 
 
 @app.post("/api/expense-approvals/{expense_id}/decision", response_model=ExpenseOut)
@@ -993,6 +1129,8 @@ def decide_expense_approval(
 
     approvals = [dict(approval) for approval in expense.approvals]
     approval_index = next(index for index, approval in enumerate(approvals) if approval.get("state") == "current")
+    
+    # Handle account and second_approver selection
     if payload.account_id:
         expense.account_id = get_expense_account_or_422(payload.account_id, db).id
     if approval_index == 1 and payload.action == "approve" and payload.second_approver_member_id:
@@ -1001,47 +1139,135 @@ def decide_expense_approval(
             raise HTTPException(status_code=422, detail="Second approver must have position code 566, 567, or 568.")
         approvals[2]["member_id"] = second_approver.id
         approvals[2]["name"] = second_approver.name
+        expense.second_approval_member_id = second_approver.id
+    
+    # Update the current approval record
     approval = approvals[approval_index]
     approval["state"] = "done" if payload.action == "approve" else "rejected"
     approval["date"] = datetime.now(EASTERN_TZ).isoformat()
     approval["comment"] = payload.comment.strip()
+    
+    # Update corresponding columns based on approval_index
+    current_time = datetime.now(EASTERN_TZ)
+    if approval_index == 1:  # First Approver
+        expense.first_approval_state = "done" if payload.action == "approve" else "rejected"
+        expense.first_approval_date = current_time if payload.action == "approve" else None
+        expense.first_approval_comment = payload.comment.strip()
+    elif approval_index == 2:  # Second Approver
+        expense.second_approval_state = "done" if payload.action == "approve" else "rejected"
+        expense.second_approval_date = current_time if payload.action == "approve" else None
+        expense.second_approval_comment = payload.comment.strip()
+    elif approval_index == 3:  # Reviewer
+        expense.review_state = "done" if payload.action == "approve" else "rejected"
+        expense.review_date = current_time if payload.action == "approve" else None
+        expense.review_comment = payload.comment.strip()
+    elif approval_index == 4:  # First Agreement
+        expense.first_agreement_state = "done" if payload.action == "approve" else "rejected"
+        expense.first_agreement_date = current_time if payload.action == "approve" else None
+        expense.first_agreement_comment = payload.comment.strip()
+    elif approval_index == 5:  # Second Agreement
+        expense.second_agreement_state = "done" if payload.action == "approve" else "rejected"
+        expense.second_agreement_date = current_time if payload.action == "approve" else None
+        expense.second_agreement_comment = payload.comment.strip()
+    
+    # Handle status changes and next stage transitions
     if payload.action == "reject":
         expense.status = "rejected"
-    elif approval_index == len(expense.approvals) - 1:
+    elif approval_index == len(approvals) - 1:
+        # Last approval done - mark as paid
         expense.status = "paid"
     else:
-        expense.status = "approved"
+        # Move to next stage
         approvals[approval_index + 1]["state"] = "current"
+        
+        # Update corresponding column for next stage
+        if approval_index + 1 == 2:  # Next stage is Second Approval
+            expense.second_approval_state = "current"
+        elif approval_index + 1 == 3:  # Next stage is Review
+            expense.review_state = "current"
+        elif approval_index + 1 == 4:  # Next stage is First Agreement
+            expense.first_agreement_state = "current"
+        elif approval_index + 1 == 5:  # Next stage is Second Agreement
+            expense.second_agreement_state = "current"
+        
+        # Set appropriate status based on which stage just completed
+        if approval_index == 1:  # First approval just completed
+            expense.status = "second_approve"
+        elif approval_index == 2:  # Second approval just completed
+            expense.status = "reviewing"
+        elif approval_index == 3:  # Reviewer just completed
+            expense.status = "first_agreed"
+        elif approval_index == 4:  # First agreement just completed
+            expense.status = "second_agreed"
+        elif approval_index == 5:  # Second agreement just completed
+            expense.status = "paid"
+        else:
+            expense.status = "second_approve"  # Fallback
+    
     expense.approvals = approvals
     flag_modified(expense, "approvals")
     db.commit()
     db.refresh(expense)
     requester = db.get(Member, expense.requester_member_id)
     decision_comment = payload.comment.strip()
-    if approval_index == 1 and requester:
-        if payload.action == "approve":
+    
+    if payload.action == "approve":
+        # Handle approval notifications for different stages
+        if approval_index == 1 and requester:
+            # First approval done - notify second approver
             second_approver = db.get(Member, approvals[2]["member_id"])
             if second_approver:
-                send_expense_notification(db, expense, requester, [requester, second_approver], "first_approved", decision_comment)
-        else:
-            send_expense_notification(db, expense, requester, [requester], "first_rejected", decision_comment)
-    elif approval_index == len(approvals) - 1 and requester:
-        finance_admins = db.scalars(
-            select(Member).join(User).where(User.is_finance_admin.is_(True))
-        ).all()
-        if payload.action == "approve":
+                send_expense_notification(db, expense, requester, [requester, second_approver], "first_approve", decision_comment)
+        elif approval_index == 2 and requester:
+            # Second approval done - check if there is a reviewer
+            if len(approvals) > 3:
+                reviewer = db.get(Member, approvals[3]["member_id"])
+                if reviewer:
+                    send_expense_notification(db, expense, requester, [requester, reviewer], "second_approve", decision_comment, attachment_recipient_ids={reviewer.id})
+            else:
+                # No reviewer stage, proceed to agreements or end
+                finance_admins = db.scalars(
+                    select(Member).join(User).where(User.is_finance_admin.is_(True))
+                ).all()
+                send_expense_notification(
+                    db,
+                    expense,
+                    requester,
+                    [requester, *finance_admins],
+                    "second_approve",
+                    decision_comment,
+                    attachment_recipient_ids={admin.id for admin in finance_admins},
+                )
+        elif approval_index == 3:
+            # Reviewer done - notify first agreement approver
+            if len(approvals) > 4:
+                first_agreement = db.get(Member, approvals[4]["member_id"])
+                if first_agreement:
+                    send_expense_notification(db, expense, requester, [first_agreement], "approved", decision_comment)
+        elif approval_index == 4:
+            # First agreement done - notify only second agreement approver, NOT requester
+            if len(approvals) > 5:
+                second_agreement = db.get(Member, approvals[5]["member_id"])
+                if second_agreement:
+                    send_expense_notification(db, expense, requester, [second_agreement], "first_agreed", decision_comment)
+        elif approval_index == len(approvals) - 1 and requester:
+            # Last approval/agreement done - notify requester and finance admins only
+            finance_admins = db.scalars(
+                select(Member).join(User).where(User.is_finance_admin.is_(True))
+            ).all()
             send_expense_notification(
                 db,
                 expense,
                 requester,
                 [requester, *finance_admins],
-                "second_approved",
+                "second_agreed",
                 decision_comment,
                 attachment_recipient_ids={admin.id for admin in finance_admins},
             )
-        else:
-            send_expense_notification(db, expense, requester, [requester], "second_rejected", decision_comment)
-    return serialize_expense(expense, requester.name if requester else "")
+    elif payload.action == "reject" and requester:
+        # Handle rejection notifications
+        send_expense_notification(db, expense, requester, [requester], "rejected", decision_comment)
+    return serialize_expense(expense, requester.name if requester else "", db)
 
 
 @app.get("/api/expense-accounts", response_model=list[ExpenseAccountOut])
@@ -1081,6 +1307,39 @@ def save_expense_approval_route(account_id: int, payload: ExpenseApprovalRouteUp
     db.commit()
     db.refresh(route)
     return serialize_expense_approval_route(route, account, approvers)
+
+
+@app.get("/api/expense-agreement", response_model=ExpenseAgreementOut)
+def get_expense_agreement(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
+    require_expense_approver(get_current_user(token, db))
+    agreement = db.scalar(select(ExpenseAgreement))
+    if not agreement:
+        raise HTTPException(status_code=404, detail="expense agreement not found")
+    members = {member.id: member for member in db.scalars(select(Member).where(Member.id.in_((agreement.reviewer_member_id, agreement.first_approver_member_id, agreement.second_approver_member_id)))).all()}
+    return serialize_expense_agreement(agreement, members)
+
+
+@app.put("/api/expense-agreement", response_model=ExpenseAgreementOut)
+def save_expense_agreement(payload: ExpenseAgreementUpdate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
+    require_expense_approver(get_current_user(token, db))
+    all_members = {member.id: member for member in db.scalars(select(Member).where(Member.id.in_((payload.reviewer_member_id, payload.first_approver_member_id, payload.second_approver_member_id)))).all()}
+    reviewer = all_members.get(payload.reviewer_member_id)
+    approvers = [all_members.get(payload.first_approver_member_id), all_members.get(payload.second_approver_member_id)]
+    if not reviewer or reviewer.position_code not in EXPENSE_APPROVER_POSITION_CODES:
+        raise HTTPException(status_code=422, detail="Reviewer must be an eligible expense approver.")
+    if len(approvers) != 2 or any(not m or m.position_code not in EXPENSE_APPROVER_POSITION_CODES for m in approvers):
+        raise HTTPException(status_code=422, detail="First and second approvers must be eligible expense approvers.")
+    agreement = db.scalar(select(ExpenseAgreement))
+    if agreement:
+        agreement.reviewer_member_id = payload.reviewer_member_id
+        agreement.first_approver_member_id = payload.first_approver_member_id
+        agreement.second_approver_member_id = payload.second_approver_member_id
+    else:
+        agreement = ExpenseAgreement(**payload.model_dump())
+        db.add(agreement)
+    db.commit()
+    db.refresh(agreement)
+    return serialize_expense_agreement(agreement, all_members)
 
 
 @app.post("/api/expense-accounts", response_model=ExpenseAccountOut, status_code=201)
@@ -1137,7 +1396,7 @@ def get_expense_account(account_id: int, token: str = Depends(oauth2_scheme), db
     detail = serialize_expense_account(account, sum(expense.total_amount for expense in expenses))
     detail["expenses"] = []
     for expense in expenses:
-        serialized_expense = serialize_expense(expense, requesters.get(expense.requester_member_id, ""))
+        serialized_expense = serialize_expense(expense, requesters.get(expense.requester_member_id, ""), db)
         detail["expenses"].append(serialized_expense)
     return detail
 
@@ -1152,7 +1411,7 @@ def get_expense(
     expense = db.get(Expense, expense_id)
     if not expense or expense.requester_member_id != current_user.id:
         raise HTTPException(status_code=404, detail="expense request not found")
-    return serialize_expense(expense, current_user.name)
+    return serialize_expense(expense, current_user.name, db)
 
 
 @app.post("/api/expenses", response_model=ExpenseOut, status_code=201)
@@ -1167,6 +1426,7 @@ def create_expense(
         raise HTTPException(status_code=404, detail="User account not found")
     requester_user.english_name = payload.english_name.strip()
     account, first_approver, second_approver = get_expense_account_approvers(payload.account_id, db)
+    agreement = db.scalar(select(ExpenseAgreement))
     total_amount = sum(item.amount for item in payload.items) + payload.hst_amount
     first_approval_is_automatic = current_user.id == first_approver.id
     approval_time = datetime.now(EASTERN_TZ).isoformat()
@@ -1177,11 +1437,32 @@ def create_expense(
         "date": "",
         "state": "done",
     }
+    
+    # Load agreement info if available
+    reviewer = None
+    first_agreement_approver = None
+    second_agreement_approver = None
+    if agreement:
+        reviewer = db.get(Member, agreement.reviewer_member_id)
+        first_agreement_approver = db.get(Member, agreement.first_approver_member_id)
+        second_agreement_approver = db.get(Member, agreement.second_approver_member_id)
+    
     approvals = [
         requester_approval,
         {"role": "First Approver", "roleKo": "1차 결재자", "member_id": first_approver.id, "name": first_approver.name, "date": approval_time if first_approval_is_automatic else "", "state": "done" if first_approval_is_automatic else "current"},
         {"role": "Second Approver", "roleKo": "2차 결재자", "member_id": second_approver.id, "name": second_approver.name, "date": "", "state": "current" if first_approval_is_automatic else "waiting"},
     ]
+    
+    # Add reviewer if available
+    if reviewer:
+        approvals.append({"role": "Expense Reviewer", "roleKo": "지출 검토", "member_id": reviewer.id, "name": reviewer.name, "date": "", "state": "waiting"})
+    
+    # Add agreement approvers if available
+    if first_agreement_approver:
+        approvals.append({"role": "First Agreement", "roleKo": "1차 합의", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
+    if second_agreement_approver:
+        approvals.append({"role": "Second Agreement", "roleKo": "2차 합의", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
+    
     expense = Expense(
         requester_member_id=current_user.id,
         account_id=account.id,
@@ -1193,7 +1474,28 @@ def create_expense(
         items=[item.model_dump() for item in payload.items],
         attachments=[],
         approvals=approvals,
-        status="approved" if first_approval_is_automatic else "reviewing",
+        status="approved" if first_approval_is_automatic else "first_approve",
+        # New normalized approval columns
+        first_approval_member_id=first_approver.id,
+        first_approval_state="done" if first_approval_is_automatic else "current",
+        first_approval_date=datetime.now(EASTERN_TZ) if first_approval_is_automatic else None,
+        first_approval_comment="",
+        second_approval_member_id=second_approver.id,
+        second_approval_state="current" if first_approval_is_automatic else "waiting",
+        second_approval_date=None,
+        second_approval_comment="",
+        review_member_id=reviewer.id if reviewer else None,
+        review_state="waiting" if reviewer else "done",
+        review_date=None,
+        review_comment="",
+        first_agreement_member_id=first_agreement_approver.id if first_agreement_approver else None,
+        first_agreement_state="waiting" if first_agreement_approver else "done",
+        first_agreement_date=None,
+        first_agreement_comment="",
+        second_agreement_member_id=second_agreement_approver.id if second_agreement_approver else None,
+        second_agreement_state="waiting" if second_agreement_approver else "done",
+        second_agreement_date=None,
+        second_agreement_comment="",
     )
     db.add(expense)
     db.flush()
@@ -1203,10 +1505,10 @@ def create_expense(
     db.commit()
     db.refresh(expense)
     if first_approval_is_automatic:
-        send_expense_notification(db, expense, current_user, [current_user, second_approver], "first_approved")
+        send_expense_notification(db, expense, current_user, [current_user, second_approver], "first_approve")
     else:
         send_expense_notification(db, expense, current_user, [first_approver], "created")
-    return serialize_expense(expense, current_user.name)
+    return serialize_expense(expense, current_user.name, db)
 
 
 @app.patch("/api/expenses/{expense_id}", response_model=ExpenseOut)
@@ -1224,7 +1526,7 @@ def update_expense(
     expense = db.get(Expense, expense_id)
     if not expense or expense.requester_member_id != current_user.id:
         raise HTTPException(status_code=404, detail="expense request not found")
-    if expense.status != "reviewing":
+    if expense.status != "first_approve":
         raise HTTPException(status_code=409, detail="Expense requests cannot be edited after chairperson approval.")
     account, first_approver, second_approver = get_expense_account_approvers(payload.account_id, db)
 
@@ -1238,15 +1540,64 @@ def update_expense(
     expense.attachments = save_expense_attachments(expense.id, payload.request_date, payload.attachments)
     requester_approval = expense.approvals[0] if expense.approvals else {}
     requester_approval.update({"name": current_user.name, "state": "done"})
+    
+    # Load agreement info if available
+    agreement = db.scalar(select(ExpenseAgreement))
+    reviewer = None
+    first_agreement_approver = None
+    second_agreement_approver = None
+    if agreement:
+        reviewer = db.get(Member, agreement.reviewer_member_id)
+        first_agreement_approver = db.get(Member, agreement.first_approver_member_id)
+        second_agreement_approver = db.get(Member, agreement.second_approver_member_id)
+    
     expense.approvals = [
         requester_approval,
         {"role": "First Approver", "roleKo": "1차 결재자", "member_id": first_approver.id, "name": first_approver.name, "date": "", "state": "current"},
         {"role": "Second Approver", "roleKo": "2차 결재자", "member_id": second_approver.id, "name": second_approver.name, "date": "", "state": "waiting"},
     ]
+    
+    # Add reviewer if available
+    if reviewer:
+        expense.approvals.append({"role": "Expense Reviewer", "roleKo": "지출 검토", "member_id": reviewer.id, "name": reviewer.name, "date": "", "state": "waiting"})
+    
+    # Add agreement approvers if available
+    if first_agreement_approver:
+        expense.approvals.append({"role": "First Agreement", "roleKo": "1차 합의", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
+    if second_agreement_approver:
+        expense.approvals.append({"role": "Second Agreement", "roleKo": "2차 합의", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
+    
+    # Update normalized columns for updated expense
+    expense.first_approval_member_id = first_approver.id
+    expense.first_approval_state = "current"
+    expense.first_approval_date = None
+    expense.first_approval_comment = ""
+    
+    expense.second_approval_member_id = second_approver.id
+    expense.second_approval_state = "waiting"
+    expense.second_approval_date = None
+    expense.second_approval_comment = ""
+    
+    expense.review_member_id = reviewer.id if reviewer else None
+    expense.review_state = "waiting" if reviewer else "done"
+    expense.review_date = None
+    expense.review_comment = ""
+    
+    expense.first_agreement_member_id = first_agreement_approver.id if first_agreement_approver else None
+    expense.first_agreement_state = "waiting" if first_agreement_approver else "done"
+    expense.first_agreement_date = None
+    expense.first_agreement_comment = ""
+    
+    expense.second_agreement_member_id = second_agreement_approver.id if second_agreement_approver else None
+    expense.second_agreement_state = "waiting" if second_agreement_approver else "done"
+    expense.second_agreement_date = None
+    expense.second_agreement_comment = ""
+    
+    flag_modified(expense, "approvals")
     db.commit()
     db.refresh(expense)
     send_expense_notification(db, expense, current_user, [first_approver], "updated")
-    return serialize_expense(expense, current_user.name)
+    return serialize_expense(expense, current_user.name, db)
 
 
 @app.post("/api/expenses/{expense_id}/cancel", response_model=ExpenseOut)
@@ -1259,13 +1610,13 @@ def cancel_expense(
     expense = db.get(Expense, expense_id)
     if not expense or expense.requester_member_id != current_user.id:
         raise HTTPException(status_code=404, detail="expense request not found")
-    if expense.status != "reviewing":
+    if expense.status != "first_approve":
         raise HTTPException(status_code=409, detail="Expense requests cannot be cancelled after approval has started.")
 
     expense.status = "cancelled"
     db.commit()
     db.refresh(expense)
-    return serialize_expense(expense, current_user.name)
+    return serialize_expense(expense, current_user.name, db)
 
 
 @app.get("/api/rooms/rules", response_model=list[ReservationRuleOut])

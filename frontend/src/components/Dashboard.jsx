@@ -12,7 +12,7 @@ import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
 import { api } from "../api";
-import { useLanguage } from "../i18n/LanguageContext";
+import { useLanguage } from "../lang/LanguageContext";
 
 const panelSx = {
   border: "1px solid #dce4ee",
@@ -101,7 +101,7 @@ export default function Dashboard({ userName, userPermission, reservations, canA
       .then(([expenseData, approvalData = []]) => {
         if (!active) return;
         setExpenses(expenseData);
-        setApprovalExpenses(approvalData.filter((expense) => ["reviewing", "approved"].includes(expense.status)));
+        setApprovalExpenses(approvalData.filter((expense) => ["first_approve", "approved"].includes(expense.status)));
       })
       .catch(() => {
         if (!active) return;
@@ -115,7 +115,7 @@ export default function Dashboard({ userName, userPermission, reservations, canA
   const myReservations = reservations.filter((item) => item.requester_name === userName && !item.external).sort((left, right) => new Date(left.start_time) - new Date(right.start_time)).slice(0, 5);
   const pendingReservations = reservations.filter((item) => item.status === "pending");
   const todayReservations = reservations.filter((item) => !item.external && isToday(item.start_time)).sort((left, right) => new Date(left.start_time) - new Date(right.start_time));
-  const openExpenseCount = expenses.filter((expense) => ["reviewing", "approved"].includes(expense.status)).length;
+  const openExpenseCount = expenses.filter((expense) => ["first_approve", "approved"].includes(expense.status)).length;
 
   return (
     <Box>

@@ -25,7 +25,7 @@ import { useTheme } from "@mui/material/styles";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { api } from "../../api";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 
 const DRAFT_KEY = "milal_cell_report_draft";
 const REPORTS_PER_PAGE = 6;

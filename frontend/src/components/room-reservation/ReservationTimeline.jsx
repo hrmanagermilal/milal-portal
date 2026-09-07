@@ -30,7 +30,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import { calendarModes } from "../../constants";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 import { api } from "../../api";
 import DataMart from "../../common/DataMart";
 import {

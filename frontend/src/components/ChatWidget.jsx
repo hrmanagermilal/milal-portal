@@ -13,7 +13,7 @@ import Chip from "@mui/material/Chip";
 import CloseIcon from "@mui/icons-material/Close";
 import SendIcon from "@mui/icons-material/Send";
 import { api } from "../api";
-import { useLanguage } from "../i18n/LanguageContext";
+import { useLanguage } from "../lang/LanguageContext";
 
 const FAVICON = "/favicon.png";
 const CHAT_LAST_ACTIVE_KEY = "milal_chat_last_active_at";

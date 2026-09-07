@@ -8,7 +8,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
-import { useLanguage } from "../i18n/LanguageContext";
+import { useLanguage } from "../lang/LanguageContext";
 import MyAccountModal from "./MyAccountModal";
 
 const HamburgerIcon = (

@@ -15,7 +15,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import ButtonGroup from "@mui/material/ButtonGroup";
-import { useLanguage } from "../i18n/LanguageContext";
+import { useLanguage } from "../lang/LanguageContext";
 import { api } from "../api";
 import UserManagementDetail from "./UserManagementDetail";
 

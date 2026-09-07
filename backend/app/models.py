@@ -220,12 +220,45 @@ class Expense(Base):
     request_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     memo: Mapped[str] = mapped_column(Text, default="")
-    status: Mapped[str] = mapped_column(String(20), default="reviewing", nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="first_approve", nullable=False, index=True)
     hst_amount: Mapped[float] = mapped_column(Float, default=0, nullable=False)
     total_amount: Mapped[float] = mapped_column(Float, nullable=False)
     items: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     attachments: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    
+    # First Approval Stage
+    first_approval_member_id: Mapped[Optional[int]] = mapped_column(ForeignKey("members.id"), nullable=True, index=True)
+    first_approval_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    first_approval_state: Mapped[str] = mapped_column(String(20), default="waiting")
+    first_approval_comment: Mapped[str] = mapped_column(Text, default="")
+    
+    # Second Approval Stage
+    second_approval_member_id: Mapped[Optional[int]] = mapped_column(ForeignKey("members.id"), nullable=True, index=True)
+    second_approval_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    second_approval_state: Mapped[str] = mapped_column(String(20), default="waiting")
+    second_approval_comment: Mapped[str] = mapped_column(Text, default="")
+    
+    # Review Stage
+    review_member_id: Mapped[Optional[int]] = mapped_column(ForeignKey("members.id"), nullable=True, index=True)
+    review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    review_state: Mapped[str] = mapped_column(String(20), default="waiting")
+    review_comment: Mapped[str] = mapped_column(Text, default="")
+    
+    # First Agreement Stage
+    first_agreement_member_id: Mapped[Optional[int]] = mapped_column(ForeignKey("members.id"), nullable=True, index=True)
+    first_agreement_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    first_agreement_state: Mapped[str] = mapped_column(String(20), default="waiting")
+    first_agreement_comment: Mapped[str] = mapped_column(Text, default="")
+    
+    # Second Agreement Stage
+    second_agreement_member_id: Mapped[Optional[int]] = mapped_column(ForeignKey("members.id"), nullable=True, index=True)
+    second_agreement_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    second_agreement_state: Mapped[str] = mapped_column(String(20), default="waiting")
+    second_agreement_comment: Mapped[str] = mapped_column(Text, default="")
+    
+    # Legacy approvals column (kept for backward compatibility during transition)
     approvals: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -255,6 +288,17 @@ class ExpenseApprovalRoute(Base):
     account_id: Mapped[int] = mapped_column(ForeignKey("expense_accounts.id"), nullable=False, unique=True, index=True)
     chairperson_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
     finance_elder_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ExpenseAgreement(Base):
+    __tablename__ = "expense_agreements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    reviewer_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    first_approver_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    second_approver_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

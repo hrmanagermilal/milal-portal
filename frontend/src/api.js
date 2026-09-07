@@ -445,6 +445,18 @@ export const api = {
       body: payload,
     }),
 
+  getExpenseAgreement: () =>
+    request("/api/expense-agreement", {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+
+  saveExpenseAgreement: (payload) =>
+    request("/api/expense-agreement", {
+      method: "PUT",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
   getMember: (memberId) =>
     request(`/api/auth/member/${memberId}`, {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },

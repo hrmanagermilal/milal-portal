@@ -27,7 +27,7 @@ import {
 } from "../../utils/datetime";
 import DataMart from "../../common/DataMart";
 import NewReservationModal from "./NewReservationModal";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 import { findFirstAllowedSlotForDate, groupRulesByRoom } from "../../utils/reservationRules";
 
 function sortByStartTime(items) {

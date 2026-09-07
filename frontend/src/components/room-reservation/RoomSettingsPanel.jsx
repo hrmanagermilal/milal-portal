@@ -21,7 +21,7 @@ import Typography from "@mui/material/Typography";
 import MapIcon from "@mui/icons-material/Map";
 import RuleIcon from "@mui/icons-material/Rule";
 import { api } from "../../api";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 import RoomMapEditor from "./RoomMapEditor";
 import ReservationRuleModal from "./ReservationRuleModal";
 

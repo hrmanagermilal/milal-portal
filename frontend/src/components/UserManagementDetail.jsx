@@ -10,7 +10,7 @@ import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import Divider from "@mui/material/Divider";
-import { useLanguage } from "../i18n/LanguageContext";
+import { useLanguage } from "../lang/LanguageContext";
 import { api } from "../api";
 
 export default function UserManagementDetail({ open, onClose, user, onUserUpdated }) {

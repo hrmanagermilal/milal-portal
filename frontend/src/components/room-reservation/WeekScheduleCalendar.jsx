@@ -10,7 +10,7 @@ import { addDays, dateToLocalISOString, formatDateTime, isPastDate, isTooFarFutu
 import DataMart from "../../common/DataMart";
 import NewReservationModal from "./NewReservationModal";
 import FloorPlanTooltip from "./FloorPlanTooltip";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 import ReservedItem from "./ReservedItem";
 import { evaluateRuleForSlot, groupRulesByRoom } from "../../utils/reservationRules";
 const HOUR_START = 7;

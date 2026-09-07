@@ -14,7 +14,7 @@ import {
   isPastTime,
   isTooFarFuture,
 } from "../../utils/datetime";
-import { useLanguage } from "../../i18n/LanguageContext";
+import { useLanguage } from "../../lang/LanguageContext";
 import DataMart from "../../common/DataMart";
 import NewReservationModal from "./NewReservationModal";
 import ReservedItem from "./ReservedItem";

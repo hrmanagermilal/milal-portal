@@ -251,6 +251,21 @@ class ExpenseApprovalRouteOut(ExpenseApprovalRouteUpdate):
     updated_at: datetime
 
 
+class ExpenseAgreementUpdate(BaseModel):
+    reviewer_member_id: int = Field(gt=0)
+    first_approver_member_id: int = Field(gt=0)
+    second_approver_member_id: int = Field(gt=0)
+
+
+class ExpenseAgreementOut(ExpenseAgreementUpdate):
+    id: int
+    reviewer_name: str
+    first_approver_name: str
+    second_approver_name: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class ExpenseAccountOut(BaseModel):
     id: int
     account_code: str = Field(default="", max_length=100)
