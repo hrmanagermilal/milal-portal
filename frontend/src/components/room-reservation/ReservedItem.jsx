@@ -18,6 +18,7 @@ import FloorPlanTooltip from "./FloorPlanTooltip";
 import { api } from "../../api";
 import EventPublisher from "../../event/EventPublisher";
 import { EventDef } from "../../event/EventDef";
+import { formatReservationLabel } from "../../utils/reservationDisplay";
 
 const STATUS_COLORS = {
   pending:  { bg: "rgba(246,197,77,0.18)",  border: "#f6c54d", text: "#b07d00" },
@@ -27,7 +28,7 @@ const STATUS_COLORS = {
   external: { bg: "rgba(95,99,104,0.12)",   border: "#5f6368", text: "#5f6368" },
 };
 
-export default function ReservedItem({ item, startHour, endHour, hourRange, placement, compact = false, currentUser = null, onUpdate = null, onDelete = null }) {
+export default function ReservedItem({ item, startHour, endHour, hourRange, visibleStart = null, visibleEnd = null, placement, compact = false, currentUser = null, onUpdate = null, onDelete = null }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
@@ -38,8 +39,9 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const isOwner = currentUser && item.requester_name === currentUser.name;
-  const canEdit = isOwner && (item.status === "pending" || item.status === "changed");
-  const canDelete = isOwner;
+  const isAdmin = currentUser?.permission === "admin" || currentUser?.is_admin === true;
+  const canEdit = isAdmin || (isOwner && (item.status === "pending" || item.status === "changed"));
+  const canDelete = isAdmin || isOwner;
 
   const openEditDialog = () => {
     setEditError("");
@@ -106,6 +108,17 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
     // Use provided placement (for week view)
     leftPercent = placement.left;
     widthPercent = placement.width;
+  } else if (visibleStart && visibleEnd) {
+    const windowStartMs = new Date(visibleStart).getTime();
+    const windowEndMs = new Date(visibleEnd).getTime();
+    const itemStartMs = new Date(item.start_time).getTime();
+    const itemEndMs = new Date(item.end_time).getTime();
+    const totalMs = windowEndMs - windowStartMs;
+    const clampedStartMs = Math.max(itemStartMs, windowStartMs);
+    const clampedEndMs = Math.min(itemEndMs, windowEndMs);
+
+    leftPercent = ((clampedStartMs - windowStartMs) / totalMs) * 100;
+    widthPercent = Math.max(((clampedEndMs - clampedStartMs) / totalMs) * 100, 1.5);
   } else {
     // Calculate from hour range with minute precision (for day view)
     const gridStartMins = startHour * 60;
@@ -126,6 +139,7 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
   }
 
   const statusColor = STATUS_COLORS[item.status] || { bg: "#eee", border: "#999", text: "#333" };
+  const reservationLabel = formatReservationLabel(item);
 
   return (
     <>
@@ -156,7 +170,7 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
           zIndex: 10,
           ...(compact && { top: "5px", bottom: "5px" }),
         }}
-        title={`${item.requester_name} | ${toHourText(new Date(item.start_time))} - ${toHourText(new Date(item.end_time))}`}
+        title={`${reservationLabel} | ${toHourText(new Date(item.start_time))} - ${toHourText(new Date(item.end_time))}`}
       >
         <Typography
           sx={{
@@ -170,7 +184,7 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
             textOverflow: compact ? "ellipsis" : "clip",
           }}
         >
-          {item.requester_name}
+          {reservationLabel}
         </Typography>
         {!compact && (
           <Typography
@@ -462,7 +476,7 @@ export default function ReservedItem({ item, startHour, endHour, hourRange, plac
         </DialogContent>
         
         {/* Action Buttons */}
-        {isOwner && (
+        {(canEdit || canDelete) && (
           <Box sx={{ px: 3, py: 2, borderTop: "1px solid #eef2f7", bgcolor: "#fafbfc" }}>
             <Stack direction="row" spacing={1}>
               {canEdit && (

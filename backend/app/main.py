@@ -428,7 +428,7 @@ def build_approvals_from_columns(expense: Expense, requester_name: str, requeste
     if expense.first_agreement_member_id:
         approvals.append({
             "role": "First Agreement",
-            "roleKo": "1차 합의",
+            "roleKo": "1차 승인",
             "member_id": expense.first_agreement_member_id,
             "name": member_names.get(expense.first_agreement_member_id, ""),
             "date": expense.first_agreement_date.isoformat() if expense.first_agreement_date else "",
@@ -440,7 +440,7 @@ def build_approvals_from_columns(expense: Expense, requester_name: str, requeste
     if expense.second_agreement_member_id:
         approvals.append({
             "role": "Second Agreement",
-            "roleKo": "2차 합의",
+            "roleKo": "2차 승인",
             "member_id": expense.second_agreement_member_id,
             "name": member_names.get(expense.second_agreement_member_id, ""),
             "date": expense.second_agreement_date.isoformat() if expense.second_agreement_date else "",
@@ -604,6 +604,8 @@ def send_expense_notification(
                     <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">요청일</th><td style=\"padding:10px;\">{expense.request_date.isoformat()}</td></tr>
                     <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">제목</th><td style=\"padding:10px;\">{html.escape(expense.title)}</td></tr>
                     <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">결재 상태</th><td style=\"padding:10px;\">{html.escape(action_label)}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">수표번호</th><td style=\"padding:10px;\">{html.escape(expense.cheque_number or '-')}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">결재번호</th><td style=\"padding:10px;\">{html.escape(expense.approval_number or '-')}</td></tr>
                 </table>
                 {approval_history}
                 <h2 style=\"font-size:16px;margin:26px 0 10px;\">비용 항목</h2>
@@ -710,6 +712,10 @@ async def startup() -> None:
             "ALTER TABLE expenses ADD COLUMN hst_amount FLOAT NOT NULL DEFAULT 0",
             "ALTER TABLE expenses ADD COLUMN account_id INTEGER NULL",
             "ALTER TABLE expense_accounts ADD COLUMN account_code VARCHAR(100) NOT NULL DEFAULT ''",
+            "ALTER TABLE expenses ADD COLUMN cheque_number VARCHAR(100) NOT NULL DEFAULT ''",
+            "ALTER TABLE expenses ADD COLUMN approval_number VARCHAR(100) NOT NULL DEFAULT ''",
+            "CREATE INDEX ix_expenses_cheque_number ON expenses (cheque_number)",
+            "CREATE INDEX ix_expenses_approval_number ON expenses (approval_number)",
         ):
             try:
                 conn.execute(text(sql))
@@ -1459,9 +1465,9 @@ def create_expense(
     
     # Add agreement approvers if available
     if first_agreement_approver:
-        approvals.append({"role": "First Agreement", "roleKo": "1차 합의", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
+        approvals.append({"role": "First Agreement", "roleKo": "1차 승인", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
     if second_agreement_approver:
-        approvals.append({"role": "Second Agreement", "roleKo": "2차 합의", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
+        approvals.append({"role": "Second Agreement", "roleKo": "2차 승인", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
     
     expense = Expense(
         requester_member_id=current_user.id,
@@ -1563,9 +1569,9 @@ def update_expense(
     
     # Add agreement approvers if available
     if first_agreement_approver:
-        expense.approvals.append({"role": "First Agreement", "roleKo": "1차 합의", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
+        expense.approvals.append({"role": "First Agreement", "roleKo": "1차 승인", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
     if second_agreement_approver:
-        expense.approvals.append({"role": "Second Agreement", "roleKo": "2차 합의", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
+        expense.approvals.append({"role": "Second Agreement", "roleKo": "2차 승인", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
     
     # Update normalized columns for updated expense
     expense.first_approval_member_id = first_approver.id
@@ -1947,6 +1953,8 @@ def can_reserve_room(
     end_time: datetime,
     membership_category: str,
     db: Session,
+    months_ahead_limit: int | None = 1,
+    enforce_room_rules: bool = True,
 ) -> tuple[bool, str]:
     """
     Check if user can reserve the room based on rules.
@@ -1965,6 +1973,8 @@ def can_reserve_room(
         start_time=start_time,
         end_time=end_time,
         membership_category=membership_category,
+        months_ahead_limit=months_ahead_limit,
+        enforce_room_rules=enforce_room_rules,
     )
 
 
@@ -1985,6 +1995,9 @@ def create_reservation(
         parts = authorization.split()
         if len(parts) == 2 and parts[0].lower() == "bearer":
             token = parts[1]
+
+    current_user = get_current_user(token, db) if token else None
+    is_admin = bool(current_user and current_user.permission == "admin")
     
     validate_reservation_times(payload.start_time, payload.end_time)
 
@@ -1992,12 +2005,8 @@ def create_reservation(
     if not room or not room.is_active:
         raise HTTPException(status_code=404, detail="room not found")
     
-    # Check if requester is admin
-    is_admin = payload.permission == "admin"
-
     # For all users (admin and non-admin), check reservation rules
     try:
-        current_user = get_current_user(token, db) if token else None
         membership_category = "adult"  # default
 
         print(f"[create_reservation] is_admin={is_admin}, token: {token}, current_user: {current_user}")
@@ -2022,6 +2031,8 @@ def create_reservation(
             payload.end_time,
             membership_category,
             db,
+            months_ahead_limit=None if is_admin else 1,
+            enforce_room_rules=not is_admin,
         )
         print(f"[create_reservation] can_reserve: {can_reserve}, error_msg: {error_msg}")
         if not can_reserve:
@@ -2067,6 +2078,8 @@ def create_reservation(
             current_end,
             membership_category,
             db,
+            months_ahead_limit=None if is_admin else 1,
+            enforce_room_rules=not is_admin,
         )
         print(f"[create_reservation] repeat #{i+1} can_reserve: {can_reserve}, error_msg: {error_msg}")
         if not can_reserve:
@@ -2304,6 +2317,9 @@ def update_reservation_by_admin(
     db: Session = Depends(get_db),
 ) -> ReservationOut:
     current_member = get_current_user(token, db)  # Verify JWT token
+    if current_member.permission != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     membership_category = "adult"
     actor_user = db.scalar(select(User).where(User.member_id == current_member.id))
     if actor_user and actor_user.membership_category:
@@ -2338,6 +2354,8 @@ def update_reservation_by_admin(
                 item.end_time,
                 membership_category,
                 db,
+                months_ahead_limit=None,
+                enforce_room_rules=False,
             )
             if not eligible:
                 raise HTTPException(status_code=403, detail=reason)
@@ -2371,6 +2389,8 @@ def update_reservation_by_admin(
             item.end_time,
             membership_category,
             db,
+            months_ahead_limit=None,
+            enforce_room_rules=False,
         )
         if not eligible:
             raise HTTPException(status_code=403, detail=reason)
@@ -2474,8 +2494,9 @@ def update_reservation_by_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> ReservationOut:
-    """User self-service update for their own reservation (pending/changed status only)"""
+    """Update a reservation as its owner, or as an administrator."""
     current_user = get_current_user(token, db)
+    is_admin = current_user.permission == "admin"
 
     item = db.scalar(
         select(Reservation)
@@ -2491,11 +2512,11 @@ def update_reservation_by_user(
         is_owner = True
     if current_user.phone and item.phone == current_user.phone:
         is_owner = True
-    if not is_owner:
+    if not is_owner and not is_admin:
         raise HTTPException(status_code=403, detail="You can only update your own reservations")
 
     # Can only update pending or changed status
-    if item.status not in [ReservationStatus.pending, ReservationStatus.changed]:
+    if not is_admin and item.status not in [ReservationStatus.pending, ReservationStatus.changed]:
         raise HTTPException(
             status_code=403,
             detail=f"Cannot update reservation with status '{item.status.value}'. Only pending or changed reservations can be updated."
@@ -2591,8 +2612,9 @@ def delete_reservation_by_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> dict:
-    """User self-service delete for their own reservation"""
+    """Delete a reservation as its owner, or as an administrator."""
     current_user = get_current_user(token, db)
+    is_admin = current_user.permission == "admin"
 
     item = db.scalar(
         select(Reservation)
@@ -2608,7 +2630,7 @@ def delete_reservation_by_user(
         is_owner = True
     if current_user.phone and item.phone == current_user.phone:
         is_owner = True
-    if not is_owner:
+    if not is_owner and not is_admin:
         raise HTTPException(status_code=403, detail="You can only delete your own reservations")
 
     # Delete is allowed for all statuses

@@ -223,6 +223,8 @@ class Expense(Base):
     status: Mapped[str] = mapped_column(String(20), default="first_approve", nullable=False, index=True)
     hst_amount: Mapped[float] = mapped_column(Float, default=0, nullable=False)
     total_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    cheque_number: Mapped[str] = mapped_column(String(100), default="", nullable=False, index=True)
+    approval_number: Mapped[str] = mapped_column(String(100), default="", nullable=False, index=True)
     items: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     attachments: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     

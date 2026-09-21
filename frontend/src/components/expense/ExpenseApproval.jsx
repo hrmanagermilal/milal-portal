@@ -21,6 +21,9 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
   const [accountId, setAccountId] = useState("");
   const [approvers, setApprovers] = useState([]);
   const [secondApproverId, setSecondApproverId] = useState("");
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [approvalNumber, setApprovalNumber] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [previewFile, setPreviewFile] = useState(null);
   const [filterCounts, setFilterCounts] = useState({});
 
@@ -31,6 +34,7 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
   const currentMemberId = DataMart.getCurrentUser()?.member_id;
   const isMyTurn = Boolean(currentApprovalEntry && currentMemberId && currentApprovalEntry.member_id === currentMemberId);
   const isFirstApprovalStep = currentApprovalIndex === 1;
+  const isFirstConcurrenceStep = currentApprovalIndex === 4;
   const statusLabel = (status) => ({
     first_approve: t("expenseFirstApproval"),
     second_approve: t("expenseSecondApproval"),
@@ -105,6 +109,8 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
     const request = requests.find((item) => item.id === selectedId);
     setAccountId(request?.account_id ? String(request.account_id) : "");
     setSecondApproverId(request?.approvals?.[2]?.member_id ? String(request.approvals[2].member_id) : "");
+    setChequeNumber(request?.cheque_number || "");
+    setApprovalNumber(request?.approval_number || "");
   }, [selectedId, requests]);
 
   async function decide(action) {
@@ -115,7 +121,15 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
     setProcessing(true);
     setError("");
     try {
-      await api.decideExpenseApproval(selected.id, action, comment.trim(), Number(accountId) || null, isFirstApprovalStep ? Number(secondApproverId) || null : null);
+      await api.decideExpenseApproval(
+        selected.id,
+        action,
+        comment.trim(),
+        Number(accountId) || null,
+        isFirstApprovalStep ? Number(secondApproverId) || null : null,
+        isFirstConcurrenceStep ? chequeNumber.trim() : null,
+        isFirstConcurrenceStep ? approvalNumber.trim() : null,
+      );
       await loadRequests();
       await loadFilterCounts();
       onApprovalChanged?.();
@@ -141,6 +155,8 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
         statusLabel={statusLabel}
         statusChipSx={statusChipSx}
         filterCounts={filterCounts}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
       />
       <ExpenseApprovalDetail
         selected={selected}
@@ -154,6 +170,11 @@ export default function ExpenseApproval({ initialExpenseId = null, onApprovalCha
         setAccountId={setAccountId}
         secondApproverId={secondApproverId}
         setSecondApproverId={setSecondApproverId}
+        isFirstConcurrenceStep={isFirstConcurrenceStep}
+        chequeNumber={chequeNumber}
+        setChequeNumber={setChequeNumber}
+        approvalNumber={approvalNumber}
+        setApprovalNumber={setApprovalNumber}
         comment={comment}
         setComment={setComment}
         processing={processing}

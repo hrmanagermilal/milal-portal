@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import DescriptionIcon from "@mui/icons-material/Description";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import ZoomInIcon from "@mui/icons-material/ZoomIn";
+import ZoomOutIcon from "@mui/icons-material/ZoomOut";
 import {
   Box,
   Button,
@@ -56,6 +59,11 @@ export default function ExpenseApprovalDetail({
   setAccountId,
   secondApproverId,
   setSecondApproverId,
+  isFirstConcurrenceStep,
+  chequeNumber,
+  setChequeNumber,
+  approvalNumber,
+  setApprovalNumber,
   comment,
   setComment,
   processing,
@@ -66,6 +74,49 @@ export default function ExpenseApprovalDetail({
   const { lang, t } = useLanguage();
   const korean = lang === "ko";
   const [previewFile, setPreviewFile] = useState(null);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [isDraggingPreview, setIsDraggingPreview] = useState(false);
+  const previewViewportRef = useRef(null);
+  const dragStartRef = useRef(null);
+
+  function openPreview(file) {
+    setPreviewScale(1);
+    setPreviewFile(file);
+  }
+
+  function changePreviewScale(nextScale) {
+    setPreviewScale(Math.min(4, Math.max(1, nextScale)));
+  }
+
+  function handlePreviewPointerDown(event) {
+    if (previewFile?.type === "pdf" || event.button !== 0) return;
+    const viewport = previewViewportRef.current;
+    if (!viewport) return;
+    dragStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+    };
+    viewport.setPointerCapture(event.pointerId);
+    setIsDraggingPreview(true);
+  }
+
+  function handlePreviewPointerMove(event) {
+    const viewport = previewViewportRef.current;
+    const dragStart = dragStartRef.current;
+    if (!viewport || !dragStart) return;
+    viewport.scrollLeft = dragStart.scrollLeft - (event.clientX - dragStart.x);
+    viewport.scrollTop = dragStart.scrollTop - (event.clientY - dragStart.y);
+  }
+
+  function handlePreviewPointerUp(event) {
+    dragStartRef.current = null;
+    if (previewViewportRef.current?.hasPointerCapture(event.pointerId)) {
+      previewViewportRef.current.releasePointerCapture(event.pointerId);
+    }
+    setIsDraggingPreview(false);
+  }
 
   const formatCurrency = (amount) => `CAD ${Number(amount || 0).toLocaleString(korean ? "ko-KR" : "en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -88,6 +139,13 @@ export default function ExpenseApprovalDetail({
             </Stack>
 
             <Divider />
+
+            {(selected.cheque_number || selected.approval_number) && (
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <TextField label={t("expenseChequeNumber")} value={selected.cheque_number || "-"} size="small" fullWidth InputProps={{ readOnly: true }} />
+                <TextField label={t("expenseApprovalNumber")} value={selected.approval_number || "-"} size="small" fullWidth InputProps={{ readOnly: true }} />
+              </Stack>
+            )}
 
             {/* Expense Items */}
             <Box sx={{ minWidth: 0 }}>
@@ -151,7 +209,7 @@ export default function ExpenseApprovalDetail({
                 {selected.attachments.map((file, index) => (
                   <Box
                     key={`${file.name}-${index}`}
-                    onClick={() => file.url && setPreviewFile(file)}
+                    onClick={() => file.url && openPreview(file)}
                     sx={{
                       border: "1px solid #d8dfe7",
                       borderRadius: "6px",
@@ -248,6 +306,30 @@ export default function ExpenseApprovalDetail({
                     </FormControl>
                   )}
                 </Stack>
+                {isFirstConcurrenceStep && (
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <TextField
+                      label={t("expenseChequeNumber")}
+                      value={chequeNumber}
+                      onChange={(event) => setChequeNumber(event.target.value)}
+                      required
+                      fullWidth
+                      size="small"
+                      disabled={!isMyTurn}
+                      inputProps={{ maxLength: 100 }}
+                    />
+                    <TextField
+                      label={t("expenseApprovalNumber")}
+                      value={approvalNumber}
+                      onChange={(event) => setApprovalNumber(event.target.value)}
+                      required
+                      fullWidth
+                      size="small"
+                      disabled={!isMyTurn}
+                      inputProps={{ maxLength: 100 }}
+                    />
+                  </Stack>
+                )}
                 <TextField
                   label={t("expenseComment")}
                   value={comment}
@@ -273,7 +355,7 @@ export default function ExpenseApprovalDetail({
                   <Button
                     variant="contained"
                     startIcon={<CheckIcon />}
-                    disabled={!isMyTurn || processing || !comment.trim() || !accountId || (isFirstApprovalStep && !secondApproverId)}
+                    disabled={!isMyTurn || processing || !comment.trim() || !accountId || (isFirstApprovalStep && !secondApproverId) || (isFirstConcurrenceStep && (!chequeNumber.trim() || !approvalNumber.trim()))}
                     onClick={onApprove}
                     sx={{ textTransform: "none", fontWeight: 700, bgcolor: "#3b522e", "&:hover": { bgcolor: "#2f4325" } }}
                   >
@@ -293,23 +375,53 @@ export default function ExpenseApprovalDetail({
       {/* Image/PDF Preview Dialog */}
       <Dialog open={Boolean(previewFile)} onClose={() => setPreviewFile(null)} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          {previewFile?.name}
+          <Typography sx={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>{previewFile?.name}</Typography>
+          {previewFile?.type !== "pdf" && <Stack direction="row" spacing={0.25} sx={{ ml: "auto" }}>
+            <Button aria-label="축소" title="축소" onClick={() => changePreviewScale(previewScale - 0.5)} disabled={previewScale <= 1} sx={{ minWidth: 36, px: 0 }}><ZoomOutIcon /></Button>
+            <Typography sx={{ minWidth: 48, alignSelf: "center", textAlign: "center", fontSize: "12px", fontWeight: 700 }}>{Math.round(previewScale * 100)}%</Typography>
+            <Button aria-label="확대" title="확대" onClick={() => changePreviewScale(previewScale + 0.5)} disabled={previewScale >= 4} sx={{ minWidth: 36, px: 0 }}><ZoomInIcon /></Button>
+            <Button aria-label="원본 크기로 복원" title="원본 크기로 복원" onClick={() => changePreviewScale(1)} disabled={previewScale === 1} sx={{ minWidth: 36, px: 0 }}><RestartAltIcon /></Button>
+          </Stack>}
           <Button
             component="a"
             href={previewFile?.url}
             target="_blank"
             rel="noreferrer"
             startIcon={<OpenInNewIcon />}
-            sx={{ ml: "auto", textTransform: "none" }}
+            sx={{ ml: previewFile?.type === "pdf" ? "auto" : 1, textTransform: "none", whiteSpace: "nowrap" }}
           >
             {t("expenseOpenInNewWindow")}
           </Button>
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, bgcolor: "#f6f8fa" }}>
+        <DialogContent
+          ref={previewViewportRef}
+          dividers
+          onPointerDown={handlePreviewPointerDown}
+          onPointerMove={handlePreviewPointerMove}
+          onPointerUp={handlePreviewPointerUp}
+          onPointerCancel={handlePreviewPointerUp}
+          sx={{
+            p: 0,
+            height: "75vh",
+            overflow: "auto",
+            bgcolor: "#f6f8fa",
+            cursor: previewFile?.type === "pdf" ? "default" : isDraggingPreview ? "grabbing" : "grab",
+            userSelect: "none",
+          }}
+        >
           {previewFile?.type === "pdf" ? (
             <Box component="iframe" src={previewFile.url} title={previewFile.name} sx={{ display: "block", border: 0, width: "100%", height: "75vh" }} />
           ) : (
-            <Box component="img" src={previewFile?.url} alt={previewFile?.name} sx={{ display: "block", width: "100%", height: "75vh", objectFit: "contain" }} />
+            <Box
+              sx={{
+                width: `${previewScale * 100}%`,
+                height: `${previewScale * 75}vh`,
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <Box component="img" draggable={false} src={previewFile?.url} alt={previewFile?.name} sx={{ display: "block", width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
+            </Box>
           )}
         </DialogContent>
       </Dialog>

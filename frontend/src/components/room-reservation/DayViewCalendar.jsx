@@ -7,9 +7,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import {
-  addDays,
   toDateInputValue,
-  toHourText,
   dateToLocalISOString,
   isPastTime,
   isTooFarFuture,
@@ -31,23 +29,13 @@ function buildWindowForDay(date) {
   return { start, end };
 }
 
-function sortByStartTime(items) {
-  return items.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-}
-
-function getEventsForRoomDay(reservations, roomId, day) {
-  // Filter by room and entire day (0:00~23:59) - avoids timezone issues
-  const d0 = new Date(day);
-  d0.setHours(0, 0, 0, 0);
-  const d1 = new Date(day);
-  d1.setHours(23, 59, 59, 999);
-  
+function getEventsForRoomWindow(reservations, roomId, windowStart, windowEnd) {
   return reservations.filter((item) => {
     if (item.status === "rejected") return false; // Exclude rejected
     if (item.room_id !== roomId) return false;
     const s = new Date(item.start_time);
     const e = new Date(item.end_time);
-    return !(e <= d0 || s >= d1);
+    return e > windowStart && s < windowEnd;
   });
 }
 
@@ -63,6 +51,7 @@ export default function DayViewCalendar({
   onSubmitReservation,
 }) {
   const { t } = useLanguage();
+  const isAdmin = currentUser?.permission === "admin" || currentUser?.is_admin === true;
   const { start: dayStart, end: dayEnd } = buildWindowForDay(date);
   const rulesByRoom = groupRulesByRoom(reservationRules);
 
@@ -201,7 +190,12 @@ export default function DayViewCalendar({
 
         {/* Room Rows */}
         {rooms.map((room) => {
-          const roomDayItems = getEventsForRoomDay(reservations || [], room.id, date);
+          const roomDayItems = getEventsForRoomWindow(
+            reservations || [],
+            room.id,
+            dayStart,
+            dayEnd
+          );
           const isAvailable = roomDayItems.length === 0;
 
           return (
@@ -247,7 +241,7 @@ export default function DayViewCalendar({
                     endDate: cellEnd,
                     currentUser,
                   });
-                  const isClickable = !isPastTime(cellStartISO) && !isTooFarFuture(cellStartISO) && ruleResult.allowed;
+                  const isClickable = !isPastTime(cellStartISO) && (isAdmin || !isTooFarFuture(cellStartISO)) && ruleResult.allowed;
 
                   return (
                     <Box
@@ -276,6 +270,8 @@ export default function DayViewCalendar({
                     startHour={HOUR_START}
                     endHour={HOUR_END}
                     hourRange={HOUR_END - HOUR_START}
+                    visibleStart={dayStart}
+                    visibleEnd={dayEnd}
                     currentUser={currentUser}
                   />
                 ))}

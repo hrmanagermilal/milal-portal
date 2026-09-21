@@ -89,6 +89,7 @@ export default function NewReservationModal({
   isCardMode = false,
 }) {
   const { t } = useLanguage();
+  const isAdmin = currentUser?.permission === "admin" || currentUser?.is_admin === true;
   const hasSelectedTimeRange =
     typeof form.start_time === "string" &&
     typeof form.end_time === "string" &&
@@ -273,7 +274,7 @@ export default function NewReservationModal({
     form.purpose.trim() &&
     Number(form.attendees) >= 1 &&
     !isPastTime(form.start_time) &&
-    !isTooFarFuture(form.start_time);
+    (isAdmin || !isTooFarFuture(form.start_time));
 
   const roomIdNumber = Number(form.room_id);
   const hasRuleCheckInputs = Boolean(roomIdNumber && form.start_time && form.end_time);
@@ -310,10 +311,10 @@ export default function NewReservationModal({
         InputLabelProps={{ shrink: true }}
         value={startTimeEST}
         onChange={handleStartTimeChange}
-        inputProps={{ max: reservationMaxDateTime }}
+        inputProps={isAdmin ? undefined : { max: reservationMaxDateTime }}
       />
 
-      {isTooFarFuture(form.start_time) && (
+      {!isAdmin && isTooFarFuture(form.start_time) && (
         <Alert severity="warning">
           현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다.
         </Alert>

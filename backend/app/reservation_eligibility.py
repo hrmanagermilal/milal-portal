@@ -56,7 +56,8 @@ def assess_reservation_eligibility(
     start_time: datetime,
     end_time: datetime,
     membership_category: str = "adult",
-    months_ahead_limit: int = 1,
+    months_ahead_limit: int | None = 1,
+    enforce_room_rules: bool = True,
 ) -> tuple[bool, str]:
     """Central eligibility check for reservations.
 
@@ -86,35 +87,37 @@ def assess_reservation_eligibility(
     if start_time < now_local:
         return False, "과거 시간은 예약할 수 없습니다."
 
-    # Calculate cutoff as naive datetime first, then localize to same timezone
-    now_local_naive = now_local.replace(tzinfo=None)
-    cutoff_naive = _add_months(now_local_naive, months_ahead_limit)
-    cutoff = cutoff_naive.replace(tzinfo=app_tz)
-    
-    if start_time > cutoff:
-        return False, "현재 시각 기준 1개월 이후 일정은 예약할 수 없습니다."
+    if months_ahead_limit is not None:
+        # Calculate cutoff as naive datetime first, then localize to same timezone
+        now_local_naive = now_local.replace(tzinfo=None)
+        cutoff_naive = _add_months(now_local_naive, months_ahead_limit)
+        cutoff = cutoff_naive.replace(tzinfo=app_tz)
 
-    rules = db.scalars(select(ReservationRule).where(ReservationRule.room_id == room_id)).all()
-    matched_rules = [
-        rule
-        for rule in rules
-        if _matches_rule_selector(rule, start_time)
-        and _matches_rule_time_scope(rule, start_time, end_time)
-        and _matches_rule_target(rule, membership_category)
-    ]
+        if start_time > cutoff:
+            return False, f"현재 시각 기준 {months_ahead_limit}개월 이후 일정은 예약할 수 없습니다."
 
-    denied_rules = [rule for rule in matched_rules if not rule.is_allowed]
-    if denied_rules:
-        denied = denied_rules[0]
-        target_label = denied.specific_date.isoformat() if denied.rule_type.value == "specific_date" else "해당 요일"
-        if denied.applies_all_day:
-            return False, f"{target_label}은(는) 종일 예약이 금지되어 있습니다."
-        if not denied.start_time or not denied.end_time:
-            return False, f"{target_label} 시간대는 예약이 금지되어 있습니다."
-        return False, (
-            f"{target_label} {denied.start_time.strftime('%H:%M')}~"
-            f"{denied.end_time.strftime('%H:%M')} 시간대는 예약이 금지되어 있습니다."
-        )
+    if enforce_room_rules:
+        rules = db.scalars(select(ReservationRule).where(ReservationRule.room_id == room_id)).all()
+        matched_rules = [
+            rule
+            for rule in rules
+            if _matches_rule_selector(rule, start_time)
+            and _matches_rule_time_scope(rule, start_time, end_time)
+            and _matches_rule_target(rule, membership_category)
+        ]
+
+        denied_rules = [rule for rule in matched_rules if not rule.is_allowed]
+        if denied_rules:
+            denied = denied_rules[0]
+            target_label = denied.specific_date.isoformat() if denied.rule_type.value == "specific_date" else "해당 요일"
+            if denied.applies_all_day:
+                return False, f"{target_label}은(는) 종일 예약이 금지되어 있습니다."
+            if not denied.start_time or not denied.end_time:
+                return False, f"{target_label} 시간대는 예약이 금지되어 있습니다."
+            return False, (
+                f"{target_label} {denied.start_time.strftime('%H:%M')}~"
+                f"{denied.end_time.strftime('%H:%M')} 시간대는 예약이 금지되어 있습니다."
+            )
 
     # Staff calendar conflicts, from the periodically-synced local cache
     # (see sync_tasks.maybe_sync_external_calendar_events). Only events titled

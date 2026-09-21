@@ -41,6 +41,10 @@ function overlapsTime(rule, startDate, endDate) {
 }
 
 export function evaluateRuleForSlot({ rulesByRoom, roomId, startDate, endDate, currentUser }) {
+  if (currentUser?.permission === "admin" || currentUser?.is_admin === true) {
+    return { allowed: true, reason: "" };
+  }
+
   const roomRules = rulesByRoom[String(roomId)] || [];
   const membershipCategory = buildMembershipCategory(currentUser);
 

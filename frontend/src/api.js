@@ -396,11 +396,18 @@ export const api = {
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
     }),
 
-  decideExpenseApproval: (expenseId, action, comment, accountId, secondApproverMemberId) =>
+  decideExpenseApproval: (expenseId, action, comment, accountId, secondApproverMemberId, chequeNumber, approvalNumber) =>
     request(`/api/expense-approvals/${expenseId}/decision`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
-      body: { action, comment, account_id: accountId || null, second_approver_member_id: secondApproverMemberId || null },
+      body: {
+        action,
+        comment,
+        account_id: accountId || null,
+        second_approver_member_id: secondApproverMemberId || null,
+        cheque_number: chequeNumber || null,
+        approval_number: approvalNumber || null,
+      },
     }),
 
   getExpenseAccounts: () =>

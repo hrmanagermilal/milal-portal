@@ -1,14 +1,11 @@
 """Background email delivery queue.
 
-Non-time-critical emails are queued (queue_email) into the `email_queue`
+All application emails are queued (queue_email) into the `email_queue`
 table instead of being sent inline. A background worker (email_queue_worker)
 polls the table and delivers pending emails, retrying each up to
 MAX_ATTEMPTS times before permanently marking it 'failed' (never retried
 again). The worker idles quietly when the queue is empty and picks back up
 as soon as something new is queued (within one poll interval).
-
-Time-critical sends (OTP codes, password resets) should keep using
-_send_email directly so their result can drive the HTTP response.
 """
 import asyncio
 import logging

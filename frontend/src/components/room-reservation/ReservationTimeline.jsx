@@ -12,6 +12,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -87,6 +88,7 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
   const [selectedFloor, setSelectedFloor] = useState("all");
   const [selectedRooms, setSelectedRooms] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [showMyReservations, setShowMyReservations] = useState(false);
   const [showList, setShowList] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [reservationRules, setReservationRules] = useState([]);
@@ -141,9 +143,10 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
       if (selectedFloor !== "all" && !floorFilteredRooms.some((r) => r.id === item.room_id)) return false;
       if (selectedRooms.length > 0 && !selectedRooms.includes(String(item.room_id))) return false;
       if (selectedStatus !== "all" && item.status !== selectedStatus) return false;
+      if (showMyReservations && item.requester_name !== currentUser?.name) return false;
       return true;
     });
-  }, [reservations, selectedFloor, floorFilteredRooms, selectedRooms, selectedStatus]);
+  }, [reservations, selectedFloor, floorFilteredRooms, selectedRooms, selectedStatus, showMyReservations, currentUser?.name]);
 
 
   const visibleRange = useMemo(() => {
@@ -294,6 +297,18 @@ export default function ReservationTimeline({ rooms, reservations, onCreateReser
                   <MenuItem key={s} value={s}>{statusLabel[s]}</MenuItem>
                 ))}
               </TextField>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={showMyReservations}
+                    onChange={(event) => setShowMyReservations(event.target.checked)}
+                    size="small"
+                    sx={{ color: "#5d7186", "&.Mui-checked": { color: "#3b522e" } }}
+                  />
+                }
+                label={t("filterMyReservations")}
+                sx={{ ml: 0, mr: 1, color: "#313b5e", "& .MuiFormControlLabel-label": { fontSize: "13px", fontWeight: 600 } }}
+              />
             </Stack>
 
             {/* View Mode Toggle – right aligned */}

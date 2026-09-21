@@ -54,6 +54,7 @@ function getEventsForRoomDay(reservations, roomId, day) {
 
 function buildDaySlotStates({ roomId, day, rulesByRoom, currentUser }) {
   const now = new Date();
+  const isAdmin = currentUser?.permission === "admin" || currentUser?.is_admin === true;
 
   return Array.from({ length: TOTAL_HOURS }, (_, i) => {
     const hour = HOUR_START + i;
@@ -70,7 +71,7 @@ function buildDaySlotStates({ roomId, day, rulesByRoom, currentUser }) {
     });
 
     const isPastSlot = slotEnd <= now;
-    const isFutureBlockedSlot = isTooFarFuture(slotStart);
+    const isFutureBlockedSlot = !isAdmin && isTooFarFuture(slotStart);
     const allowed = !isPastSlot && !isFutureBlockedSlot && ruleResult.allowed;
 
     return {

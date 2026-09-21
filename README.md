@@ -77,6 +77,14 @@ Then open:
 cp .env.compose.example .env
 ```
 
+Set `GEMINI_API_KEY` in the project root `.env` to a key created at
+`https://aistudio.google.com/apikey`. Never commit or paste the key into chat.
+After changing `.env`, recreate the app container so it receives the new value:
+
+```bash
+docker compose up --build -d --force-recreate app
+```
+
 2. Start services:
 
 ```bash

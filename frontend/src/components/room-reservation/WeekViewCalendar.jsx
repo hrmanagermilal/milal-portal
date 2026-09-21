@@ -142,8 +142,9 @@ function overlapsPeriod(item, periodStart, periodEnd) {
   return !(itemEnd <= periodStart || itemStart >= periodEnd);
 }
 
-function isFutureBlocked(date) {
-  return isTooFarFuture(date);
+function isFutureBlocked(date, currentUser) {
+  const isAdmin = currentUser?.permission === "admin" || currentUser?.is_admin === true;
+  return !isAdmin && isTooFarFuture(date);
 }
 
 function isToday(date) {
@@ -156,6 +157,7 @@ function isToday(date) {
 }
 
 export default function WeekViewCalendar({ date, rooms, reservations, onNavigate, onSubmitReservation }) {
+  const currentUser = DataMart.getCurrentUser();
   const weekStart = startOfWeek(date);
   const weekEnd = endOfWeek(date);
   const weekDays = Array.from({ length: 7 }, (_, idx) => addDays(weekStart, idx));
@@ -380,8 +382,8 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
                     key={`${room.id}-${day.toISOString()}`} 
                     className="calendar-grid-cell"
                     style={{
-                      backgroundColor: isPastDate(day) || isFutureBlocked(day) ? "#f0f0f0" : isToday(day) ? "#eef2ff" : "transparent",
-                      opacity: isPastDate(day) || isFutureBlocked(day) ? 0.5 : 1,
+                      backgroundColor: isPastDate(day) || isFutureBlocked(day, currentUser) ? "#f0f0f0" : isToday(day) ? "#eef2ff" : "transparent",
+                      opacity: isPastDate(day) || isFutureBlocked(day, currentUser) ? 0.5 : 1,
                     }}
                   >
                     <EventBars 
@@ -390,7 +392,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
                       windowEnd={dayEnd}
                       onCellClick={handleCellClick}
                       roomId={room.id}
-                      isPast={isPastDate(day) || isFutureBlocked(day)}
+                      isPast={isPastDate(day) || isFutureBlocked(day, currentUser)}
                     />
                   </div>
                 );
@@ -411,7 +413,7 @@ export default function WeekViewCalendar({ date, rooms, reservations, onNavigate
         onSubmit={handleFormSubmit}
         selectedRoom={selectedRoomId}
         selectedDateTime={selectedDateTime}
-        currentUser={DataMart.getCurrentUser()}
+        currentUser={currentUser}
       />
     </Box>
   );

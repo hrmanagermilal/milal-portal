@@ -29,6 +29,7 @@ import DataMart from "../../common/DataMart";
 import NewReservationModal from "./NewReservationModal";
 import { useLanguage } from "../../lang/LanguageContext";
 import { findFirstAllowedSlotForDate, groupRulesByRoom } from "../../utils/reservationRules";
+import { formatReservationLabel } from "../../utils/reservationDisplay";
 
 function sortByStartTime(items) {
   return items.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
@@ -61,6 +62,7 @@ export default function MonthViewCalendar({
   onSubmitReservation,
 }) {
   const { t } = useLanguage();
+  const isAdmin = currentUser?.permission === "admin" || currentUser?.is_admin === true;
   const monthStart = startOfMonth(date);
   const monthEnd = endOfMonth(date);
   const gridStart = startOfWeek(monthStart);
@@ -204,7 +206,7 @@ export default function MonthViewCalendar({
             hourEnd: 22,
           });
           const blockedByRules = inCurrentMonth && !firstAllowed;
-          const blockedByFuture = inCurrentMonth && !!firstAllowed && isTooFarFuture(firstAllowed.start);
+          const blockedByFuture = !isAdmin && inCurrentMonth && !!firstAllowed && isTooFarFuture(firstAllowed.start);
           const isClickable = inCurrentMonth && !isPastDate(day) && !blockedByFuture && !blockedByRules;
           const dayStart = startOfDay(day);
           const dayEnd = endOfDay(day);
@@ -235,7 +237,7 @@ export default function MonthViewCalendar({
                     onMouseEnter={(e) => e.currentTarget.style.background = "rgba(59,82,46,0.08)"}
                     onMouseLeave={(e) => e.currentTarget.style.background = ""}
                   >
-                    <span>{item.room_name}</span>
+                    <span>{formatReservationLabel(item)}</span>
                     <span className={statusClass(item.status)}>
                       {statusLabel[item.status]}
                     </span>

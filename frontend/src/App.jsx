@@ -112,6 +112,26 @@ export default function App() {
   const [userCustom8, setUserCustom8] = useState(() => sessionStorage.getItem("milal_custom_8") || "");
   const [userTitle, setUserTitle] = useState(() => sessionStorage.getItem("milal_title") || "");
   const [userCellGroup, setUserCellGroup] = useState(() => sessionStorage.getItem("milal_cell_group") || "");
+  const [currentUser, setCurrentUser] = useState(() => DataMart.getCurrentUser() || null);
+
+  useEffect(() => {
+    if (!userName || currentUser || !sessionStorage.getItem("milal_token")) {
+      return;
+    }
+
+    api.getMyAccountInfo()
+      .then((user) => {
+        const restoredUser = {
+          ...user,
+          permission: user.permission || userPermission,
+        };
+        DataMart.setCurrentUser(restoredUser);
+        setCurrentUser(restoredUser);
+      })
+      .catch((err) => {
+        console.error("Failed to restore current user:", err);
+      });
+  }, [currentUser, userName, userPermission]);
 
   function handleLogin(name, permission, title, cellGroup, fullUserInfo) {
     sessionStorage.setItem("milal_user", name);
@@ -129,6 +149,7 @@ export default function App() {
     // Store full user info in DataMart
     if (fullUserInfo) {
       DataMart.setCurrentUser(fullUserInfo);
+      setCurrentUser(fullUserInfo);
     }
     
     EventPublisher.publish(EventDef.onLoginSuccess, { name, permission, title, cellGroup });
@@ -145,6 +166,7 @@ export default function App() {
     setUserCustom8("");
     setUserTitle("");
     setUserCellGroup("");
+    setCurrentUser(null);
     DataMart.clearCurrentUser();
   }
 
@@ -233,8 +255,12 @@ export default function App() {
   // 3-4 independent pollers at once).
   useEffect(() => {
     if (!userName) return;
+    let refreshInProgress = false;
 
     async function refresh() {
+      if (refreshInProgress) return;
+      refreshInProgress = true;
+
       try {
         const [roomData, reservationData, approvalSummary] = await Promise.all([
           api.getRooms(),
@@ -256,6 +282,8 @@ export default function App() {
         });
       } catch {
         // silent — don't surface background errors
+      } finally {
+        refreshInProgress = false;
       }
     }
 
@@ -513,7 +541,7 @@ export default function App() {
               setForm={setMultiForm}
               onSubmit={handleCreateMultiReservation}
               guideText={t("multiRequestGuideText")}
-              currentUser={DataMart.getCurrentUser()}
+              currentUser={currentUser}
             />
           )}
           {!loading && tab === "admin" && (

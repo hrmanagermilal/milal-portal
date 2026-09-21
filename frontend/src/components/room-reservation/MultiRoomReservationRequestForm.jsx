@@ -23,6 +23,7 @@ export default function MultiRoomReservationRequestForm({ rooms, form, setForm, 
   const { t } = useLanguage();
   const [availableRooms, setAvailableRooms] = useState(rooms);
   const [floorFilter, setFloorFilter] = useState("all");
+  const isAdmin = currentUser?.permission === "admin" || currentUser?.is_admin === true;
   const reservationMaxDateTime = getReservationMaxDateInputValue(1);
   const floors = Array.from(new Set(rooms.map((r) => r.floor ?? 1))).sort();
 
@@ -128,7 +129,7 @@ export default function MultiRoomReservationRequestForm({ rooms, form, setForm, 
     Number(form.attendees) >= 1 &&
     (form.room_ids || []).length > 0 &&
     !isPastTime(form.start_time) &&
-    !isTooFarFuture(form.start_time);
+    (isAdmin || !isTooFarFuture(form.start_time));
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -153,10 +154,10 @@ export default function MultiRoomReservationRequestForm({ rooms, form, setForm, 
               InputLabelProps={{ shrink: true }}
               value={form.start_time}
               onChange={handleStartTimeChange}
-              inputProps={{ max: reservationMaxDateTime }}
+              inputProps={isAdmin ? undefined : { max: reservationMaxDateTime }}
             />
 
-            {isTooFarFuture(form.start_time) && (
+            {!isAdmin && isTooFarFuture(form.start_time) && (
               <Alert severity="warning">현재 시간 기준 1개월 이후의 일정은 예약할 수 없습니다.</Alert>
             )}
 

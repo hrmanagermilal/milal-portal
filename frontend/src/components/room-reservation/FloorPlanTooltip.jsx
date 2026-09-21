@@ -36,6 +36,50 @@ const FLOOR_PLANS = DEFAULT_FLOOR_PLANS;
 
 /** Map room ID → floor number (built from database) */
 const ROOM_FLOOR = {};
+const FLOOR_PLAN_CACHE_TTL_MS = 30_000;
+
+let roomsCache = null;
+let roomsCacheTime = 0;
+let roomsRequest = null;
+let locationsCache = null;
+let locationsCacheTime = 0;
+let locationsRequest = null;
+
+function loadRooms() {
+  if (roomsCache && Date.now() - roomsCacheTime < FLOOR_PLAN_CACHE_TTL_MS) {
+    return Promise.resolve(roomsCache);
+  }
+  if (roomsRequest) return roomsRequest;
+
+  roomsRequest = api.getRooms()
+    .then((rooms) => {
+      roomsCache = rooms;
+      roomsCacheTime = Date.now();
+      return rooms;
+    })
+    .finally(() => {
+      roomsRequest = null;
+    });
+  return roomsRequest;
+}
+
+function loadRoomLocations() {
+  if (locationsCache && Date.now() - locationsCacheTime < FLOOR_PLAN_CACHE_TTL_MS) {
+    return Promise.resolve(locationsCache);
+  }
+  if (locationsRequest) return locationsRequest;
+
+  locationsRequest = api.adminGetAllRoomLocations()
+    .then((locations) => {
+      locationsCache = locations;
+      locationsCacheTime = Date.now();
+      return locations;
+    })
+    .finally(() => {
+      locationsRequest = null;
+    });
+  return locationsRequest;
+}
 
 function FloorPlanSVG({ floorData, floorNum, activeRoomId, onSelectRoom, isSelectable, roomLocations = {}, visibleRoomIds, zoom = 1, panX = 0, panY = 0 }) {
   const { viewBox, building, rooms: defaultRooms, corridors } = floorData;
@@ -327,7 +371,7 @@ export default function FloorPlanTooltip({
   useEffect(() => {
     async function loadRoomsData() {
       try {
-        const rooms = await api.getRooms();
+        const rooms = await loadRooms();
         
         // Build ROOM_FLOOR mapping from database
         const roomFloorMap = {};
@@ -396,7 +440,7 @@ export default function FloorPlanTooltip({
   useEffect(() => {
     async function loadLocations() {
       try {
-        const locations = await api.adminGetAllRoomLocations();
+        const locations = await loadRoomLocations();
         if (locations && Array.isArray(locations)) {
           const locationMap = {};
           locations.forEach(loc => {

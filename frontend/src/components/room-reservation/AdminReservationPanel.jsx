@@ -5,6 +5,7 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -17,6 +18,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import ButtonGroup from "@mui/material/ButtonGroup";
+import SearchIcon from "@mui/icons-material/Search";
 import { formatDateTime, sortByStartTime } from "../../utils/datetime";
 import { useLanguage } from "../../lang/LanguageContext";
 import EventPublisher from "../../event/EventPublisher";
@@ -44,6 +46,9 @@ export default function AdminReservationPanel({
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("pending");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
 
   const statusLabel = {
     pending: t("statusPending"),
@@ -52,9 +57,30 @@ export default function AdminReservationPanel({
     rejected: t("statusRejected"),
   };
 
-  // Filter by selected status
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+  const rangeStartDate = rangeStart ? new Date(`${rangeStart}T00:00:00`) : null;
+  const rangeEndDate = rangeEnd ? new Date(`${rangeEnd}T00:00:00`) : null;
+  if (rangeEndDate) rangeEndDate.setDate(rangeEndDate.getDate() + 1);
+
+  // Filter by status, requester/purpose text, and overlapping reservation dates.
   const filteredReservations = sortByStartTime(
-    (reservations || []).filter(r => r.status === statusFilter)
+    (reservations || []).filter((reservation) => {
+      if (reservation.status !== statusFilter) return false;
+
+      if (normalizedSearchQuery) {
+        const searchableText = [reservation.requester_name, reservation.purpose]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase();
+        if (!searchableText.includes(normalizedSearchQuery)) return false;
+      }
+
+      const reservationStart = new Date(reservation.start_time);
+      const reservationEnd = new Date(reservation.end_time);
+      if (rangeStartDate && reservationEnd <= rangeStartDate) return false;
+      if (rangeEndDate && reservationStart >= rangeEndDate) return false;
+      return true;
+    })
   );
 
   // Calculate pagination (desktop only)
@@ -101,24 +127,61 @@ export default function AdminReservationPanel({
           {displayGuideText}
         </Typography>
 
-        {/* Status Filter + Pagination Info (Desktop Only) */}
+        {/* Filters + Pagination Info (Desktop Only) */}
         <Box sx={{ display: { xs: "none", md: "flex" }, justifyContent: "space-between", alignItems: "center", mb: 2, gap: 2, flexWrap: "wrap" }}>
-          <TextField
-            select
-            size="small"
-            label={t("colStatus")}
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            sx={{ minWidth: 150 }}
-          >
-            <MenuItem value="pending">{t("statusPending")}</MenuItem>
-            <MenuItem value="approved">{t("statusApproved")}</MenuItem>
-            <MenuItem value="changed">{t("statusChanged")}</MenuItem>
-            <MenuItem value="rejected">{t("statusRejected")}</MenuItem>
-          </TextField>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ flex: "1 1 720px" }}>
+            <TextField
+              select
+              size="small"
+              label={t("colStatus")}
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              sx={{ minWidth: 150 }}
+            >
+              <MenuItem value="pending">{t("statusPending")}</MenuItem>
+              <MenuItem value="approved">{t("statusApproved")}</MenuItem>
+              <MenuItem value="changed">{t("statusChanged")}</MenuItem>
+              <MenuItem value="rejected">{t("statusRejected")}</MenuItem>
+            </TextField>
+            <TextField
+              size="small"
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder={t("adminReservationSearchPlaceholder")}
+              slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
+              sx={{ width: 280 }}
+            />
+            <TextField
+              type="date"
+              size="small"
+              label={t("adminReservationRangeStart")}
+              value={rangeStart}
+              onChange={(event) => {
+                setRangeStart(event.target.value);
+                setCurrentPage(1);
+              }}
+              slotProps={{ inputLabel: { shrink: true } }}
+              sx={{ width: 165 }}
+            />
+            <TextField
+              type="date"
+              size="small"
+              label={t("adminReservationRangeEnd")}
+              value={rangeEnd}
+              onChange={(event) => {
+                setRangeEnd(event.target.value);
+                setCurrentPage(1);
+              }}
+              slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: rangeStart || undefined } }}
+              sx={{ width: 165 }}
+            />
+          </Stack>
           
           <Typography variant="caption" sx={{ color: "#8486a7", fontWeight: 600 }}>
             {filteredReservations.length > 0 
@@ -152,8 +215,8 @@ export default function AdminReservationPanel({
           </Stack>
         </Box>
 
-        {/* Status Filter (Mobile Only) */}
-        <Box sx={{ display: { xs: "flex", md: "none" }, justifyContent: "space-between", alignItems: "center", mb: 2, gap: 1 }}>
+        {/* Filters (Mobile Only) */}
+        <Box sx={{ display: { xs: "flex", md: "none" }, alignItems: "center", mb: 2, gap: 1, flexWrap: "wrap" }}>
           <TextField
             select
             size="small"
@@ -170,6 +233,41 @@ export default function AdminReservationPanel({
             <MenuItem value="changed">{t("statusChanged")}</MenuItem>
             <MenuItem value="rejected">{t("statusRejected")}</MenuItem>
           </TextField>
+          <TextField
+            size="small"
+            value={searchQuery}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder={t("adminReservationSearchPlaceholder")}
+            slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
+            sx={{ flex: "1 1 200px" }}
+          />
+          <TextField
+            type="date"
+            size="small"
+            label={t("adminReservationRangeStart")}
+            value={rangeStart}
+            onChange={(event) => {
+              setRangeStart(event.target.value);
+              setCurrentPage(1);
+            }}
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ flex: "1 1 140px" }}
+          />
+          <TextField
+            type="date"
+            size="small"
+            label={t("adminReservationRangeEnd")}
+            value={rangeEnd}
+            onChange={(event) => {
+              setRangeEnd(event.target.value);
+              setCurrentPage(1);
+            }}
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: rangeStart || undefined } }}
+            sx={{ flex: "1 1 140px" }}
+          />
           
           <Typography variant="caption" sx={{ color: "#8486a7", fontWeight: 600, whiteSpace: "nowrap" }}>
             {filteredReservations.length}

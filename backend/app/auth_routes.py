@@ -17,7 +17,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .email_queue import _send_email, queue_email
+from .email_queue import queue_email
 from .models import Member, OtpCode, User, MemberChangeLog, MembershipCategory
 from .schemas import UserOut, ChangePasswordRequest, AdminUpdateUserRequest, ResetPasswordRequest
 from .ohjic_client import OhjicAPIClient
@@ -329,9 +329,9 @@ def send_otp(body: SendOtpRequest, db: Session = Depends(get_db)):
     sent = False
 
     if body.contact_type == "email":
-        logger.info(f"[send-otp] Attempting to send email to {contact}")
-        sent = _send_email(contact, "[Milal Community] Verification Code", message)
-        logger.info(f"[send-otp] Email send result: sent={sent}")
+        logger.info(f"[send-otp] Queueing email to {contact}")
+        sent = queue_email(db, contact, "[Milal Community] Verification Code", message)
+        logger.info(f"[send-otp] Email queue result: queued={sent}")
     else:
         logger.info(f"[send-otp] Attempting to send SMS to {contact}")
         sent = _send_sms(contact, message)
@@ -1018,11 +1018,11 @@ Best regards,
 Milal Admin
     """
     
-    success = _send_email(member.email, subject, body)
+    success = queue_email(db, member.email, subject, body)
     
     return {
         "success": success,
-        "message": "Password reset email sent" if success else "Failed to send email",
+        "message": "Password reset email queued" if success else "Failed to queue email",
         "user_id": user_id,
     }
 

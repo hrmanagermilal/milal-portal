@@ -59,7 +59,7 @@ export default function ExpenseAgreementManagement() {
         draft.reviewer_member_id === draft.first_approver_member_id ||
         draft.reviewer_member_id === draft.second_approver_member_id ||
         draft.first_approver_member_id === draft.second_approver_member_id) {
-      setError("지출 검토자, 1차 합의자, 2차 합의자를 모두 서로 다르게 지정해주세요.");
+      setError("지출 검토자, 1차 승인자, 2차 승인자를 모두 서로 다르게 지정해주세요.");
       return;
     }
     setSaving(true);
@@ -156,10 +156,10 @@ export default function ExpenseAgreementManagement() {
                   🔹 지출 검토: <strong>{agreement.reviewer_name}</strong>
                 </Typography>
                 <Typography sx={{ fontSize: "13px", color: "#1b5e20" }}>
-                  🔹 1차 합의자: <strong>{agreement.first_approver_name}</strong>
+                  🔹 1차 승인자: <strong>{agreement.first_approver_name}</strong>
                 </Typography>
                 <Typography sx={{ fontSize: "13px", color: "#1b5e20" }}>
-                  🔹 2차 합의자: <strong>{agreement.second_approver_name}</strong>
+                  🔹 2차 승인자: <strong>{agreement.second_approver_name}</strong>
                 </Typography>
               </Stack>
             </Box>

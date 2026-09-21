@@ -4,10 +4,15 @@ import html
 import json
 import logging
 import os
-from datetime import datetime
+import re
+from datetime import date, datetime
 from io import BytesIO
+from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from PIL import Image
+from pillow_heif import register_heif_opener
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -32,11 +37,13 @@ router = APIRouter(prefix="/api", tags=["expenses"])
 # Configuration
 EXPENSE_APPROVER_POSITION_CODES = (566, 567, 568)
 EASTERN_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
-EXPENSE_UPLOAD_DIR = os.getenv("EXPENSE_UPLOAD_DIR", "uploads/expenses")
+PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", "/app"))
+EXPENSE_UPLOAD_DIR = Path(os.getenv("EXPENSE_UPLOAD_DIR", PROJECT_ROOT / "uploads" / "expenses"))
 PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "https://www.milalchurch.ca:83").rstrip("/")
-PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/app")
 
-EXPENSE_DATA_URL_PATTERN = None  # Will be compiled in main
+EXPENSE_DATA_URL_PATTERN = re.compile(
+    r"^data:(image/jpeg|image/png|image/gif|image/webp|image/heic|image/heif|application/pdf);base64,([A-Za-z0-9+/=\s]+)$"
+)
 EXPENSE_FILE_EXTENSIONS = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -46,6 +53,7 @@ EXPENSE_FILE_EXTENSIONS = {
     "image/heif": ".jpg",
     "application/pdf": ".pdf",
 }
+register_heif_opener()
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -119,7 +127,7 @@ def build_approvals_from_columns(expense: Expense, requester_name: str, requeste
     if expense.first_agreement_member_id:
         approvals.append({
             "role": "First Agreement",
-            "roleKo": "1차 합의",
+            "roleKo": "1차 승인",
             "member_id": expense.first_agreement_member_id,
             "name": member_names.get(expense.first_agreement_member_id, ""),
             "date": expense.first_agreement_date.isoformat() if expense.first_agreement_date else "",
@@ -130,7 +138,7 @@ def build_approvals_from_columns(expense: Expense, requester_name: str, requeste
     if expense.second_agreement_member_id:
         approvals.append({
             "role": "Second Agreement",
-            "roleKo": "2차 합의",
+            "roleKo": "2차 승인",
             "member_id": expense.second_agreement_member_id,
             "name": member_names.get(expense.second_agreement_member_id, ""),
             "date": expense.second_agreement_date.isoformat() if expense.second_agreement_date else "",
@@ -153,6 +161,8 @@ def serialize_expense(expense: Expense, requester_name: str, db: Session | None 
         "status": expense.status,
         "hst_amount": expense.hst_amount,
         "total_amount": expense.total_amount,
+        "cheque_number": expense.cheque_number,
+        "approval_number": expense.approval_number,
         "requester_name": requester_name,
         "account_id": expense.account_id,
         "account_code": account.account_code if account else "",
@@ -163,6 +173,67 @@ def serialize_expense(expense: Expense, requester_name: str, db: Session | None 
         "created_at": expense.created_at.replace(tzinfo=None).isoformat(),
         "updated_at": expense.updated_at.replace(tzinfo=None).isoformat(),
     }
+
+
+def save_expense_attachments(expense_id: int, request_date: date, attachments: list) -> list[dict]:
+    upload_date_dir = EXPENSE_UPLOAD_DIR / request_date.isoformat()
+    stored_attachments = []
+
+    for sequence, attachment in enumerate(attachments, start=1):
+        attachment_data = attachment.model_dump()
+        data_url = attachment_data.pop("data_url", "")
+        if not data_url:
+            if attachment_data.get("url", "").startswith("/uploads/expenses/"):
+                stored_attachments.append(attachment_data)
+                continue
+            raise HTTPException(status_code=422, detail="Each attachment must include file data.")
+
+        data_url_match = EXPENSE_DATA_URL_PATTERN.fullmatch(data_url)
+        if not data_url_match:
+            raise HTTPException(status_code=422, detail="Attachments must be JPEG, PNG, GIF, WebP, HEIC, or PDF files.")
+
+        mime_type, encoded_content = data_url_match.groups()
+        try:
+            file_content = base64.b64decode(encoded_content, validate=True)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail="Attachment file data is invalid.") from error
+        if not file_content:
+            raise HTTPException(status_code=422, detail="Attachment file is empty.")
+
+        if mime_type in ("image/heic", "image/heif"):
+            try:
+                converted_image = Image.open(BytesIO(file_content)).convert("RGB")
+                jpeg_data = BytesIO()
+                converted_image.save(jpeg_data, format="JPEG", quality=92)
+                file_content = jpeg_data.getvalue()
+                attachment_data["type"] = "image"
+            except Exception as error:
+                raise HTTPException(status_code=422, detail="Unable to process the HEIC attachment.") from error
+
+        upload_date_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{expense_id}_{sequence}{EXPENSE_FILE_EXTENSIONS[mime_type]}"
+        (upload_date_dir / filename).write_bytes(file_content)
+        attachment_data["url"] = f"/uploads/expenses/{request_date.isoformat()}/{filename}"
+        stored_attachments.append(attachment_data)
+
+    return stored_attachments
+
+
+def get_expense_email_attachments(expense: Expense) -> list[dict]:
+    root_dir = EXPENSE_UPLOAD_DIR.resolve()
+    email_attachments = []
+    for attachment in expense.attachments:
+        url = str(attachment.get("url", ""))
+        if not url.startswith("/uploads/expenses/"):
+            continue
+        file_path = (EXPENSE_UPLOAD_DIR / url.removeprefix("/uploads/expenses/")).resolve()
+        try:
+            file_path.relative_to(root_dir)
+        except ValueError:
+            continue
+        if file_path.is_file():
+            email_attachments.append({"path": str(file_path), "name": str(attachment.get("name") or file_path.name)})
+    return email_attachments
 
 
 def get_expense_account_or_422(account_id: int | None, db: Session) -> ExpenseAccount:
@@ -285,14 +356,18 @@ def send_expense_notification(
         "first_approve": "1차 승인",
         "second_approve": "2차 승인",
         "approved": "검토완료",
-        "first_agreed": "1차 합의",
-        "second_agreed": "2차 합의",
+        "first_agreed": "1차 승인",
+        "second_agreed": "승인완료",
         "rejected": "반려됨",
     }[action]
+    status_message = "비용 요청이 승인완료 되었습니다." if action == "second_agreed" else f"비용 요청이 {action_label}되었습니다."
     subject = f"[비용처리] 비용 요청 {action_label}: {expense.title}"
     requester_user = db.scalar(select(User).where(User.member_id == requester.id))
     requester_english_name = requester_user.english_name.strip() if requester_user else ""
     requester_display_name = f"{requester.name} ({requester_english_name})" if requester_english_name else requester.name
+    requester_url = f"{PORTAL_BASE_URL}/?{urlencode({'tab': 'expense', 'expenseId': expense.id})}"
+    approval_url = f"{PORTAL_BASE_URL}/?{urlencode({'tab': 'expense-approval', 'expenseId': expense.id})}"
+    current_approval = get_current_expense_approval(expense)
     
     sent_emails = set()
     for recipient in recipients:
@@ -301,6 +376,12 @@ def send_expense_notification(
             continue
         sent_emails.add(recipient_email)
         is_requester = recipient.id == requester.id
+        is_current_approver = bool(current_approval and current_approval[1].get("member_id") == recipient.id)
+        action_button = ""
+        if is_current_approver:
+            action_button = f'<p style="margin:28px 0 0;"><a href="{html.escape(approval_url, quote=True)}" style="display:inline-block;padding:12px 18px;background:#314b2b;color:#ffffff;text-decoration:none;font-weight:bold;">결재하기</a></p>'
+        elif is_requester:
+            action_button = f'<p style="margin:28px 0 0;"><a href="{html.escape(requester_url, quote=True)}" style="display:inline-block;padding:12px 18px;background:#314b2b;color:#ffffff;text-decoration:none;font-weight:bold;">요청 상세 보기</a></p>'
         
         item_rows = "".join(
             f"<tr><td style=\"padding:10px;border-bottom:1px solid #e5e7eb;\">{html.escape(str(item['description']))}</td>"
@@ -328,12 +409,14 @@ def send_expense_notification(
         <table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #dbe3ea;\">
             <tr><td style=\"padding:24px 28px;background:#314b2b;color:#ffffff;\"><strong style=\"font-size:20px;\">비용 요청 {html.escape(action_label)}</strong></td></tr>
             <tr><td style=\"padding:28px;\">
-                <p style=\"margin:0 0 20px;\">비용 요청이 {html.escape(action_label)}되었습니다.</p>
+                <p style=\"margin:0 0 20px;\">{html.escape(status_message)}</p>
                 <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border:1px solid #e5e7eb;font-size:14px;\">
                     <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;width:120px;\">요청자</th><td style=\"padding:10px;\">{html.escape(requester_display_name)}</td></tr>
                     <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">요청일</th><td style=\"padding:10px;\">{expense.request_date.isoformat()}</td></tr>
                     <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">제목</th><td style=\"padding:10px;\">{html.escape(expense.title)}</td></tr>
                     <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">결재 상태</th><td style=\"padding:10px;\">{html.escape(action_label)}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">수표번호</th><td style=\"padding:10px;\">{html.escape(expense.cheque_number or '-')}</td></tr>
+                    <tr><th style=\"padding:10px;text-align:left;background:#f8fafc;\">결재번호</th><td style=\"padding:10px;\">{html.escape(expense.approval_number or '-')}</td></tr>
                 </table>
                 {approval_history}
                 <h2 style=\"font-size:16px;margin:26px 0 10px;\">비용 항목</h2>
@@ -344,11 +427,13 @@ def send_expense_notification(
                     <tr style=\"background:#edf4e9;\"><th style=\"padding:12px;text-align:left;\">총 비용</th><td style=\"padding:12px;text-align:right;font-weight:bold;\">CAD {expense.total_amount:,.2f}</td></tr>
                 </table>
                 <h2 style=\"font-size:16px;margin:26px 0 8px;\">메모</h2><p style=\"margin:0;white-space:pre-wrap;line-height:1.6;\">{html.escape(expense.memo)}</p>
+                {action_button}
             </td></tr>
         </table>
     </td></tr></table>
 </body></html>"""
-        queue_email(db, recipient_email, subject, body, content_type="html", attachments=[])
+        attachments = get_expense_email_attachments(expense) if recipient.id in (attachment_recipient_ids or set()) else []
+        queue_email(db, recipient_email, subject, body, content_type="html", attachments=attachments)
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -556,6 +641,14 @@ def decide_expense_approval(
 
     approvals = [dict(approval) for approval in expense.approvals]
     approval_index = next(index for index, approval in enumerate(approvals) if approval.get("state") == "current")
+
+    if approval_index == 4 and payload.action == "approve":
+        cheque_number = (payload.cheque_number or "").strip()
+        approval_number = (payload.approval_number or "").strip()
+        if not cheque_number or not approval_number:
+            raise HTTPException(status_code=422, detail="Cheque number and approval number are required for first concurrence.")
+        expense.cheque_number = cheque_number
+        expense.approval_number = approval_number
     
     if payload.account_id:
         expense.account_id = get_expense_account_or_422(payload.account_id, db).id
@@ -629,8 +722,7 @@ def decide_expense_approval(
     db.refresh(expense)
     requester = db.get(Member, expense.requester_member_id)
     decision_comment = payload.comment.strip()
-    return serialize_expense(expense, requester.name if requester else "", db)
-    
+
     if payload.action == "approve":
         if approval_index == 1 and requester:
             second_approver = db.get(Member, approvals[2]["member_id"])
@@ -660,12 +752,14 @@ def decide_expense_approval(
                 if second_agreement:
                     send_expense_notification(db, expense, requester, [second_agreement], "first_agreed", decision_comment)
         elif approval_index == len(approvals) - 1 and requester:
+            reviewer = db.get(Member, expense.review_member_id) if expense.review_member_id else None
             finance_admins = db.scalars(
                 select(Member).join(User).where(User.is_finance_admin.is_(True))
             ).all()
+            recipients = [requester, *([reviewer] if reviewer else []), *finance_admins]
             send_expense_notification(
-                db, expense, requester, [requester, *finance_admins], "second_agreed", decision_comment,
-                attachment_recipient_ids={admin.id for admin in finance_admins},
+                db, expense, requester, recipients, "second_agreed", decision_comment,
+                attachment_recipient_ids={recipient.id for recipient in recipients},
             )
     elif payload.action == "reject" and requester:
         send_expense_notification(db, expense, requester, [requester], "rejected", decision_comment)
@@ -859,9 +953,9 @@ def create_expense(
         approvals.append({"role": "Expense Reviewer", "roleKo": "지출 검토", "member_id": reviewer.id, "name": reviewer.name, "date": "", "state": "waiting"})
     
     if first_agreement_approver:
-        approvals.append({"role": "First Agreement", "roleKo": "1차 합의", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
+        approvals.append({"role": "First Agreement", "roleKo": "1차 승인", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
     if second_agreement_approver:
-        approvals.append({"role": "Second Agreement", "roleKo": "2차 합의", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
+        approvals.append({"role": "Second Agreement", "roleKo": "2차 승인", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
     
     expense = Expense(
         requester_member_id=current_user.id,
@@ -900,7 +994,7 @@ def create_expense(
     db.flush()
     expense.approvals[0]["date"] = approval_time
     flag_modified(expense, "approvals")
-    expense.attachments = []
+    expense.attachments = save_expense_attachments(expense.id, payload.request_date, payload.attachments)
     db.commit()
     db.refresh(expense)
     if first_approval_is_automatic:
@@ -936,7 +1030,7 @@ def update_expense(
     expense.hst_amount = payload.hst_amount
     expense.total_amount = sum(item.amount for item in payload.items) + payload.hst_amount
     expense.items = [item.model_dump() for item in payload.items]
-    expense.attachments = []
+    expense.attachments = save_expense_attachments(expense.id, payload.request_date, payload.attachments)
     requester_approval = expense.approvals[0] if expense.approvals else {}
     requester_approval.update({"name": current_user.name, "state": "done"})
     
@@ -959,9 +1053,9 @@ def update_expense(
         expense.approvals.append({"role": "Expense Reviewer", "roleKo": "지출 검토", "member_id": reviewer.id, "name": reviewer.name, "date": "", "state": "waiting"})
     
     if first_agreement_approver:
-        expense.approvals.append({"role": "First Agreement", "roleKo": "1차 합의", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
+        expense.approvals.append({"role": "First Agreement", "roleKo": "1차 승인", "member_id": first_agreement_approver.id, "name": first_agreement_approver.name, "date": "", "state": "waiting"})
     if second_agreement_approver:
-        expense.approvals.append({"role": "Second Agreement", "roleKo": "2차 합의", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
+        expense.approvals.append({"role": "Second Agreement", "roleKo": "2차 승인", "member_id": second_agreement_approver.id, "name": second_agreement_approver.name, "date": "", "state": "waiting"})
     
     expense.first_approval_member_id = first_approver.id
     expense.first_approval_state = "current"

@@ -14,6 +14,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
   Pagination,
   Badge,
@@ -50,12 +51,19 @@ export default function ExpenseApprovalList({
   statusLabel,
   statusChipSx,
   filterCounts = {},
+  searchQuery,
+  setSearchQuery,
 }) {
   const { lang, t } = useLanguage();
   const korean = lang === "ko";
 
-  const pageCount = Math.max(1, Math.ceil(requests.length / 10));
-  const displayedRequests = requests.slice((page - 1) * 10, page * 10);
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
+  const filteredRequests = normalizedSearch
+    ? requests.filter((request) => [request.title, request.requester_name, request.cheque_number, request.approval_number]
+      .some((value) => String(value || "").toLocaleLowerCase().includes(normalizedSearch)))
+    : requests;
+  const pageCount = Math.max(1, Math.ceil(filteredRequests.length / 10));
+  const displayedRequests = filteredRequests.slice((page - 1) * 10, page * 10);
   const formatCurrency = (amount) => `CAD ${Number(amount || 0).toLocaleString(korean ? "ko-KR" : "en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
@@ -109,6 +117,18 @@ export default function ExpenseApprovalList({
         })}
       </Stack>
 
+      <TextField
+        value={searchQuery}
+        onChange={(event) => {
+          setSearchQuery(event.target.value);
+          setPage(1);
+        }}
+        placeholder={t("expenseApprovalSearchPlaceholder")}
+        size="small"
+        fullWidth
+        inputProps={{ maxLength: 100 }}
+      />
+
       {error && (
         <Typography color="error" variant="body2" sx={{ mb: 2 }}>
           {error}
@@ -144,7 +164,7 @@ export default function ExpenseApprovalList({
                     <CircularProgress size={22} />
                   </TableCell>
                 </TableRow>
-              ) : requests.length === 0 ? (
+              ) : filteredRequests.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} align="center" sx={{ py: 5, color: "#8493a2" }}>
                     {t("expenseNoApprovalRequests")}
@@ -203,7 +223,7 @@ export default function ExpenseApprovalList({
             </TableBody>
           </Table>
         </TableContainer>
-        {requests.length > 10 && (
+        {filteredRequests.length > 10 && (
           <Box sx={{ display: "flex", justifyContent: "center", py: 1.5, borderTop: "1px solid #e8edf3" }}>
             <Pagination
               count={pageCount}

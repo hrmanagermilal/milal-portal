@@ -202,6 +202,8 @@ class ExpenseApprovalDecision(BaseModel):
     comment: str = Field(min_length=1, max_length=2000)
     account_id: int | None = Field(default=None, gt=0)
     second_approver_member_id: int | None = Field(default=None, gt=0)
+    cheque_number: str | None = Field(default=None, max_length=100)
+    approval_number: str | None = Field(default=None, max_length=100)
 
 
 class ExpenseOut(BaseModel):
@@ -212,6 +214,8 @@ class ExpenseOut(BaseModel):
     status: str
     hst_amount: float
     total_amount: float
+    cheque_number: str = ""
+    approval_number: str = ""
     requester_name: str
     account_id: int | None
     account_code: str = ""

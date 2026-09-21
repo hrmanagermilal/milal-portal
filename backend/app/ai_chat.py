@@ -935,7 +935,7 @@ Important rules:
                         "type": "function_result",
                         "name": function_call.name,
                         "call_id": function_call.id,
-                        "result": [{"type": "text", "text": json.dumps(_dispatch(function_call.name, function_call.arguments or {}), ensure_ascii=False, default=str)}],
+                        "result": json.dumps(_dispatch(function_call.name, function_call.arguments or {}), ensure_ascii=False, default=str),
                     }
                     for function_call in function_calls
                 ]
@@ -952,10 +952,13 @@ Important rules:
         except Exception as exc:
             print(f"[chat] Gemini error: {exc}")
             exc_str = str(exc)
-            if "429" in exc_str or "quota" in exc_str.lower():
+            status_code = getattr(exc, "status_code", None)
+            if status_code == 429 or "quota" in exc_str.lower():
                 return {"message": "Gemini API 요청 한도에 도달했습니다. 잠시 후 다시 시도해주세요.", "error": True}
-            if "401" in exc_str or "invalid" in exc_str.lower():
+            if status_code in (401, 403) or "api_key_invalid" in exc_str.lower():
                 return {"message": "GEMINI_API_KEY가 유효하지 않습니다. .env 파일을 확인해주세요.", "error": True}
+            if "legacy interactions api schema" in exc_str.lower():
+                return {"message": "서버의 Google AI SDK 업데이트가 필요합니다. 관리자에게 문의해주세요.", "error": True}
             return {"message": f"AI 처리 중 오류가 발생했습니다: {exc}", "error": True}
 
     return router
