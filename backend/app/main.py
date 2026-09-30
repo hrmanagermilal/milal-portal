@@ -93,6 +93,7 @@ from .email_queue import email_queue_worker, queue_email
 from .sms_queue import queue_sms, sms_queue_worker
 from .sync_tasks import maybe_sync_external_calendar_events, sync_all_members_from_ohjic
 from .expense_routes import router as expense_router
+from .equipment_routes import UPLOAD_DIR as EQUIPMENT_UPLOAD_DIR, router as equipment_router
 
 app = FastAPI(title="Milal Community API", version="1.0.0")
 
@@ -106,6 +107,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(expense_router)
+app.include_router(equipment_router)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST_DIR = Path(os.getenv("FRONTEND_DIST_DIR", PROJECT_ROOT / "frontend" / "dist"))
@@ -776,6 +778,18 @@ async def startup() -> None:
         for sql in (
             "ALTER TABLE reservations ADD COLUMN email_notifications_enabled BOOLEAN NOT NULL DEFAULT 1",
             "ALTER TABLE reservations ADD COLUMN sms_notifications_enabled BOOLEAN NOT NULL DEFAULT 0",
+        ):
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
+    # Migrate: keep approved equipment unavailable until an admin confirms its return.
+    with engine.connect() as conn:
+        for sql in (
+            "ALTER TABLE equipment_reservations ADD COLUMN returned_at DATETIME NULL",
+            "ALTER TABLE equipment_reservations ADD COLUMN returned_by_member_id INTEGER NULL",
         ):
             try:
                 conn.execute(text(sql))
@@ -3279,6 +3293,8 @@ if FRONTEND_DIST_DIR.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
     app.mount("/uploads/expenses", StaticFiles(directory=str(EXPENSE_UPLOAD_DIR)), name="expense-uploads")
+if EQUIPMENT_UPLOAD_DIR.exists():
+    app.mount("/uploads/equipment", StaticFiles(directory=str(EQUIPMENT_UPLOAD_DIR)), name="equipment-uploads")
 
 
 @app.get("/", include_in_schema=False)

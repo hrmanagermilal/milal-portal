@@ -109,6 +109,56 @@ class ReservationCreate(BaseModel):
     repeat_count: int = Field(default=1, ge=1, le=52)  # max 52 weeks or 12 months
 
 
+class EquipmentCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    storage_location: str = Field(default="", max_length=255)
+    total_quantity: int = Field(ge=1)
+    image_data_url: str = ""
+    is_active: bool = True
+
+
+class EquipmentUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    storage_location: str | None = Field(default=None, max_length=255)
+    total_quantity: int | None = Field(default=None, ge=1)
+    image_data_url: str | None = None
+    is_active: bool | None = None
+
+
+class EquipmentReservationCreate(BaseModel):
+    equipment_id: int
+    quantity: int = Field(ge=1)
+    start_date: date
+    end_date: date
+    purpose: str = Field(min_length=2, max_length=255)
+
+    @model_validator(mode="after")
+    def validate_date_range(self):
+        if self.end_date < self.start_date:
+            raise ValueError("종료일은 시작일 이후여야 합니다.")
+        return self
+
+
+class EquipmentReservationReview(BaseModel):
+    action: Literal["approve", "reject"]
+    admin_comment: str = Field(default="", max_length=2000)
+
+
+class EquipmentReservationAdminUpdate(BaseModel):
+    equipment_id: int
+    quantity: int = Field(ge=1)
+    start_date: date
+    end_date: date
+    purpose: str = Field(min_length=2, max_length=255)
+    admin_comment: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_date_range(self):
+        if self.end_date < self.start_date:
+            raise ValueError("종료일은 시작일 이후여야 합니다.")
+        return self
+
+
 class ReservationOut(BaseModel):
     id: int
     room_id: int

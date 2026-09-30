@@ -14,6 +14,7 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import {EventDef} from "../event/EventDef";
 import EventPublisher from "../event/EventPublisher";
 
@@ -22,10 +23,11 @@ const MODULE = 'Sidebar';
 
 export default function Sidebar({ activeTab, onDashboard, onTabChange, onRefresh, pendingCount = 0, expenseApprovalCount = 0, canApproveExpenses = false, canManageExpenseSettings = false, mobileOpen = false, onClose }) {
   const { t } = useLanguage();
-  const [menuOpen, setMenuOpen] = useState(true);
-  const [expenseOpen, setExpenseOpen] = useState(true);
-  const [expenseSettingsOpen, setExpenseSettingsOpen] = useState(true);
-  const [cellMeetingOpen, setCellMeetingOpen] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [expenseSettingsOpen, setExpenseSettingsOpen] = useState(false);
+  const [cellMeetingOpen, setCellMeetingOpen] = useState(false);
+  const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [permission, setPermission] = useState(sessionStorage.getItem("milal_permission") || "");
   const [title, setTitle] = useState(sessionStorage.getItem("milal_title") || "");
   const [cellGroup, setCellGroup] = useState(sessionStorage.getItem("milal_cell_group") || "");
@@ -39,6 +41,9 @@ export default function Sidebar({ activeTab, onDashboard, onTabChange, onRefresh
       setExpenseOpen(true);
     }
     if (activeTab === "expense-account-management" || activeTab === "expense-approval-route-management") setExpenseSettingsOpen(true);
+    if (["equipment-status", "equipment-request", "equipment-review", "equipment-settings"].includes(activeTab)) {
+      setEquipmentOpen(true);
+    }
   }, [activeTab]);
 
   useEffect(() => {
@@ -369,6 +374,78 @@ export default function Sidebar({ activeTab, onDashboard, onTabChange, onRefresh
                       {item.key === "admin" && pendingCount > 0 && (
                         <Badge badgeContent={pendingCount} color="error" sx={{ "& .MuiBadge-badge": { fontSize: "10px", height: 16, minWidth: 16 } }} />
                       )}
+                  </Button>
+                ))}
+              </Stack>
+            </Box>
+          </Stack>
+        </Collapse>
+
+        <Button
+          onClick={() => setEquipmentOpen((prev) => !prev)}
+          startIcon={<Inventory2OutlinedIcon />}
+          sx={{
+            justifyContent: "flex-start",
+            textTransform: "none",
+            fontSize: "14px",
+            fontWeight: 700,
+            color: ["equipment-status", "equipment-request", "equipment-review", "equipment-settings"].includes(activeTab) ? "#3b522e" : "#313b5e",
+            borderRadius: "8px",
+            px: 1.5,
+            py: 1.1,
+            transition: "all 0.2s ease",
+            "&:hover": { bgcolor: "#e8ecf2" },
+          }}
+        >
+          <Box sx={{ flexGrow: 1, textAlign: "left" }}>{t("navEquipmentReservation")}</Box>
+          <Box sx={{ transform: equipmentOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.2s ease", display: "flex", alignItems: "center", opacity: 0.5 }}>
+            {ChevronDownIcon}
+          </Box>
+        </Button>
+
+        <Collapse in={equipmentOpen}>
+          <Stack spacing={0.25} sx={{ pl: 1.5, mt: 0.25 }}>
+            <Box sx={{ position: "relative" }}>
+              <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 8, width: "1.5px", bgcolor: "#d8dfe7" }} />
+              <Stack spacing={0.25}>
+                {[
+                  { key: "equipment-status", label: t("navEquipmentStatus"), icon: CalendarIcon },
+                  { key: "equipment-request", label: t("navEquipmentRequest"), icon: PlusIcon },
+                  ...(permission === "admin" ? [
+                    { key: "equipment-review", label: t("navEquipmentReview"), icon: CheckIcon },
+                    { key: "equipment-settings", label: t("navEquipmentSettings"), icon: SettingsIcon },
+                  ] : []),
+                ].map((item) => (
+                  <Button
+                    key={item.key}
+                    onClick={() => onTabChange(item.key)}
+                    startIcon={item.icon}
+                    sx={{
+                      justifyContent: "flex-start",
+                      color: activeTab === item.key ? "#3b522e" : "#5d7186",
+                      textTransform: "none",
+                      fontSize: "13px",
+                      fontWeight: activeTab === item.key ? 700 : 500,
+                      bgcolor: activeTab === item.key ? "rgba(59, 82, 46, 0.08)" : "transparent",
+                      borderRadius: "8px",
+                      pl: 2,
+                      pr: 1.5,
+                      py: 1,
+                      position: "relative",
+                      "&:hover": { bgcolor: "rgba(59, 82, 46, 0.08)", color: "#3b522e" },
+                      "&::before": activeTab === item.key ? {
+                        content: '\"\"',
+                        position: "absolute",
+                        left: 0,
+                        top: "25%",
+                        bottom: "25%",
+                        width: "3px",
+                        bgcolor: "#3b522e",
+                        borderRadius: "0 3px 3px 0",
+                      } : {},
+                    }}
+                  >
+                    <Box sx={{ flexGrow: 1, textAlign: "left" }}>{item.label}</Box>
                   </Button>
                 ))}
               </Stack>

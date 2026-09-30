@@ -446,6 +446,40 @@ class Reservation(Base):
 
     room: Mapped[Room] = relationship(back_populates="reservations")
 
+class Equipment(Base):
+    __tablename__ = "equipment"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    storage_location: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    total_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    image_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    reservations: Mapped[list["EquipmentReservation"]] = relationship(back_populates="equipment")
+
+class EquipmentReservation(Base):
+    __tablename__ = "equipment_reservations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    equipment_id: Mapped[int] = mapped_column(ForeignKey("equipment.id"), nullable=False)
+    requester_member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), nullable=False)
+    requester_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    purpose: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[ReservationStatus] = mapped_column(Enum(ReservationStatus), default=ReservationStatus.pending, nullable=False)
+    admin_comment: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    returned_by_member_id: Mapped[Optional[int]] = mapped_column(ForeignKey("members.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    equipment: Mapped[Equipment] = relationship(back_populates="reservations")
+
 
 class ReservationRule(Base):
     __tablename__ = "reservation_rules"

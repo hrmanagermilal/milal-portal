@@ -28,6 +28,7 @@ import ExpenseAccountManagement from "./components/expense/ExpenseAccountManagem
 import ExpenseApprovalRouteManagement from "./components/expense/ExpenseApprovalRouteManagement";
 import ExpenseAgreementManagement from "./components/expense/ExpenseAgreementManagement";
 import ExpenseAccountDetail from "./components/expense/ExpenseAccountDetail";
+import { EquipmentAdminReview, EquipmentRequest, EquipmentSettings, EquipmentStatus } from "./components/equipment/EquipmentReservation";
 import Dashboard from "./components/Dashboard";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
@@ -94,6 +95,10 @@ export default function App() {
     { key: "expense-approval-route-management", label: t("navExpenseApprovalRouteManagement") },
     { key: "expense-agreement", label: t("navExpenseAgreement") },
     { key: "expense-account-detail", label: t("navExpenseAccountManagement") },
+    { key: "equipment-status", label: t("equipmentStatusTitle") },
+    { key: "equipment-request", label: t("equipmentRequestTitle") },
+    { key: "equipment-review", label: t("equipmentReviewTitle") },
+    { key: "equipment-settings", label: t("equipmentSettingsTitle") },
   ];
 
   const [tab, setTab] = useState(() => linkedExpenseTab === "expense" || linkedExpenseTab === "expense-approval" ? linkedExpenseTab : "dashboard");
@@ -169,6 +174,13 @@ export default function App() {
     setCurrentUser(null);
     DataMart.clearCurrentUser();
   }
+
+  useEffect(() => {
+    const adminEquipmentTabs = ["equipment-review", "equipment-settings"];
+    if (userPermission !== "admin" && adminEquipmentTabs.includes(tab)) {
+      setTab("equipment-status");
+    }
+  }, [tab, userPermission]);
 
   const [form, setForm] = useState({
     room_id: "",
@@ -590,6 +602,18 @@ export default function App() {
           )}
           {tab === "expense-agreement" && (userCustom8 === "manager" || userCustom8 === "admin") && (
             <ExpenseAgreementManagement />
+          )}
+          {tab === "equipment-status" && (
+            <EquipmentStatus />
+          )}
+          {tab === "equipment-request" && (
+            <EquipmentRequest />
+          )}
+          {tab === "equipment-review" && userPermission === "admin" && (
+            <EquipmentAdminReview />
+          )}
+          {tab === "equipment-settings" && userPermission === "admin" && (
+            <EquipmentSettings />
           )}
         </Box>
       </Box>

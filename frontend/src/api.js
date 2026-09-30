@@ -282,6 +282,66 @@ export const api = {
       body: payload,
     }),
 
+  // ── Equipment reservations ───────────────────────────────────────────
+  getEquipment: (startDate, endDate) => {
+    const params = startDate && endDate
+      ? `?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`
+      : "";
+    return request(`/api/equipment${params}`, {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    });
+  },
+  getEquipmentReservations: (equipmentId, pendingOnly = false, returnPendingOnly = false, approvedOnly = false) => {
+    const params = new URLSearchParams();
+    if (equipmentId) params.set("equipment_id", equipmentId);
+    if (pendingOnly) params.set("pending_only", "true");
+    if (returnPendingOnly) params.set("return_pending_only", "true");
+    if (approvedOnly) params.set("approved_only", "true");
+    const query = params.toString();
+    return request(`/api/equipment/reservations${query ? `?${query}` : ""}`, {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    });
+  },
+  createEquipmentReservation: (payload) =>
+    request("/api/equipment/reservations", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+  reviewEquipmentReservation: (id, payload) =>
+    request(`/api/equipment/reservations/${id}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+  updateApprovedEquipmentReservation: (id, payload) =>
+    request(`/api/equipment/reservations/${id}/details`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+  confirmEquipmentReturn: (id) =>
+    request(`/api/equipment/reservations/${id}/return`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+  adminGetEquipment: () =>
+    request("/api/equipment/admin/items", {
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+    }),
+  adminCreateEquipment: (payload) =>
+    request("/api/equipment/admin/items", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+  adminUpdateEquipment: (id, payload) =>
+    request(`/api/equipment/admin/items/${id}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${sessionStorage.getItem("milal_token")}` },
+      body: payload,
+    }),
+
   // ── Auth / Member account ──────────────────────────────────────────────
   findMember: (payload) =>
     request("/api/auth/find-member", { method: "POST", body: payload }),
