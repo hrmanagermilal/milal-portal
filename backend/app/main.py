@@ -88,7 +88,9 @@ from .schemas import (
 from .auth_routes import router as auth_router, get_current_user, oauth2_scheme
 from .ai_chat import create_ai_chat_router, get_gemini_client
 from .reservation_eligibility import assess_reservation_eligibility
+from .reservation_recurrence import calculate_recurrence_time
 from .email_queue import email_queue_worker, queue_email
+from .sms_queue import queue_sms, sms_queue_worker
 from .sync_tasks import maybe_sync_external_calendar_events, sync_all_members_from_ohjic
 from .expense_routes import router as expense_router
 
@@ -128,6 +130,7 @@ REMINDER_POLL_SECONDS = 60
 EXPENSE_APPROVER_POSITION_CODES = (566, 567, 568)
 reminder_task: asyncio.Task | None = None
 email_queue_task: asyncio.Task | None = None
+sms_queue_task: asyncio.Task | None = None
 EASTERN_TZ = ZoneInfo(os.getenv("APP_TIMEZONE", "America/Toronto"))
 scheduler: AsyncIOScheduler | None = None
 
@@ -229,6 +232,17 @@ Google Calendar에 추가:
     return subject, body
 
 
+def _build_reservation_sms(reservation: Reservation, room_name: str, status: str) -> str:
+    return (
+        f"[Milal Church] Reservation {status}\n"
+        f"Location: {room_name}\n"
+        f"Time (ET): {_format_eastern_time(reservation.start_time)} - "
+        f"{_format_eastern_time(reservation.end_time)}\n"
+        f"Reservation ID: {reservation.id}\n"
+        "Reply STOP to unsubscribe."
+    )
+
+
 def _send_due_reservation_reminders_once() -> None:
     db = SessionLocal()
     try:
@@ -244,8 +258,18 @@ def _send_due_reservation_reminders_once() -> None:
                     ReservationStatus.changed,
                 ]),
                 Reservation.created_by_admin.is_(False),
-                Reservation.email.is_not(None),
-                Reservation.email != "",
+                or_(
+                    and_(
+                        Reservation.email_notifications_enabled.is_(True),
+                        Reservation.email.is_not(None),
+                        Reservation.email != "",
+                    ),
+                    and_(
+                        Reservation.sms_notifications_enabled.is_(True),
+                        Reservation.phone.is_not(None),
+                        Reservation.phone != "",
+                    ),
+                ),
                 Reservation.end_time > now,
                 or_(
                     and_(
@@ -272,14 +296,22 @@ def _send_due_reservation_reminders_once() -> None:
 
             if (not item.start_reminder_sent) and now < start_time <= window_end:
                 subject, body = _build_reminder_email(item, room_name, "start")
-                if queue_email(db, item.email, subject, body):
+                queued = item.email_notifications_enabled and bool(item.email) and queue_email(db, item.email, subject, body)
+                if item.sms_notifications_enabled and item.phone:
+                    sms_body = _build_reservation_sms(item, room_name, "starts in 15 minutes")
+                    queued = queue_sms(db, item.phone, sms_body) or queued
+                if queued:
                     item.start_reminder_sent = True
                     item.start_reminder_sent_at = datetime.utcnow()
                     dirty = True
 
             if (not item.end_reminder_sent) and now < end_time <= window_end:
                 subject, body = _build_reminder_email(item, room_name, "end")
-                if queue_email(db, item.email, subject, body):
+                queued = item.email_notifications_enabled and bool(item.email) and queue_email(db, item.email, subject, body)
+                if item.sms_notifications_enabled and item.phone:
+                    sms_body = _build_reservation_sms(item, room_name, "ends in 15 minutes")
+                    queued = queue_sms(db, item.phone, sms_body) or queued
+                if queued:
                     item.end_reminder_sent = True
                     item.end_reminder_sent_at = datetime.utcnow()
                     dirty = True
@@ -739,6 +771,18 @@ async def startup() -> None:
         except Exception:
             pass  # Column already exists
 
+    # Migrate: persist reservation notification preferences.
+    with engine.connect() as conn:
+        for sql in (
+            "ALTER TABLE reservations ADD COLUMN email_notifications_enabled BOOLEAN NOT NULL DEFAULT 1",
+            "ALTER TABLE reservations ADD COLUMN sms_notifications_enabled BOOLEAN NOT NULL DEFAULT 0",
+        ):
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
 
     db = next(get_db())
     try:
@@ -749,8 +793,9 @@ async def startup() -> None:
     global reminder_task, scheduler
     reminder_task = asyncio.create_task(_reservation_reminder_worker())
 
-    global email_queue_task
+    global email_queue_task, sms_queue_task
     email_queue_task = asyncio.create_task(email_queue_worker())
+    sms_queue_task = asyncio.create_task(sms_queue_worker())
     
     # Initialize scheduler for daily member sync
     scheduler = AsyncIOScheduler()
@@ -794,7 +839,7 @@ async def startup() -> None:
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    global reminder_task, scheduler, email_queue_task
+    global reminder_task, scheduler, email_queue_task, sms_queue_task
     if reminder_task:
         reminder_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -806,6 +851,12 @@ async def shutdown() -> None:
         with contextlib.suppress(asyncio.CancelledError):
             await email_queue_task
         email_queue_task = None
+
+    if sms_queue_task:
+        sms_queue_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sms_queue_task
+        sms_queue_task = None
     
     if scheduler:
         scheduler.shutdown(wait=False)
@@ -2060,16 +2111,8 @@ def create_reservation(
     
     for i in range(payload.repeat_count):
         # Calculate time for this instance
-        if payload.repeat_type == "weekly":
-            current_start = payload.start_time + timedelta(weeks=i)
-            current_end = payload.end_time + timedelta(weeks=i)
-        elif payload.repeat_type == "monthly":
-            # Add months (approximate: 30 days per month)
-            current_start = payload.start_time + timedelta(days=30 * i)
-            current_end = payload.end_time + timedelta(days=30 * i)
-        else:
-            current_start = payload.start_time
-            current_end = payload.end_time
+        current_start = calculate_recurrence_time(payload.start_time, payload.repeat_type, i)
+        current_end = calculate_recurrence_time(payload.end_time, payload.repeat_type, i)
 
         # For repeat reservations, also check rules for each instance
         can_reserve, error_msg = can_reserve_room(
@@ -2121,6 +2164,8 @@ def create_reservation(
             repeat_count=payload.repeat_count,
             parent_reservation_id=parent_reservation_id,
             created_by_admin=is_admin,
+            email_notifications_enabled=payload.email_notifications_enabled,
+            sms_notifications_enabled=payload.sms_notifications_enabled,
         )
         db.add(new_item)
         db.commit()
@@ -2175,8 +2220,11 @@ def create_reservation(
 
     # Send email to requester (skip for admin-created reservations — no
     # completion notice needed since the admin already knows it's approved).
-    if not is_admin:
+    if not is_admin and payload.email_notifications_enabled:
         queue_email(db, payload.email, email_subject, email_body)
+    if not is_admin and payload.sms_notifications_enabled:
+        sms_body = _build_reservation_sms(reservations[0], room.name, "request received")
+        queue_sms(db, payload.phone, sms_body)
     
     # Send notification email to admins (skip for admin-created reservations
     # — the admin who just booked it doesn't need a notice about it).
@@ -2256,6 +2304,8 @@ def list_reservations(
             repeat_type=item.repeat_type,
             repeat_count=item.repeat_count,
             parent_reservation_id=item.parent_reservation_id,
+            email_notifications_enabled=item.email_notifications_enabled,
+            sms_notifications_enabled=item.sms_notifications_enabled,
             created_at=_as_utc_aware(item.created_at),
             updated_at=_as_utc_aware(item.updated_at),
         )
@@ -2424,7 +2474,7 @@ def update_reservation_by_admin(
     status_ko = status_text.get(action, "처리되었습니다")
     status_en = status_text_en.get(action, "Processed")
     
-    if item.email:
+    if item.email and item.email_notifications_enabled:
         calendar_link = _build_google_calendar_link(
             f"{item.room.name if item.room else '장소'} 예약",
             item.start_time,
@@ -2463,6 +2513,10 @@ Google Calendar에 추가:
         # any action taken here (reject/change) is the admin's own doing.
         if not item.created_by_admin:
             queue_email(db, item.email, subject_ko, body_ko)
+
+    if item.phone and item.sms_notifications_enabled and not item.created_by_admin:
+        room_name = item.room.name if item.room else "N/A"
+        queue_sms(db, item.phone, _build_reservation_sms(item, room_name, status_en))
     
     room_name = item.room.name if item.room else (db.get(Room, item.room_id).name)
     return ReservationOut(
@@ -2482,6 +2536,8 @@ Google Calendar에 추가:
         repeat_type=item.repeat_type,
         repeat_count=item.repeat_count,
         parent_reservation_id=item.parent_reservation_id,
+        email_notifications_enabled=item.email_notifications_enabled,
+        sms_notifications_enabled=item.sms_notifications_enabled,
         created_at=_as_utc_aware(item.created_at),
         updated_at=_as_utc_aware(item.updated_at),
     )
@@ -2565,7 +2621,7 @@ def update_reservation_by_user(
     db.refresh(item)
 
     # Send update email (skip for admin-created reservations)
-    if item.email and not item.created_by_admin:
+    if item.email and item.email_notifications_enabled and not item.created_by_admin:
         subject = f"[예약 변경] {item.room.name if item.room else 'N/A'}"
         body = f"""안녕하세요 {item.requester_name}님,
 
@@ -2584,6 +2640,9 @@ def update_reservation_by_user(
         queue_email(db, item.email, subject, body)
 
     room_name = item.room.name if item.room else "Unknown"
+    if item.phone and item.sms_notifications_enabled and not item.created_by_admin:
+        queue_sms(db, item.phone, _build_reservation_sms(item, room_name, "updated"))
+
     return ReservationOut(
         id=item.id,
         room_id=item.room_id,
@@ -2601,6 +2660,8 @@ def update_reservation_by_user(
         repeat_type=item.repeat_type,
         repeat_count=item.repeat_count,
         parent_reservation_id=item.parent_reservation_id,
+        email_notifications_enabled=item.email_notifications_enabled,
+        sms_notifications_enabled=item.sms_notifications_enabled,
         created_at=_as_utc_aware(item.created_at),
         updated_at=_as_utc_aware(item.updated_at),
     )
@@ -2637,7 +2698,7 @@ def delete_reservation_by_user(
     room_name = item.room.name if item.room else "Unknown"
     
     # Send cancellation email (skip for admin-created reservations)
-    if item.email and not item.created_by_admin:
+    if item.email and item.email_notifications_enabled and not item.created_by_admin:
         subject = f"[예약 취소] {room_name}"
         body = f"""안녕하세요 {item.requester_name}님,
 
@@ -2652,6 +2713,9 @@ def delete_reservation_by_user(
 
 밀알교회"""
         queue_email(db, item.email, subject, body)
+
+    if item.phone and item.sms_notifications_enabled and not item.created_by_admin:
+        queue_sms(db, item.phone, _build_reservation_sms(item, room_name, "cancelled"))
 
     db.delete(item)
     db.commit()

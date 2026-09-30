@@ -282,6 +282,9 @@ export const translations = {
     fieldRooms: "Rooms",
     selected: "selected",
     submitMultiRequest: "Submit Multi-Request",
+    reservationNotificationPreferences: "Reservation notifications",
+    reservationEmailNotifications: "Receive email notifications",
+    reservationSmsNotifications: "Receive SMS notifications",
 
     // AdminReservationEditModal
     adminEditTitle: "Edit Reservation",
@@ -618,6 +621,9 @@ export const translations = {
     fieldRooms: "장소",
     selected: "개 선택됨",
     submitMultiRequest: "다중 신청하기",
+    reservationNotificationPreferences: "예약 관련 안내 수신",
+    reservationEmailNotifications: "이메일 안내 수신",
+    reservationSmsNotifications: "SMS 안내 수신",
 
     // AdminReservationEditModal
     adminEditTitle: "예약 수정",

@@ -102,6 +102,8 @@ class ReservationCreate(BaseModel):
     start_time: datetime
     end_time: datetime
     permission: str = Field(default="member")
+    email_notifications_enabled: bool = True
+    sms_notifications_enabled: bool = False
     # Admin repeat settings
     repeat_type: Literal["none", "weekly", "monthly"] = Field(default="none")
     repeat_count: int = Field(default=1, ge=1, le=52)  # max 52 weeks or 12 months
@@ -124,6 +126,8 @@ class ReservationOut(BaseModel):
     repeat_type: str
     repeat_count: int
     parent_reservation_id: int | None
+    email_notifications_enabled: bool = True
+    sms_notifications_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 

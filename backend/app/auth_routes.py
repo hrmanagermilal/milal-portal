@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .email_queue import queue_email
 from .models import Member, OtpCode, User, MemberChangeLog, MembershipCategory
+from .sms_queue import send_sms_now
 from .schemas import UserOut, ChangePasswordRequest, AdminUpdateUserRequest, ResetPasswordRequest
 from .ohjic_client import OhjicAPIClient
 
@@ -77,13 +78,8 @@ def _generate_otp() -> str:
 
 
 def _send_sms(phone: str, message: str) -> bool:
-    """
-    SMS stub – log the message.
-    Replace this with your SMS provider (e.g. SOLAPI, Twilio) by setting:
-      SMS_PROVIDER=solapi  SMS_API_KEY=...  SMS_API_SECRET=...  SMS_FROM=...
-    """
-    logger.warning("[OTP SMS – not configured] To: %s | %s", phone, message)
-    return False  # signals dev mode; caller will return OTP in response
+        sent, _ = send_sms_now(phone, message)
+        return sent
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):

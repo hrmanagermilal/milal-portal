@@ -380,6 +380,21 @@ class EmailQueueItem(Base):
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class SmsQueueItem(Base):
+    """Outbox for background SMS delivery through Twilio."""
+    __tablename__ = "sms_queue"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    to_phone: Mapped[str] = mapped_column(String(30), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[EmailStatus] = mapped_column(Enum(EmailStatus), default=EmailStatus.pending, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    provider_message_id: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class Reservation(Base):
     __tablename__ = "reservations"
 
@@ -407,6 +422,9 @@ class Reservation(Base):
     # True when an admin created this reservation directly (auto-approved);
     # skips the requester confirmation email and start/end reminders.
     created_by_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    email_notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sms_notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Repeat settings (for admin recurring reservations)
     repeat_type: Mapped[str] = mapped_column(String(20), default="none")  # "none", "weekly", "monthly"

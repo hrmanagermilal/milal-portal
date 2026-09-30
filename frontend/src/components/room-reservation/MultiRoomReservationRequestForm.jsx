@@ -222,6 +222,32 @@ export default function MultiRoomReservationRequestForm({ rooms, form, setForm, 
             <TextField label={t("attendees")} type="number" fullWidth required inputProps={{ min: 1 }} {...field("attendees")} />
             <TextField label={t("notes")} fullWidth multiline rows={2} {...field("notes")} />
 
+            <Box>
+              <Typography variant="caption" sx={{ color: "#5d7186", display: "block", mb: 0.5, fontSize: "12px", fontWeight: 600 }}>
+                {t("reservationNotificationPreferences")}
+              </Typography>
+              <FormGroup row>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={form.email_notifications_enabled ?? true}
+                      onChange={(event) => setForm((prev) => ({ ...prev, email_notifications_enabled: event.target.checked }))}
+                    />
+                  }
+                  label={t("reservationEmailNotifications")}
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={form.sms_notifications_enabled ?? false}
+                      onChange={(event) => setForm((prev) => ({ ...prev, sms_notifications_enabled: event.target.checked }))}
+                    />
+                  }
+                  label={t("reservationSmsNotifications")}
+                />
+              </FormGroup>
+            </Box>
+
             <Stack direction="row" spacing={1.5} sx={{ width: "100%", justifyContent: "flex-end", pt: 1 }}>
               <Button
                 type="submit"

@@ -29,6 +29,20 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 7000
 
 Admin key is read from `ADMIN_API_KEY` environment variable (default: `milal-admin-key`).
 
+### Twilio SMS
+
+Reservation SMS notifications and phone OTP messages use Twilio. Configure these values in the server environment:
+
+```bash
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_MESSAGING_SERVICE_SID=...
+```
+
+Use `TWILIO_FROM_NUMBER=+1...` instead of `TWILIO_MESSAGING_SERVICE_SID` only when sending directly from one Twilio number. Never commit or share the Account SID or Auth Token. US/Canada phone numbers may be entered in E.164 format (`+14165551234`) or as a 10-digit number.
+
+Before production use, complete Twilio Toll-Free verification or US A2P 10DLC registration as appropriate, associate the approved sender with the Messaging Service, and configure Twilio's standard STOP handling. The application queues messages and retries failed Twilio requests up to three times.
+
 ## Frontend Run
 
 ```bash
